@@ -229,11 +229,17 @@
         <div id="qualityLogList"></div>
       </div>
 
+      <div id="shippingSpecWrap" style="display:none;">
+        <div class="section-label">出荷仕様</div>
+        <div id="shippingSpecList" class="tool-view-spec"></div>
+      </div>
+
       <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
         <button class="btn btn-primary hidden" id="goToolsBtn">ツール配置を見る・編集する</button>
+        <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-secondary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
-      <div class="coming-soon">④紙の取込確認・⑤品質情報記録の各画面は近日追加予定です。</div>
+      <div class="coming-soon">④紙の取込確認画面は近日追加予定です。</div>
       <button class="btn btn-secondary" id="backToScanBtn">別の図番を読み取る</button>
     </section>
 
@@ -297,6 +303,125 @@
 
       <div class="status-note" id="toolsStatus"></div>
       <button class="btn btn-secondary" id="toolsBackBtn">②に戻る</button>
+    </section>
+
+    <!-- SCREEN 5: 品質情報記録 -->
+    <section class="screen" data-screen="qi">
+      <div class="field">
+        <label>図番／品名</label>
+        <div class="zuban-inline" id="qiZubanHeader"></div>
+      </div>
+      <div class="mini-grid">
+        <div class="mini-field"><label>部署（自動）</label><input type="text" id="qiDeptDisplay" disabled></div>
+        <div class="mini-field"><label>日付（自動）</label><input type="text" id="qiDateDisplay" disabled></div>
+      </div>
+
+      <div id="specKensaSection" class="hidden">
+        <div class="section-label">出荷仕様｜検査項目（検査部署のみ編集・図番ごとに1件、上書き）</div>
+        <div class="field">
+          <label>検査記録の添付</label>
+          <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
+            <button type="button" class="chip">要</button>
+            <button type="button" class="chip">不要</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>ミルシート</label>
+          <div class="chip-row" data-group="millSheet" data-field="ミルシート">
+            <button type="button" class="chip">要</button>
+            <button type="button" class="chip">不要</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>トレー梱包（種類は仮。型番未確定）</label>
+          <div class="chip-row" data-group="tray" data-field="トレー梱包">
+            <button type="button" class="chip">50個入り</button>
+            <button type="button" class="chip">25個入り</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>NG・限度見本</label>
+          <div class="chip-row" data-group="ngSample" data-field="NG限度見本">
+            <button type="button" class="chip">有</button>
+            <button type="button" class="chip">無</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">出荷仕様（検査項目）を保存する</button>
+      </div>
+
+      <div id="specSeisanSection" class="hidden">
+        <div class="section-label">出荷仕様｜生産管理項目（生産管理課のみ編集・図番ごとに1件、上書き）</div>
+        <div class="field">
+          <label>カット品</label>
+          <div class="chip-row" data-group="cutSample" data-field="カット品">
+            <button type="button" class="chip">要</button>
+            <button type="button" class="chip">不要</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>テストピース</label>
+          <div class="chip-row" data-group="testPiece" data-field="テストピース">
+            <button type="button" class="chip">要</button>
+            <button type="button" class="chip">不要</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>借用ゲージ等</label>
+          <div class="chip-row" data-group="gauge" data-field="借用ゲージ有無">
+            <button type="button" class="chip">有</button>
+            <button type="button" class="chip">無</button>
+          </div>
+        </div>
+        <div class="field hidden" id="gaugeDetailField">
+          <label>ゲージの種類（自由入力）</label>
+          <input type="text" id="gaugeDetailInput" placeholder="例：限界ピンゲージ φ8.0">
+        </div>
+        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">出荷仕様（生産管理項目）を保存する</button>
+      </div>
+
+      <div id="specShukkaSection" class="hidden">
+        <div class="section-label">出荷｜梱包・その他（生産管理課「出荷」担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="field">
+          <label>梱包方法</label>
+          <textarea id="packMethodInput" placeholder="例：個包装してから箱詰め、緩衝材を厚めに　など"></textarea>
+        </div>
+        <div class="field">
+          <label>その他必要事項</label>
+          <textarea id="shipOtherInput" placeholder="例：納品書に検査成績書を同封、等"></textarea>
+        </div>
+        <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
+      </div>
+
+      <div id="qiLogSection" class="hidden">
+        <div class="section-label" style="margin-top:6px;">品質情報を記録する</div>
+        <div class="field">
+          <label>外観ランク（任意）</label>
+          <div class="chip-row" data-group="rank">
+            <button type="button" class="chip">A</button>
+            <button type="button" class="chip">B</button>
+            <button type="button" class="chip">C</button>
+            <button type="button" class="chip">D</button>
+            <button type="button" class="chip">E</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>内容</label>
+          <textarea id="qiContentInput" placeholder="例：規格値◯±0.1に対し実測◯◯。在庫と同様のためそのまま合格とした、等"></textarea>
+        </div>
+        <div class="field">
+          <label>写真（任意）</label>
+          <button type="button" class="photo-btn" id="qiPhotoBtn"><span id="qiPhotoIcon">📷</span><span id="qiPhotoLabel">写真を選ぶ</span></button>
+          <input type="file" id="qiPhotoInput" accept="image/*" class="hidden">
+        </div>
+        <label class="confirm-row">
+          <input type="checkbox" id="qiShareCheck">
+          <span>他部署にも共有する（②の過去トラに表示され、全員が確認必須になります）</span>
+        </label>
+        <button type="button" class="btn btn-primary" id="qiSaveBtn">記録する</button>
+      </div>
+
+      <div class="status-note" id="qiStatus"></div>
+      <button class="btn btn-secondary" id="qiBackBtn">②に戻る</button>
     </section>
   </main>
 </div>
@@ -363,6 +488,7 @@
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / other
+  var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
     if (!currentUser) return;
@@ -370,6 +496,7 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         currentRole = data.role || 'other';
+        currentSection = data.section || '';
         currentAllAccess = !!data.allAccess;
         updateActionGate();
       })
@@ -580,7 +707,30 @@
       qlSection.style.display = 'none';
     }
 
+    renderShippingSpecDisplay(data.shippingSpec);
     updateActionGate();
+  }
+
+  // 出荷仕様（検査項目・生産管理項目・出荷の梱包情報）は図番ごとに1件の固定仕様情報のため、
+  // 過去トラの確認有無に関わらず②画面に常に表示する。
+  var SHIPPING_SPEC_LABELS = [
+    ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
+    ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
+    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
+  ];
+  function renderShippingSpecDisplay(spec) {
+    var wrap = document.getElementById('shippingSpecWrap');
+    var list = document.getElementById('shippingSpecList');
+    list.innerHTML = '';
+    if (!spec) { wrap.style.display = 'none'; return; }
+    var any = false;
+    SHIPPING_SPEC_LABELS.forEach(function (pair) {
+      var val = spec[pair[0]];
+      if (!val) return;
+      any = true;
+      list.insertAdjacentHTML('beforeend', '<div class="spec-item">' + escapeHtml(pair[1]) + '　<b>' + escapeHtml(String(val)) + '</b></div>');
+    });
+    wrap.style.display = any ? 'block' : 'none';
   }
 
   document.getElementById('confirmCheck').addEventListener('change', updateActionGate);
@@ -588,9 +738,11 @@
   // ==== ②画面：役割・過去トラ確認状況に応じたボタンの出し分け（確認するまで押せない） ====
   function updateActionGate() {
     var goToolsBtn = document.getElementById('goToolsBtn');
+    var goQiBtn = document.getElementById('goQiBtn');
     var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
     if (!currentZubanData) {
       goToolsBtn.classList.add('hidden');
+      goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
       return;
     }
@@ -599,6 +751,11 @@
 
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
+
+    // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
+    var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
+    goQiBtn.classList.toggle('hidden', !showQi);
+    goQiBtn.disabled = !confirmed;
 
     var showInspectionFolderBtn = currentRole === 'kensa' || currentAllAccess;
     openInspectionFolderBtn.classList.toggle('hidden', !showInspectionFolderBtn);
@@ -613,6 +770,10 @@
   document.getElementById('goToolsBtn').addEventListener('click', function () {
     if (this.disabled) return;
     goToTools();
+  });
+  document.getElementById('goQiBtn').addEventListener('click', function () {
+    if (this.disabled) return;
+    goToQi();
   });
   document.getElementById('openInspectionFolderBtn').addEventListener('click', function () {
     if (this.disabled) return;
@@ -883,14 +1044,6 @@
     memos.forEach(function (m) { wrap.appendChild(buildTipCard(m)); });
   }
 
-  function resetMemoPhotoBtn() {
-    pendingMemoPhotoUrl = '';
-    document.getElementById('memoPhotoIcon').textContent = '📷';
-    document.getElementById('memoPhotoLabel').textContent = '写真を選ぶ';
-    document.getElementById('memoPhotoBtn').classList.remove('has-photo');
-    document.getElementById('memoPhotoInput').value = '';
-  }
-
   function fileToBase64(file) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
@@ -900,32 +1053,46 @@
     });
   }
 
-  document.getElementById('memoPhotoBtn').addEventListener('click', function () {
-    document.getElementById('memoPhotoInput').click();
-  });
-
-  document.getElementById('memoPhotoInput').addEventListener('change', function (e) {
-    var file = e.target.files[0];
-    if (!file || !currentZubanData) return;
-    var label = document.getElementById('memoPhotoLabel');
-    label.textContent = 'アップロード中…';
-    fileToBase64(file).then(function (base64) {
-      return fetch(GAS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'uploadPhoto', zuban: currentZubanData.zuban,
-          filename: file.name, mimeType: file.type, dataBase64: base64
+  // 写真添付ボタンの共通配線（③メモ・⑤品質情報記録の両方で使う）。resetする関数を返す。
+  function wirePhotoUpload(opts) {
+    var btn = document.getElementById(opts.btnId);
+    var input = document.getElementById(opts.inputId);
+    var icon = document.getElementById(opts.iconId);
+    var label = document.getElementById(opts.labelId);
+    btn.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file || !currentZubanData) return;
+      label.textContent = 'アップロード中…';
+      fileToBase64(file).then(function (base64) {
+        return fetch(GAS_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'uploadPhoto', zuban: currentZubanData.zuban,
+            filename: file.name, mimeType: file.type, dataBase64: base64
+          })
+        });
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res.error) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + res.error); return; }
+          icon.textContent = '✅';
+          label.textContent = '写真を添付しました';
+          btn.classList.add('has-photo');
+          opts.onUploaded(res.url);
         })
-      });
-    }).then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (res.error) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + res.error); return; }
-        pendingMemoPhotoUrl = res.url;
-        document.getElementById('memoPhotoIcon').textContent = '✅';
-        label.textContent = '写真を添付しました';
-        document.getElementById('memoPhotoBtn').classList.add('has-photo');
-      })
-      .catch(function (err) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + err.message); });
+        .catch(function (err) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + err.message); });
+    });
+    return function reset() {
+      icon.textContent = '📷';
+      label.textContent = '写真を選ぶ';
+      btn.classList.remove('has-photo');
+      input.value = '';
+    };
+  }
+
+  var resetMemoPhotoBtn = wirePhotoUpload({
+    btnId: 'memoPhotoBtn', iconId: 'memoPhotoIcon', labelId: 'memoPhotoLabel', inputId: 'memoPhotoInput',
+    onUploaded: function (url) { pendingMemoPhotoUrl = url; }
   });
 
   document.getElementById('memoAddBtn').addEventListener('click', function () {
@@ -949,6 +1116,158 @@
       })
       .then(function () { renderMemoEditList(); })
       .catch(function (err) { if (err) alert('記録に失敗しました: ' + err.message); });
+  });
+
+  // ==== ⑤ 品質情報記録 ====
+  var CHIP_DEFAULTS = {
+    inspRecord: '要', millSheet: '不要', tray: '50個入り', ngSample: '有',
+    cutSample: '不要', testPiece: '不要', gauge: '無'
+  };
+  var pendingQiPhotoUrl = '';
+
+  function wireChipRow(row) {
+    var chips = row.querySelectorAll('.chip');
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        chips.forEach(function (c) { c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+        if (row.getAttribute('data-group') === 'gauge') {
+          document.getElementById('gaugeDetailField').classList.toggle('hidden', chip.textContent !== '有');
+        }
+      });
+    });
+  }
+  document.querySelectorAll('.chip-row').forEach(wireChipRow);
+
+  function setChipValue(groupKey, value) {
+    var row = document.querySelector('.chip-row[data-group="' + groupKey + '"]');
+    if (!row) return;
+    var v = value || CHIP_DEFAULTS[groupKey];
+    row.querySelectorAll('.chip').forEach(function (c) {
+      c.setAttribute('aria-pressed', c.textContent === v ? 'true' : 'false');
+    });
+    if (groupKey === 'gauge') {
+      document.getElementById('gaugeDetailField').classList.toggle('hidden', v !== '有');
+    }
+  }
+
+  function getChipValue(groupKey) {
+    var row = document.querySelector('.chip-row[data-group="' + groupKey + '"]');
+    if (!row) return '';
+    var pressed = row.querySelector('.chip[aria-pressed="true"]');
+    return pressed ? pressed.textContent : '';
+  }
+
+  function goToQi() {
+    if (!currentZubanData) return;
+    setScreen('qi');
+    document.getElementById('qiZubanHeader').textContent = zubanLabel(currentZubanData);
+    document.getElementById('qiDeptDisplay').value = currentSection || (currentRole === 'kensa' ? '検査' : '');
+    document.getElementById('qiDateDisplay').value = new Date().toLocaleDateString('ja-JP');
+    document.getElementById('qiStatus').textContent = '';
+
+    var spec = currentZubanData.shippingSpec || {};
+    var showKensa = currentRole === 'kensa' || currentAllAccess;
+    var showSeisan = currentRole === 'seisan' || currentAllAccess;
+    var showShukka = currentRole === 'shukka' || currentAllAccess;
+    var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentAllAccess;
+
+    document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
+    document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
+    document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
+    document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
+
+    if (showKensa) {
+      setChipValue('inspRecord', spec['検査記録の添付']);
+      setChipValue('millSheet', spec['ミルシート']);
+      setChipValue('tray', spec['トレー梱包']);
+      setChipValue('ngSample', spec['NG限度見本']);
+    }
+    if (showSeisan) {
+      setChipValue('cutSample', spec['カット品']);
+      setChipValue('testPiece', spec['テストピース']);
+      setChipValue('gauge', spec['借用ゲージ有無']);
+      document.getElementById('gaugeDetailInput').value = spec['借用ゲージ種類'] || '';
+    }
+    if (showShukka) {
+      document.getElementById('packMethodInput').value = spec['梱包方法'] || '';
+      document.getElementById('shipOtherInput').value = spec['その他必要事項'] || '';
+    }
+    if (showQiLog) {
+      setChipValue('rank', '');
+      document.getElementById('qiContentInput').value = '';
+      document.getElementById('qiShareCheck').checked = false;
+      resetQiPhotoBtn();
+    }
+  }
+
+  document.getElementById('qiBackBtn').addEventListener('click', function () { setScreen('history'); });
+
+  function saveShippingSpecFields(fields, statusPrefix) {
+    if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
+    document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しています…';
+    fetch(GAS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, userEmail: currentUser.email })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + res.error; return Promise.reject(); }
+        return refreshZubanData();
+      })
+      .then(function () {
+        document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しました';
+        renderShippingSpecDisplay(currentZubanData.shippingSpec);
+      })
+      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+  }
+
+  document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
+      'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample')
+    }, '出荷仕様（検査項目）');
+  });
+  document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
+      '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
+    }, '出荷仕様（生産管理項目）');
+  });
+  document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      '梱包方法': document.getElementById('packMethodInput').value,
+      'その他必要事項': document.getElementById('shipOtherInput').value
+    }, '出荷（梱包・その他）');
+  });
+
+  var resetQiPhotoBtn = wirePhotoUpload({
+    btnId: 'qiPhotoBtn', iconId: 'qiPhotoIcon', labelId: 'qiPhotoLabel', inputId: 'qiPhotoInput',
+    onUploaded: function (url) { pendingQiPhotoUrl = url; }
+  });
+
+  document.getElementById('qiSaveBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    var content = document.getElementById('qiContentInput').value.trim();
+    if (!content) { alert('内容を入力してください'); return; }
+    var payload = {
+      action: 'postQualityLog', zuban: currentZubanData.zuban,
+      department: currentSection || (currentRole === 'kensa' ? '検査' : 'その他'),
+      userEmail: currentUser.email, userName: currentUser.name,
+      rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
+      shared: document.getElementById('qiShareCheck').checked
+    };
+    document.getElementById('qiStatus').textContent = '記録しています…';
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { document.getElementById('qiStatus').textContent = '記録に失敗しました: ' + res.error; return Promise.reject(); }
+        document.getElementById('qiContentInput').value = '';
+        document.getElementById('qiShareCheck').checked = false;
+        setChipValue('rank', '');
+        resetQiPhotoBtn();
+        return refreshZubanData();
+      })
+      .then(function () { document.getElementById('qiStatus').textContent = '記録しました'; })
+      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '記録に失敗しました: ' + err; });
   });
 
   renderRecentList();
