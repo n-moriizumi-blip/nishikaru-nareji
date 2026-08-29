@@ -475,9 +475,19 @@
     google.accounts.id.prompt(); // 自動ログインを試みる（One Tap）
   }
 
+  // JWTのペイロード部はbase64url形式かつUTF-8。atob()だけだとLatin1として解釈され、
+  // 日本語の氏名などが文字化けするため、Uint8Array経由でUTF-8として正しくデコードする。
+  function decodeJwtPayload(idToken) {
+    var base64 = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+  }
+
   function handleCredentialResponse(response) {
     // TODO: 本番ではidTokenをGAS側に送って検証すること（今はクライアント側でデコードして表示するだけ）。
-    var payload = JSON.parse(atob(response.credential.split('.')[1]));
+    var payload = decodeJwtPayload(response.credential);
     currentUser = { email: payload.email, name: payload.name };
     document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     fetchRole();
