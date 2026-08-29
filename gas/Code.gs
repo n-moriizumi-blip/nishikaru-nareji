@@ -270,17 +270,20 @@ function driveFilesList_(query) {
 }
 
 /**
- * 過去トラ：{図番} 品質情報 スプレッドシート／{得意先} {図番} {品名} 不具合改善計画書 フォルダを検索し、内容を要約して返す。
- * 品質情報はそのまま、不具合改善計画書は一行要約＋元ファイルへのリンクのみ返す（本文は開かない）。
+ * 過去トラ：{図番} 品質情報 スプレッドシート／改善計画書フォルダを検索し、内容を要約して返す。
+ * 品質情報はそのまま、改善計画書は一行要約＋元ファイルへのリンクのみ返す（本文は開かない）。
  *
- * パフォーマンス上の注意（2026-08-29）：Drive調査の結果、「{図番} 品質情報」は検査記録／社名／図番／の
- * 図番フォルダ内に、「不具合改善計画書」フォルダは単一の親フォルダ（FUGUAI_PLAN_PARENT_FOLDER_ID）の
- * 直下にあることが判明したため、それぞれ該当フォルダの中だけを検索するようスコープを絞っている。
+ * 改善計画書フォルダの命名・置き場所は実データ上ゆれがあることが判明済み（2026-08-29）：
+ * 「不具合改善計画書」「不適合改善計画書」の両方の表記があり、置き場所も
+ * ①専用の集約フォルダ（FUGUAI_PLAN_PARENT_FOLDER_ID）直下の場合と、
+ * ②図番フォルダ（検査記録／社名／図番／）自体の直下の場合、の両方が実在する。
+ * そのため両方の表記に共通する「改善計画書」で緩く一致させ、両方の置き場所を検索する。
  */
 function findPastTrouble_(zuban) {
   var items = [];
+  var zubanEsc = String(zuban).replace(/'/g, "\\'");
 
-  // 品質情報スプレッドシート：図番フォルダ（検査記録／社名／図番／）の中だけを検索
+  // 品質情報スプレッドシート・改善計画書フォルダ：図番フォルダ（検査記録／社名／図番／）の中を検索
   var zubanFolder = findZubanFolder_(zuban);
   if (zubanFolder) {
     var qiFiles = driveFilesList_(
@@ -295,16 +298,27 @@ function findPastTrouble_(zuban) {
         note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
       });
     });
+
+    var fkInZubanFolder = driveFilesList_(
+      "name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+    );
+    fkInZubanFolder.forEach(function (f) {
+      items.push({
+        source: '改善計画書',
+        title: f.name,
+        url: f.webViewLink,
+        note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
+      });
+    });
   }
 
-  // 不具合改善計画書フォルダ：専用の親フォルダの中だけを検索
-  var zubanEsc = String(zuban).replace(/'/g, "\\'");
-  var fkFiles = driveFilesList_(
-    "name contains '" + zubanEsc + "' and name contains '不具合改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + FUGUAI_PLAN_PARENT_FOLDER_ID + "' in parents"
+  // 改善計画書フォルダ：専用の集約フォルダの中も検索（上記と別の置き場所のケースをカバー）
+  var fkInParent = driveFilesList_(
+    "name contains '" + zubanEsc + "' and name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + FUGUAI_PLAN_PARENT_FOLDER_ID + "' in parents"
   );
-  fkFiles.forEach(function (f) {
+  fkInParent.forEach(function (f) {
     items.push({
-      source: '不具合改善計画書',
+      source: '改善計画書',
       title: f.name,
       url: f.webViewLink,
       note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
