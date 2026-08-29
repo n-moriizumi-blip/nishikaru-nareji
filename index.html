@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>西軽精機ナレッジ（仮）</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#b9741e">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+  :root {
+    --bg: #f1eee6; --surface: #ffffff; --surface-2: #f7f4ec;
+    --ink: #1b1d1f; --ink-soft: #5b5850; --line: #ddd6c4;
+    --accent: #b9741e; --accent-soft: #f3e2c4; --accent-ink: #6e4512;
+    --alert: #b23b2e; --alert-soft: #f7e1dc; --alert-ink: #7a2a20;
+    --ok: #3f7d53;
+    --font-ui: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Roboto Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
+  #app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
+  header.appbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  header.appbar .title { font-weight: 700; font-size: 1.05rem; }
+  #userBox { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); }
+  #signinBtn { display: none; }
+  main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .screen { display: none; flex-direction: column; gap: 16px; }
+  .screen.active { display: flex; }
+
+  .scan-copy { text-align: center; }
+  .scan-copy h2 { font-size: 1.1rem; margin: 0 0 6px; }
+  .scan-copy p { color: var(--ink-soft); font-size: 0.9rem; margin: 0; }
+  #video { width: 100%; max-width: 340px; margin: 0 auto; border-radius: 16px; background: #000; display: block; }
+  #camWrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
+  #camWrap.hidden { display: none; }
+
+  .btn { font-family: inherit; font-size: 0.95rem; font-weight: 700; border-radius: 12px; border: none; padding: 14px 16px; cursor: pointer; text-align: center; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:disabled { background: var(--surface-2); color: var(--ink-soft); cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: var(--ink-soft); border: 1px dashed var(--line); font-weight: 600; font-size: 0.85rem; }
+  .btn-secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); font-size: 0.85rem; padding: 12px 14px; }
+
+  .manual-entry { display: none; flex-direction: column; gap: 8px; }
+  .manual-entry.active { display: flex; }
+  .manual-entry input {
+    font-family: var(--font-mono); font-size: 0.95rem; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+
+  .zuban-header { font-family: var(--font-mono); font-weight: 700; color: var(--accent-ink); font-size: 1rem; }
+
+  .alert-card { border: 1.5px solid var(--alert); background: var(--alert-soft); border-radius: 14px; padding: 14px; }
+  .alert-card .alert-head { display: flex; align-items: center; gap: 7px; font-weight: 700; color: var(--alert-ink); font-size: 0.92rem; margin-bottom: 10px; }
+  .alert-item { font-size: 0.85rem; background: var(--surface); border-radius: 9px; padding: 10px; margin-bottom: 8px; }
+  .alert-item .date { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); display: block; margin-bottom: 4px; }
+  .alert-item a { color: var(--accent-ink); font-weight: 700; }
+  .confirm-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 11px; background: var(--surface); border-radius: 10px; cursor: pointer; border: 1px solid var(--line); }
+  .confirm-row input { width: 18px; height: 18px; accent-color: var(--alert); flex: none; }
+
+  .firsttime-card { border: 1.5px dashed var(--accent); background: var(--accent-soft); border-radius: 14px; padding: 20px 14px; text-align: center; }
+  .firsttime-card .big { font-size: 1.6rem; margin-bottom: 4px; }
+
+  .section-label { font-size: 0.75rem; letter-spacing: 0.06em; color: var(--ink-soft); font-weight: 700; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 0.88rem; }
+
+  .status-note { font-size: 0.78rem; color: var(--ink-soft); text-align: center; }
+  .coming-soon { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
+
+  .recent-chip { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.85rem; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="appbar">
+    <span class="title">西軽精機ナレッジ（仮）</span>
+    <div id="userBox">
+      <span id="userLabel">未ログイン</span>
+      <div id="g_id_signin"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- SCREEN 1: 図番読み取り -->
+    <section class="screen active" data-screen="scan">
+      <div class="scan-copy">
+        <h2>作業票のQRを読み取る</h2>
+        <p>I-PROが自動生成しているQRコードをそのまま使います</p>
+      </div>
+      <div id="camWrap" class="hidden">
+        <video id="video" playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+      </div>
+      <button class="btn btn-primary" id="startScanBtn">QRを読み取る</button>
+      <button class="btn btn-ghost" id="manualToggleBtn">図番が読み取れない場合は直接入力</button>
+      <div class="manual-entry" id="manualEntry">
+        <input type="text" id="manualZubanInput" placeholder="例：9081-6120-Z000">
+        <button class="btn btn-secondary" id="manualGoBtn">この図番で進む</button>
+      </div>
+      <div id="recentList"></div>
+      <div class="status-note" id="scanStatus"></div>
+    </section>
+
+    <!-- SCREEN 2: 過去情報表示 -->
+    <section class="screen" data-screen="history">
+      <div class="zuban-header" id="historyZubanHeader"></div>
+
+      <div id="pastTroubleWrap" style="display:none;">
+        <div class="alert-card">
+          <div class="alert-head">⚠ 過去トラがあります</div>
+          <div id="pastTroubleList"></div>
+          <label class="confirm-row" id="confirmRow">
+            <input type="checkbox" id="confirmCheck">
+            <span>内容を確認しました</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="freshWrap" style="display:none;">
+        <div class="firsttime-card">
+          <div class="big">🔰</div>
+          <p><strong>あなたが初挑戦です！</strong></p>
+          <p>この図番の記録はまだありません。</p>
+        </div>
+      </div>
+
+      <div id="qualityLogSection" style="display:none;">
+        <div class="section-label">自部署の品質情報</div>
+        <div id="qualityLogList"></div>
+      </div>
+
+      <div class="coming-soon">③ツール配置・④紙の取込確認・⑤品質情報記録の各画面は近日追加予定です。</div>
+      <button class="btn btn-secondary" id="backToScanBtn">別の図番を読み取る</button>
+    </section>
+  </main>
+</div>
+
+<script>
+  // ==== 設定 ====
+  // GAS Web App（デプロイ済み）のURL
+  var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbzqgdS5B5jlg5M11acnfkQAhfk_8Rso7R70CQ37LGUqVMakL9MQva1Dn_sm8p3Upo-a/exec';
+  // TODO: Google OAuthクライアントID未設定（実装ページ.md「投稿者の識別」参照）。
+  // 共有GCPプロジェクト(800178947678)に追加後、ここに設定すること。未設定の間はサインインボタンが機能しない。
+  var GOOGLE_CLIENT_ID = '';
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+  }
+
+  // ==== 画面切り替え ====
+  function setScreen(name) {
+    document.querySelectorAll('.screen').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.screen === name);
+    });
+  }
+
+  // ==== ログイン（Google Identity Services） ====
+  var currentUser = null; // { email, name }
+
+  function initSignIn() {
+    if (!GOOGLE_CLIENT_ID) {
+      document.getElementById('userLabel').textContent = '未ログイン（OAuth未設定）';
+      return;
+    }
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+      setTimeout(initSignIn, 300);
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      auto_select: true
+    });
+    google.accounts.id.renderButton(document.getElementById('g_id_signin'), { theme: 'outline', size: 'small' });
+    google.accounts.id.prompt(); // 自動ログインを試みる（One Tap）
+  }
+
+  function handleCredentialResponse(response) {
+    // TODO: 本番ではidTokenをGAS側に送って検証すること（今はクライアント側でデコードして表示するだけ）。
+    var payload = JSON.parse(atob(response.credential.split('.')[1]));
+    currentUser = { email: payload.email, name: payload.name };
+    document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+  }
+
+  // ==== recent list（localStorageに保存） ====
+  function getRecentZubans() {
+    try { return JSON.parse(localStorage.getItem('recentZubans') || '[]'); } catch (e) { return []; }
+  }
+  function pushRecentZuban(zuban) {
+    var list = getRecentZubans().filter(function (z) { return z !== zuban; });
+    list.unshift(zuban);
+    localStorage.setItem('recentZubans', JSON.stringify(list.slice(0, 5)));
+    renderRecentList();
+  }
+  function renderRecentList() {
+    var wrap = document.getElementById('recentList');
+    wrap.innerHTML = '';
+    getRecentZubans().forEach(function (z) {
+      var div = document.createElement('div');
+      div.className = 'recent-chip';
+      div.textContent = z;
+      div.addEventListener('click', function () { goToZuban(z); });
+      wrap.appendChild(div);
+    });
+  }
+
+  // ==== QRスキャン ====
+  var scanning = false;
+  var stream = null;
+  document.getElementById('startScanBtn').addEventListener('click', startScan);
+
+  function startScan() {
+    var camWrap = document.getElementById('camWrap');
+    var video = document.getElementById('video');
+    camWrap.classList.remove('hidden');
+    document.getElementById('scanStatus').textContent = 'カメラを起動しています…';
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (s) {
+      stream = s;
+      video.srcObject = s;
+      video.setAttribute('playsinline', true);
+      video.play();
+      scanning = true;
+      document.getElementById('scanStatus').textContent = 'QRコードを枠内に写してください';
+      requestAnimationFrame(scanTick);
+    }).catch(function (err) {
+      document.getElementById('scanStatus').textContent = 'カメラを起動できませんでした: ' + err.message;
+    });
+  }
+
+  function stopScan() {
+    scanning = false;
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    document.getElementById('camWrap').classList.add('hidden');
+  }
+
+  function scanTick() {
+    if (!scanning) return;
+    var video = document.getElementById('video');
+    var canvas = document.getElementById('canvas');
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var code = jsQR(imageData.data, imageData.width, imageData.height);
+      if (code && code.data) {
+        stopScan();
+        handleScannedUrl(code.data);
+        return;
+      }
+    }
+    requestAnimationFrame(scanTick);
+  }
+
+  function handleScannedUrl(qrText) {
+    // I-PROのQRは 192.168.0.131/workresult/index/{工程}/{製番} のようなURL。
+    // 製番→図番の変換はGAS側で行う想定だが、変換API(lookupZubanMaster_)が未実装のため、
+    // 今は末尾のパス要素を「製番」とみなし、図番と同一のものとして暫定的に扱う。
+    // TODO: 製番→図番変換が実装され次第、ここを修正すること。
+    var parts = qrText.split('/').filter(Boolean);
+    var seibanOrZuban = parts[parts.length - 1] || qrText;
+    document.getElementById('scanStatus').textContent = '';
+    goToZuban(seibanOrZuban);
+  }
+
+  // ==== 手入力 ====
+  document.getElementById('manualToggleBtn').addEventListener('click', function () {
+    document.getElementById('manualEntry').classList.toggle('active');
+  });
+  document.getElementById('manualGoBtn').addEventListener('click', function () {
+    var v = document.getElementById('manualZubanInput').value.trim();
+    if (v) goToZuban(v);
+  });
+
+  document.getElementById('backToScanBtn').addEventListener('click', function () {
+    setScreen('scan');
+  });
+
+  // ==== 図番確定 → ②画面へ ====
+  function goToZuban(zuban) {
+    pushRecentZuban(zuban);
+    setScreen('history');
+    document.getElementById('historyZubanHeader').textContent = zuban + '（品名取得は未実装）';
+    document.getElementById('pastTroubleWrap').style.display = 'none';
+    document.getElementById('freshWrap').style.display = 'none';
+    document.getElementById('qualityLogSection').style.display = 'none';
+    document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">読み込み中…</p>';
+    document.getElementById('pastTroubleWrap').style.display = 'block';
+
+    fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(zuban))
+      .then(function (r) { return r.json(); })
+      .then(renderZubanInfo)
+      .catch(function (err) {
+        document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">取得に失敗しました: ' + err.message + '</p>';
+      });
+  }
+
+  function renderZubanInfo(data) {
+    if (data.error) {
+      document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">エラー: ' + data.error + '</p>';
+      return;
+    }
+    document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
+
+    var hasTrouble = (data.pastTrouble || []).length > 0;
+    document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
+    document.getElementById('freshWrap').style.display = (!hasTrouble && (data.qualityLog || []).length === 0) ? 'block' : 'none';
+
+    if (hasTrouble) {
+      var list = document.getElementById('pastTroubleList');
+      list.innerHTML = '';
+      data.pastTrouble.forEach(function (item) {
+        var div = document.createElement('div');
+        div.className = 'alert-item';
+        var titleText = item.title || (item.row && item.row['内容']) || item.source;
+        var link = item.url ? '<br><a href="' + item.url + '" target="_blank" rel="noopener">詳細を見る（元シートを開く）</a>' : '';
+        div.innerHTML = '<span class="date">' + (item.source || '') + '</span>' + escapeHtml(String(titleText)) + link;
+        list.appendChild(div);
+      });
+    }
+
+    var confirmCheck = document.getElementById('confirmCheck');
+    confirmCheck.checked = false;
+
+    var qlSection = document.getElementById('qualityLogSection');
+    var qlList = document.getElementById('qualityLogList');
+    if ((data.qualityLog || []).length > 0) {
+      qlSection.style.display = 'block';
+      qlList.innerHTML = '';
+      data.qualityLog.forEach(function (row) {
+        var div = document.createElement('div');
+        div.className = 'card';
+        div.textContent = (row['内容'] || '');
+        qlList.appendChild(div);
+      });
+    } else {
+      qlSection.style.display = 'none';
+    }
+  }
+
+  function zubanLabel(data) {
+    return data.zuban + (data.hinmei ? '　' + data.hinmei : '');
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  renderRecentList();
+  initSignIn();
+</script>
+</body>
+</html>
