@@ -15,6 +15,9 @@ var SHEET_SHIPPING_SPEC = '出荷仕様';
 // 工場番号／製造番号／材料手配区分／得意先コード／品番(図番）／品名／担当者／…
 var IPRO_SOURCE_SPREADSHEET_ID = '1g-NnnSgGyS_5oIINuUfvNi7_o7iWPik6aL0HmoL5VO4';
 
+// 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
+var ORG_MASTER_SPREADSHEET_ID = '1fffjE_bwrzswvRO62U0OHwvqrs5b_UuSV5IbudUMxec';
+
 /** タブとヘッダー行を作る。既存タブがあれば何もしない。GASエディタで1回だけ手動実行。 */
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -77,6 +80,12 @@ function doGet(e) {
     if (action === 'resolveZuban') {
       return jsonResponse_(resolveZubanFromSeiban_(e.parameter.seiban));
     }
+    if (action === 'role') {
+      return jsonResponse_(getRole_(e.parameter.email));
+    }
+    if (action === 'inspectionFolder') {
+      return jsonResponse_(getInspectionFolderUrl_(e.parameter.zuban));
+    }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -95,6 +104,7 @@ function doPost(e) {
     if (action === 'postToolMemo') return jsonResponse_(postToolMemo_(payload));
     if (action === 'saveToolPositions') return jsonResponse_(saveToolPositions_(payload));
     if (action === 'saveShippingSpec') return jsonResponse_(saveShippingSpec_(payload));
+    if (action === 'uploadPhoto') return jsonResponse_(uploadPhoto_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -375,4 +385,104 @@ function deleteRowsByZuban_(sheet, zuban) {
   for (var i = rows.length - 1; i >= 1; i--) {
     if (rows[i][zubanCol] === zuban) sheet.deleteRow(i + 1);
   }
+}
+
+/**
+ * ログインユーザーのメールアドレスから、組織図マスタを照合して部署（役割）を判定する。
+ * 役割は5種類：seizou（一次・二次加工）／kensa（検査）／seisan（生産管理・出荷担当以外）／
+ * shukka（生産管理課・出荷担当）／other（仕上げ・洗浄など、上記以外）。
+ * 組織図マスタに見つからない場合はotherを返す（安全側：機能を絞る方向のデフォルト）。
+ */
+function getRole_(email) {
+  if (!email) return { error: 'email is required' };
+  var ss = SpreadsheetApp.openById(ORG_MASTER_SPREADSHEET_ID);
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    if (sheet.getLastRow() < 2) continue;
+    var values = sheet.getDataRange().getValues();
+    var header = values[0];
+    var mailCol = header.indexOf('Mail Address');
+    if (mailCol === -1) mailCol = header.indexOf('メールアドレス');
+    var sectionCol = header.indexOf('課名');
+    var processCol = header.indexOf('工程名');
+    var nameCol = header.indexOf('氏名');
+    if (mailCol === -1) continue;
+    for (var i = 1; i < values.length; i++) {
+      var rowMail = String(values[i][mailCol] || '').trim().toLowerCase();
+      if (rowMail && rowMail === String(email).trim().toLowerCase()) {
+        var section = sectionCol >= 0 ? values[i][sectionCol] : '';
+        var process = processCol >= 0 ? values[i][processCol] : '';
+        return {
+          found: true,
+          name: nameCol >= 0 ? values[i][nameCol] : '',
+          section: section,
+          process: process,
+          role: resolveRole_(section, process)
+        };
+      }
+    }
+  }
+  return { found: false, role: 'other' };
+}
+
+/** 課名・工程名の文字列から役割キーを判定する。想定外の組み合わせはother（安全側）にフォールバック。 */
+function resolveRole_(section, process) {
+  section = String(section || '');
+  process = String(process || '');
+  if (section.indexOf('製造課') !== -1 && (process.indexOf('一次加工') !== -1 || process.indexOf('二次加工') !== -1)) {
+    return 'seizou';
+  }
+  if (section.indexOf('生産管理課') !== -1 && process.indexOf('出荷') !== -1) {
+    return 'shukka';
+  }
+  if (section.indexOf('生産管理課') !== -1) {
+    return 'seisan';
+  }
+  if (section.indexOf('品質保証課') !== -1 && process.indexOf('検査') !== -1) {
+    return 'kensa';
+  }
+  return 'other';
+}
+
+/**
+ * 図番に対応する検査記録フォルダ（検査記録の親フォルダ／社名／図番／）を探し、URLを返す。
+ * フォルダ名の完全一致を優先し、無ければ部分一致で探す。見つからなければfound:falseを返す。
+ */
+function getInspectionFolderUrl_(zuban) {
+  if (!zuban) return { error: 'zuban is required' };
+  var folder = findZubanFolder_(zuban);
+  if (!folder) return { found: false, zuban: zuban };
+  return { found: true, zuban: zuban, url: folder.getUrl() };
+}
+
+/** タイトルが図番と完全一致するフォルダをDrive全体から探す（検査記録／社名／図番／の図番フォルダを想定）。 */
+function findZubanFolder_(zuban) {
+  var exact = DriveApp.searchFiles(
+    'title = "' + String(zuban).replace(/"/g, '') + '" and mimeType = "application/vnd.google-apps.folder"'
+  );
+  if (exact.hasNext()) return exact.next();
+  return null;
+}
+
+/**
+ * 写真アップロード（③ツール配置メモ・⑤品質情報記録の写真添付欄）。
+ * 図番フォルダ（検査記録／社名／図番／）配下の「写真」サブフォルダに保存する。
+ * 図番フォルダがまだ存在しない場合（検査記録が未作成の図番）はエラーを返す
+ * （社名フォルダの自動作成は、得意先コード→社名の対応表が未整備のため未実装。TODO）。
+ */
+function uploadPhoto_(payload) {
+  if (!payload.zuban || !payload.dataBase64) return { error: 'zuban and dataBase64 are required' };
+  var zubanFolder = findZubanFolder_(payload.zuban);
+  if (!zubanFolder) {
+    return { error: 'この図番の検査記録フォルダが見つからないため、写真を保存できません（図番: ' + payload.zuban + '）' };
+  }
+  var photoFolders = zubanFolder.getFoldersByName('写真');
+  var photoFolder = photoFolders.hasNext() ? photoFolders.next() : zubanFolder.createFolder('写真');
+
+  var mimeType = payload.mimeType || 'image/jpeg';
+  var bytes = Utilities.base64Decode(payload.dataBase64);
+  var blob = Utilities.newBlob(bytes, mimeType, payload.filename || (Utilities.getUuid() + '.jpg'));
+  var file = photoFolder.createFile(blob);
+  return { url: file.getUrl() };
 }
