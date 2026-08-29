@@ -172,6 +172,7 @@
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
+      <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
     </div>
   </header>
 
@@ -324,7 +325,10 @@
 
   function initSignIn() {
     if (!GOOGLE_CLIENT_ID) {
+      // OAuth未設定の間だけ、役割別出し分けの確認用に手動でログイン状態を作れるボタンを出す。
+      // GOOGLE_CLIENT_IDが設定され次第、この分岐自体が通らなくなり自動的に無効化される。
       document.getElementById('userLabel').textContent = '未ログイン（OAuth未設定）';
+      document.getElementById('testLoginBtn').classList.remove('hidden');
       return;
     }
     if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
@@ -347,6 +351,15 @@
     document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     fetchRole();
   }
+
+  // OAuth未設定の間の確認用。本物のGoogleサインインを経由せず、メールアドレスだけを入力してcurrentUserを作る。
+  document.getElementById('testLoginBtn').addEventListener('click', function () {
+    var email = prompt('テスト用ログイン：メールアドレスを入力してください', currentUser ? currentUser.email : 'n-moriizumi@nishikaru.co.jp');
+    if (!email) return;
+    currentUser = { email: email.trim(), name: 'テストログイン' };
+    document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    fetchRole();
+  });
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / other
