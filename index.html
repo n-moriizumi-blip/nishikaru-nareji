@@ -110,6 +110,11 @@
   .tip-card .tag { font-size: 0.68rem; background: var(--surface-2); color: var(--ink-soft); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
   .tip-card p { font-size: 0.83rem; margin: 0 0 6px; }
   .tip-card .meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: var(--ink-soft); }
+  .tip-card .meta-actions { display: flex; gap: 10px; }
+  .tip-card .meta-actions button {
+    font-family: inherit; font-size: 0.7rem; font-weight: 700; color: var(--ink-soft);
+    background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
+  }
   .tip-card img.tip-photo { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
 
   /* ==== ③ ツール配置 ==== */
@@ -272,6 +277,7 @@
               <span>他部署にも共有する（②の過去トラに表示され、全員が確認必須になります）</span>
             </label>
             <button type="button" class="btn btn-secondary" id="memoAddBtn">この内容を記録する</button>
+            <button type="button" class="btn btn-ghost hidden" id="memoEditCancelBtn">編集をキャンセル</button>
           </div>
         </div>
 
@@ -418,6 +424,7 @@
           <span>他部署にも共有する（②の過去トラに表示され、全員が確認必須になります）</span>
         </label>
         <button type="button" class="btn btn-primary" id="qiSaveBtn">記録する</button>
+        <button type="button" class="btn btn-ghost hidden" id="qiEditCancelBtn">編集をキャンセル</button>
       </div>
 
       <div class="status-note" id="qiStatus"></div>
@@ -672,6 +679,20 @@
     currentInspectionFolderUrl = null;
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
+    renderPastTroubleDisplay(data);
+
+    var confirmCheck = document.getElementById('confirmCheck');
+    confirmCheck.checked = false;
+
+    renderQualityLogSection(data);
+
+    renderShippingSpecDisplay(data.shippingSpec);
+    updateActionGate();
+  }
+
+  // 過去トラ・「あなたが初挑戦です」の表示更新。確認チェックの状態には触れない
+  // （③⑤からの保存後にこの部分だけ再描画するために分離）。
+  function renderPastTroubleDisplay(data) {
     var hasTrouble = (data.pastTrouble || []).length > 0;
     document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
     document.getElementById('freshWrap').style.display = (!hasTrouble && (data.qualityLog || []).length === 0) ? 'block' : 'none';
@@ -688,27 +709,21 @@
         list.appendChild(div);
       });
     }
+  }
 
-    var confirmCheck = document.getElementById('confirmCheck');
-    confirmCheck.checked = false;
-
+  // 自部署の品質情報（⑤で「共有する」を選ばなかった投稿）。②画面に一覧表示し、編集・削除もここから行う。
+  function renderQualityLogSection(data) {
     var qlSection = document.getElementById('qualityLogSection');
     var qlList = document.getElementById('qualityLogList');
+    qlList.innerHTML = '';
     if ((data.qualityLog || []).length > 0) {
       qlSection.style.display = 'block';
-      qlList.innerHTML = '';
       data.qualityLog.forEach(function (row) {
-        var div = document.createElement('div');
-        div.className = 'card';
-        div.textContent = (row['内容'] || '');
-        qlList.appendChild(div);
+        qlList.appendChild(buildTipCard(row, { editable: true, onEdit: startEditQualityLog, onDelete: deleteQualityLogEntry }));
       });
     } else {
       qlSection.style.display = 'none';
     }
-
-    renderShippingSpecDisplay(data.shippingSpec);
-    updateActionGate();
   }
 
   // 出荷仕様（検査項目・生産管理項目・出荷の梱包情報）は図番ごとに1件の固定仕様情報のため、
@@ -818,6 +833,7 @@
   }
 
   document.getElementById('toolsBackBtn').addEventListener('click', function () {
+    if (currentZubanData) renderPastTroubleDisplay(currentZubanData);
     setScreen('history');
   });
 
@@ -855,17 +871,26 @@
     return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600') : driveUrl;
   }
 
-  function buildTipCard(m) {
+  function buildTipCard(m, opts) {
+    opts = opts || {};
     var div = document.createElement('div');
     div.className = 'tip-card';
     var sharedTag = m['共有フラグ'] === true
       ? '<span class="tag" style="background:var(--accent-soft);color:var(--accent-ink);">共有済み</span>' : '';
+    var rankTag = m['外観ランク'] ? '<span class="tag">ランク' + escapeHtml(String(m['外観ランク'])) + '</span>' : '';
     var photoHtml = m['写真URL'] ? '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(m['写真URL'])) + '" alt="">' : '';
+    var actionsHtml = (opts.editable)
+      ? '<span class="meta-actions"><button type="button" data-act="edit">編集</button><button type="button" data-act="delete">削除</button></span>'
+      : '';
     div.innerHTML =
-      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + sharedTag + '</div>' +
+      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + rankTag + sharedTag + '</div>' +
       photoHtml +
       '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
-      '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span></div>';
+      '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span>' + actionsHtml + '</div>';
+    if (opts.editable) {
+      div.querySelector('[data-act="edit"]').addEventListener('click', function () { opts.onEdit(m); });
+      div.querySelector('[data-act="delete"]').addEventListener('click', function () { opts.onDelete(m); });
+    }
     return div;
   }
 
@@ -1041,7 +1066,52 @@
     wrap.innerHTML = '';
     var memos = (currentZubanData.toolMemo || []).slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
     if (memos.length === 0) { wrap.innerHTML = '<p class="status-note">まだ記録がありません</p>'; return; }
-    memos.forEach(function (m) { wrap.appendChild(buildTipCard(m)); });
+    memos.forEach(function (m) {
+      wrap.appendChild(buildTipCard(m, { editable: true, onEdit: startEditMemo, onDelete: deleteMemo }));
+    });
+  }
+
+  var editingMemoId = null;
+
+  function startEditMemo(m) {
+    editingMemoId = m['投稿ID'];
+    document.getElementById('toolMemoNew').value = m['内容'] || '';
+    document.getElementById('memoShareCheck').checked = m['共有フラグ'] === true;
+    pendingMemoPhotoUrl = m['写真URL'] || '';
+    if (pendingMemoPhotoUrl) {
+      document.getElementById('memoPhotoIcon').textContent = '✅';
+      document.getElementById('memoPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('memoPhotoBtn').classList.add('has-photo');
+    } else {
+      resetMemoPhotoBtn();
+      pendingMemoPhotoUrl = '';
+    }
+    document.getElementById('memoAddBtn').textContent = 'この内容で更新する';
+    document.getElementById('memoEditCancelBtn').classList.remove('hidden');
+  }
+
+  function cancelEditMemo() {
+    editingMemoId = null;
+    document.getElementById('toolMemoNew').value = '';
+    document.getElementById('memoShareCheck').checked = false;
+    resetMemoPhotoBtn();
+    document.getElementById('memoAddBtn').textContent = 'この内容を記録する';
+    document.getElementById('memoEditCancelBtn').classList.add('hidden');
+  }
+
+  document.getElementById('memoEditCancelBtn').addEventListener('click', cancelEditMemo);
+
+  function deleteMemo(m) {
+    if (!confirm('この記録を削除しますか？')) return;
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
+        if (editingMemoId === m['投稿ID']) cancelEditMemo();
+        return refreshZubanData();
+      })
+      .then(function () { renderMemoEditList(); })
+      .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   }
 
   function fileToBase64(file) {
@@ -1099,23 +1169,23 @@
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
     var content = document.getElementById('toolMemoNew').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
-    var payload = {
-      action: 'postToolMemo', zuban: currentZubanData.zuban,
-      userEmail: currentUser.email, userName: currentUser.name,
-      content: content, photoUrl: pendingMemoPhotoUrl,
-      shared: document.getElementById('memoShareCheck').checked
-    };
+    var isEdit = !!editingMemoId;
+    var payload = isEdit
+      ? { action: 'updateToolMemo', postId: editingMemoId, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked }
+      : { action: 'postToolMemo', zuban: currentZubanData.zuban, userEmail: currentUser.email, userName: currentUser.name, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { alert('記録に失敗しました: ' + res.error); return Promise.reject(); }
-        document.getElementById('toolMemoNew').value = '';
-        document.getElementById('memoShareCheck').checked = false;
-        resetMemoPhotoBtn();
+        if (res.error) { alert((isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error); return Promise.reject(); }
+        if (isEdit) cancelEditMemo(); else {
+          document.getElementById('toolMemoNew').value = '';
+          document.getElementById('memoShareCheck').checked = false;
+          resetMemoPhotoBtn();
+        }
         return refreshZubanData();
       })
       .then(function () { renderMemoEditList(); })
-      .catch(function (err) { if (err) alert('記録に失敗しました: ' + err.message); });
+      .catch(function (err) { if (err) alert('保存に失敗しました: ' + err.message); });
   });
 
   // ==== ⑤ 品質情報記録 ====
@@ -1193,14 +1263,63 @@
       document.getElementById('shipOtherInput').value = spec['その他必要事項'] || '';
     }
     if (showQiLog) {
-      setChipValue('rank', '');
-      document.getElementById('qiContentInput').value = '';
-      document.getElementById('qiShareCheck').checked = false;
-      resetQiPhotoBtn();
+      cancelEditQualityLog();
     }
   }
 
-  document.getElementById('qiBackBtn').addEventListener('click', function () { setScreen('history'); });
+  document.getElementById('qiBackBtn').addEventListener('click', function () {
+    if (currentZubanData) {
+      renderPastTroubleDisplay(currentZubanData);
+      renderQualityLogSection(currentZubanData);
+      renderShippingSpecDisplay(currentZubanData.shippingSpec);
+    }
+    setScreen('history');
+  });
+
+  var editingQiId = null;
+
+  function startEditQualityLog(row) {
+    goToQi();
+    editingQiId = row['投稿ID'];
+    document.getElementById('qiContentInput').value = row['内容'] || '';
+    setChipValue('rank', row['外観ランク'] || '');
+    document.getElementById('qiShareCheck').checked = row['共有フラグ'] === true;
+    pendingQiPhotoUrl = row['写真URL'] || '';
+    if (pendingQiPhotoUrl) {
+      document.getElementById('qiPhotoIcon').textContent = '✅';
+      document.getElementById('qiPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('qiPhotoBtn').classList.add('has-photo');
+    } else {
+      resetQiPhotoBtn();
+    }
+    document.getElementById('qiSaveBtn').textContent = 'この内容で更新する';
+    document.getElementById('qiEditCancelBtn').classList.remove('hidden');
+  }
+
+  function cancelEditQualityLog() {
+    editingQiId = null;
+    setChipValue('rank', '');
+    document.getElementById('qiContentInput').value = '';
+    document.getElementById('qiShareCheck').checked = false;
+    resetQiPhotoBtn();
+    document.getElementById('qiSaveBtn').textContent = '記録する';
+    document.getElementById('qiEditCancelBtn').classList.add('hidden');
+  }
+
+  document.getElementById('qiEditCancelBtn').addEventListener('click', cancelEditQualityLog);
+
+  function deleteQualityLogEntry(row) {
+    if (!confirm('この記録を削除しますか？')) return;
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteQualityLog', postId: row['投稿ID'] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
+        if (editingQiId === row['投稿ID']) cancelEditQualityLog();
+        return refreshZubanData();
+      })
+      .then(function () { renderQualityLogSection(currentZubanData); })
+      .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
+  }
 
   function saveShippingSpecFields(fields, statusPrefix) {
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
@@ -1248,26 +1367,32 @@
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
     var content = document.getElementById('qiContentInput').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
-    var payload = {
-      action: 'postQualityLog', zuban: currentZubanData.zuban,
-      department: currentSection || (currentRole === 'kensa' ? '検査' : 'その他'),
-      userEmail: currentUser.email, userName: currentUser.name,
-      rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
-      shared: document.getElementById('qiShareCheck').checked
-    };
-    document.getElementById('qiStatus').textContent = '記録しています…';
+    var isEdit = !!editingQiId;
+    var payload = isEdit
+      ? { action: 'updateQualityLog', postId: editingQiId, rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked }
+      : {
+          action: 'postQualityLog', zuban: currentZubanData.zuban,
+          department: currentSection || (currentRole === 'kensa' ? '検査' : 'その他'),
+          userEmail: currentUser.email, userName: currentUser.name,
+          rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
+          shared: document.getElementById('qiShareCheck').checked
+        };
+    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('qiStatus').textContent = '記録に失敗しました: ' + res.error; return Promise.reject(); }
-        document.getElementById('qiContentInput').value = '';
-        document.getElementById('qiShareCheck').checked = false;
-        setChipValue('rank', '');
-        resetQiPhotoBtn();
+        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        if (isEdit) cancelEditQualityLog();
+        else {
+          document.getElementById('qiContentInput').value = '';
+          document.getElementById('qiShareCheck').checked = false;
+          setChipValue('rank', '');
+          resetQiPhotoBtn();
+        }
         return refreshZubanData();
       })
-      .then(function () { document.getElementById('qiStatus').textContent = '記録しました'; })
-      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '記録に失敗しました: ' + err; });
+      .then(function () { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました'; })
+      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
   });
 
   renderRecentList();
