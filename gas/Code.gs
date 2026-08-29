@@ -120,12 +120,17 @@ function jsonResponse_(obj) {
 
 /**
  * 図番に紐づく情報一式を集めて返す。
- * TODO: 品名・得意先の取得は進捗状況照会のI-PRO同期データを参照する想定だが、
- *       実シートの列構成を未確認のため lookupZubanMaster_ はスタブのまま。
- *       実装前に対象スプレッドシートの列構成をユーザーと確認すること。
+ * I-PRO同期データの参照（lookupZubanMaster_）とDrive全体検索（findPastTrouble_）が重いため、
+ * 5分間キャッシュする（CacheService）。品質情報記録・ツール配置メモ等を投稿/保存した際は
+ * invalidateZubanCache_でその図番のキャッシュを即座に破棄し、「送信したら即座に反映」を保つ。
  */
 function getZubanInfo_(zuban) {
   if (!zuban) return { error: 'zuban is required' };
+
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'zubanInfo:' + zuban;
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
 
   var master = lookupZubanMaster_(zuban);
   var pastTrouble = findPastTrouble_(zuban);
@@ -134,7 +139,7 @@ function getZubanInfo_(zuban) {
   var toolPositions = readToolPositions_(zuban);
   var shippingSpec = readShippingSpec_(zuban);
 
-  return {
+  var result = {
     zuban: zuban,
     hinmei: master.hinmei,
     tokuisaki: master.tokuisaki,
@@ -144,6 +149,16 @@ function getZubanInfo_(zuban) {
     toolPositions: toolPositions,   // ツール配置ポジション（正面／背面／サイクルタイム）
     shippingSpec: shippingSpec      // 出荷仕様（検査・生産管理・出荷担当が入力）
   };
+
+  try { cache.put(cacheKey, JSON.stringify(result), 300); } catch (e) {} // 5分。サイズ超過等は無視して素通りさせる
+
+  return result;
+}
+
+/** 図番のzubanInfoキャッシュを破棄する。投稿・保存系のAPIが完了した直後に呼ぶこと。 */
+function invalidateZubanCache_(zuban) {
+  if (!zuban) return;
+  try { CacheService.getScriptCache().remove('zubanInfo:' + zuban); } catch (e) {}
 }
 
 /**
@@ -198,7 +213,12 @@ function findIproRowByColumn_(columnName, value) {
   return rows.length > 0 ? rows[0] : null;
 }
 
-/** findIproRowByColumn_ の複数件版。1製番に図番が複数ある場合の検出に使う。 */
+/**
+ * findIproRowByColumn_ の複数件版。1製番に図番が複数ある場合の検出に使う。
+ * パフォーマンス上の注意：I-PRO同期データは複数タブ・数千行規模のため、
+ * 目的の列を持たないタブの全データを読み込まない（ヘッダー行だけ先に確認し、
+ * 列が無ければ即スキップする）。これが無いと1回の呼び出しに30秒近くかかっていた（2026-08-29計測）。
+ */
 function findIproRowsByColumn_(columnName, value) {
   if (!value) return [];
   var ss = SpreadsheetApp.openById(IPRO_SOURCE_SPREADSHEET_ID);
@@ -206,11 +226,13 @@ function findIproRowsByColumn_(columnName, value) {
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
-    if (sheet.getLastRow() < 2) continue;
-    var values = sheet.getDataRange().getValues();
-    var header = values[0];
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) continue;
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var col = header.indexOf(columnName);
-    if (col === -1) continue;
+    if (col === -1) continue; // 目的の列が無いタブは全データを読み込まずスキップ
+    var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
     for (var i = 1; i < values.length; i++) {
       if (String(values[i][col]) === String(value)) {
         out.push(rowToObject_(header, values[i]));
@@ -326,6 +348,7 @@ function postQualityLog_(payload) {
     payload.rank || '', payload.content || '', payload.photoUrl || '',
     !!payload.shared
   ]);
+  invalidateZubanCache_(payload.zuban);
   return { id: id };
 }
 
@@ -339,6 +362,7 @@ function postToolMemo_(payload) {
     payload.content || '', payload.photoUrl || '',
     !!payload.shared
   ]);
+  invalidateZubanCache_(payload.zuban);
   return { id: id };
 }
 
@@ -355,6 +379,7 @@ function saveToolPositions_(payload) {
       payload.userEmail, now
     ]);
   });
+  invalidateZubanCache_(payload.zuban);
   return { ok: true };
 }
 
@@ -378,6 +403,7 @@ function saveShippingSpec_(payload) {
   } else {
     sheet.appendRow(newRow);
   }
+  invalidateZubanCache_(payload.zuban);
   return { ok: true };
 }
 
