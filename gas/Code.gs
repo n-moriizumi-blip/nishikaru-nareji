@@ -97,7 +97,8 @@ function doGet(e) {
 
 /**
  * POST API（JSON body、{action: '...', ...} の形）
- * action: postQualityLog / postToolMemo / saveToolPositions / saveShippingSpec
+ * action: postQualityLog / postToolMemo / updateQualityLog / deleteQualityLog / updateToolMemo / deleteToolMemo /
+ *         saveToolPositions / saveShippingSpec / uploadPhoto
  */
 function doPost(e) {
   try {
@@ -105,6 +106,10 @@ function doPost(e) {
     var action = payload.action;
     if (action === 'postQualityLog') return jsonResponse_(postQualityLog_(payload));
     if (action === 'postToolMemo') return jsonResponse_(postToolMemo_(payload));
+    if (action === 'updateQualityLog') return jsonResponse_(updateQualityLog_(payload));
+    if (action === 'deleteQualityLog') return jsonResponse_(deleteQualityLog_(payload));
+    if (action === 'updateToolMemo') return jsonResponse_(updateToolMemo_(payload));
+    if (action === 'deleteToolMemo') return jsonResponse_(deleteToolMemo_(payload));
     if (action === 'saveToolPositions') return jsonResponse_(saveToolPositions_(payload));
     if (action === 'saveShippingSpec') return jsonResponse_(saveShippingSpec_(payload));
     if (action === 'uploadPhoto') return jsonResponse_(uploadPhoto_(payload));
@@ -364,6 +369,68 @@ function postToolMemo_(payload) {
   ]);
   invalidateZubanCache_(payload.zuban);
   return { id: id };
+}
+
+/**
+ * 投稿ID(「投稿ID」列)で1件を更新／削除する共通処理。
+ * 承認フローなし・投稿者本人に限定しない「誰でも編集・削除できる」設計（2026-08-14合意）のため、
+ * 呼び出し元での権限チェックは行わない。
+ */
+function findRowIndexById_(sheet, idCol, id) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2 || idCol === -1) return -1;
+  var ids = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) return i + 2; // シート上の実際の行番号（1始まり）
+  }
+  return -1;
+}
+
+function updatePostById_(sheetName, postId, fields) {
+  if (!postId) return { error: 'postId is required' };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
+  if (rowNum === -1) return { error: '投稿が見つかりません' };
+  var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
+  Object.keys(fields).forEach(function (key) {
+    var col = header.indexOf(key);
+    if (col !== -1) sheet.getRange(rowNum, col + 1).setValue(fields[key]);
+  });
+  invalidateZubanCache_(zuban);
+  return { ok: true };
+}
+
+function deletePostById_(sheetName, postId) {
+  if (!postId) return { error: 'postId is required' };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
+  if (rowNum === -1) return { error: '投稿が見つかりません' };
+  var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
+  sheet.deleteRow(rowNum);
+  invalidateZubanCache_(zuban);
+  return { ok: true };
+}
+
+/** ツール配置メモの更新／削除（③編集画面）。 */
+function updateToolMemo_(payload) {
+  return updatePostById_(SHEET_TOOL_MEMO, payload.postId, {
+    '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
+  });
+}
+function deleteToolMemo_(payload) {
+  return deletePostById_(SHEET_TOOL_MEMO, payload.postId);
+}
+
+/** 品質情報記録の更新／削除（⑤画面）。 */
+function updateQualityLog_(payload) {
+  return updatePostById_(SHEET_QUALITY_LOG, payload.postId, {
+    '内容': payload.content || '', '外観ランク': payload.rank || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
+  });
+}
+function deleteQualityLog_(payload) {
+  return deletePostById_(SHEET_QUALITY_LOG, payload.postId);
 }
 
 /** ツール配置ポジションの保存（③編集画面）。図番の既存行を全削除してから書き直す（上書き）。 */
