@@ -19,6 +19,7 @@
     --font-mono: ui-monospace, "SF Mono", "Roboto Mono", Consolas, "Courier New", monospace;
   }
   * { box-sizing: border-box; }
+  .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
   #app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
   header.appbar {
@@ -78,6 +79,90 @@
   .candidate-item { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
   .candidate-item .candidate-zuban { font-family: var(--font-mono); font-weight: 700; font-size: 0.9rem; }
   .candidate-item .candidate-hinmei { font-size: 0.78rem; color: var(--ink-soft); }
+
+  /* ==== 共通部品（③ツール配置・⑤品質情報記録） ==== */
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field label { font-size: 0.76rem; font-weight: 700; color: var(--ink-soft); }
+  .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mini-field { display: flex; flex-direction: column; gap: 4px; }
+  .mini-field label { font-size: 0.68rem; font-weight: 700; color: var(--ink-soft); }
+  .mini-field input {
+    font-family: inherit; font-size: 0.8rem; padding: 8px 9px;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: inherit; font-size: 0.8rem; font-weight: 600; padding: 8px 13px;
+    border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  textarea {
+    font-family: inherit; font-size: 0.88rem; padding: 11px 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: none; min-height: 76px; line-height: 1.5;
+  }
+  .photo-btn {
+    display: flex; align-items: center; gap: 8px; border: 1px dashed var(--line); background: var(--surface);
+    border-radius: 10px; padding: 11px 12px; font-size: 0.83rem; color: var(--ink-soft); font-weight: 600; cursor: pointer;
+  }
+  .photo-btn.has-photo { color: var(--ok); border-color: var(--ok); border-style: solid; }
+  .tip-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
+  .tip-card .tags { display: flex; gap: 5px; margin-bottom: 6px; flex-wrap: wrap; }
+  .tip-card .tag { font-size: 0.68rem; background: var(--surface-2); color: var(--ink-soft); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .tip-card p { font-size: 0.83rem; margin: 0 0 6px; }
+  .tip-card .meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: var(--ink-soft); }
+  .tip-card img.tip-photo { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
+
+  /* ==== ③ ツール配置 ==== */
+  .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
+  .tools-header .zuban-inline { font-family: var(--font-mono); font-weight: 700; color: var(--accent-ink); font-size: 0.95rem; }
+  .tool-view-wrap, #toolEditWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+  .memo-zone { flex: 1 1 auto; min-height: 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+  .memo-edit-wrap { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; gap: 8px; }
+  .memo-edit-wrap .memo-zone { flex: 1 1 auto; min-height: 40px; }
+  .memo-new-form { flex: none; display: flex; flex-direction: column; gap: 7px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .memo-new-form textarea { min-height: 56px; font-size: 0.85rem; }
+  .tool-view-grid, .tool-edit-grid {
+    flex: 0 0 auto; max-width: 100%; overflow-y: visible; overflow-x: hidden;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-content: start;
+  }
+  .tool-view-col, .tool-edit-col { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+  .tool-view-col .col-head {
+    font-size: 0.78rem; font-weight: 700; color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 6px; text-align: center; font-family: var(--font-mono); line-height: 1.35;
+  }
+  .tool-view-row { background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; min-width: 0; overflow-wrap: anywhere; }
+  .tool-view-row .t { font-family: var(--font-mono); font-size: 0.84rem; font-weight: 700; color: var(--accent-ink); display: block; }
+  .tool-view-row .d { font-size: 0.82rem; color: var(--ink); display: block; margin-top: 3px; line-height: 1.45; overflow-wrap: anywhere; }
+  .tool-view-spec { flex: none; display: flex; gap: 10px; flex-wrap: wrap; }
+  .tool-view-spec .spec-item { flex: 1 1 160px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font-size: 0.8rem; color: var(--ink-soft); }
+  .tool-view-spec .spec-item b { color: var(--ink); font-weight: 700; }
+
+  .col-head-edit { display: flex; align-items: center; gap: 5px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 7px; min-width: 0; }
+  .col-head-edit .label { font-size: 0.72rem; font-weight: 700; color: var(--ink-soft); flex: 1; min-width: 0; line-height: 1.3; }
+  .col-head-edit input {
+    width: 44px; flex: none; min-width: 0; font-family: var(--font-mono); font-size: 0.76rem;
+    text-align: center; padding: 4px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .tool-edit-row { display: flex; align-items: center; gap: 4px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 6px; }
+  .tool-edit-row .order-btns { display: flex; flex-direction: column; gap: 2px; flex: none; }
+  .tool-edit-row .order-btns button {
+    width: 18px; height: 14px; font-size: 0.58rem; line-height: 1; padding: 0; border: none; background: var(--surface-2); color: var(--ink-soft); border-radius: 4px; cursor: pointer;
+  }
+  .tool-edit-row .tnum {
+    width: 40px; flex: none; min-width: 0; font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700;
+    text-align: center; padding: 6px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  }
+  .tool-edit-row .rdesc {
+    flex: 1 1 0%; width: 0; min-width: 0; font-family: inherit; font-size: 0.8rem; padding: 6px 7px;
+    border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .tool-edit-row .row-remove {
+    flex: none; width: 20px; height: 20px; border: none; background: transparent; color: var(--ink-soft); font-size: 0.8rem; cursor: pointer; border-radius: 5px;
+  }
+  .tool-edit-row .row-remove:hover { background: var(--alert-soft); color: var(--alert); }
+  .add-col-row-btn {
+    font-family: inherit; border: 1px dashed var(--line); background: var(--surface); border-radius: 8px; padding: 6px; font-size: 0.74rem; font-weight: 600; color: var(--ink-soft); cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -143,8 +228,74 @@
         <div id="qualityLogList"></div>
       </div>
 
-      <div class="coming-soon">③ツール配置・④紙の取込確認・⑤品質情報記録の各画面は近日追加予定です。</div>
+      <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-primary hidden" id="goToolsBtn">ツール配置を見る・編集する</button>
+        <button class="btn btn-secondary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
+      </div>
+      <div class="coming-soon">④紙の取込確認・⑤品質情報記録の各画面は近日追加予定です。</div>
       <button class="btn btn-secondary" id="backToScanBtn">別の図番を読み取る</button>
+    </section>
+
+    <!-- SCREEN 3: ツール配置 -->
+    <section class="screen" data-screen="tools">
+      <div class="tools-header">
+        <span class="zuban-inline" id="toolsZubanHeader"></span>
+        <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
+      </div>
+
+      <div class="tool-view-wrap" id="toolViewWrap">
+        <div class="memo-zone" id="memoZone"></div>
+        <div class="tool-view-grid">
+          <div class="tool-view-col" id="toolViewFront"><div class="col-head" id="toolViewFrontHead">正面チャック径</div></div>
+          <div class="tool-view-col" id="toolViewBack"><div class="col-head" id="toolViewBackHead">背面チャック径</div></div>
+          <div class="tool-view-col" id="toolViewCycle"><div class="col-head" id="toolViewCycleHead">サイクルタイム</div></div>
+        </div>
+        <div class="tool-view-spec" id="toolViewSpec"></div>
+      </div>
+
+      <div id="toolEditWrap" class="hidden">
+        <div class="memo-edit-wrap">
+          <div class="memo-zone" id="memoEditList"></div>
+          <div class="memo-new-form">
+            <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
+            <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真を選ぶ</span></button>
+            <input type="file" id="memoPhotoInput" accept="image/*" class="hidden">
+            <label class="confirm-row">
+              <input type="checkbox" id="memoShareCheck">
+              <span>他部署にも共有する（②の過去トラに表示され、全員が確認必須になります）</span>
+            </label>
+            <button type="button" class="btn btn-secondary" id="memoAddBtn">この内容を記録する</button>
+          </div>
+        </div>
+
+        <div class="tool-edit-grid" id="toolEditGrid">
+          <div class="tool-edit-col" id="editColFront">
+            <div class="col-head-edit"><span class="label">正面チャック径</span><input type="text" id="frontChuckInput"></div>
+            <div class="edit-rows" id="editRowsFront"></div>
+            <button type="button" class="add-col-row-btn" data-col="front">＋ 追加</button>
+          </div>
+          <div class="tool-edit-col" id="editColBack">
+            <div class="col-head-edit"><span class="label">背面チャック径</span><input type="text" id="backChuckInput"></div>
+            <div class="edit-rows" id="editRowsBack"></div>
+            <button type="button" class="add-col-row-btn" data-col="back">＋ 追加</button>
+          </div>
+          <div class="tool-edit-col" id="editColCycle">
+            <div class="col-head-edit"><span class="label">サイクルタイム</span><input type="text" id="cycleTimeInput"></div>
+            <div class="edit-rows" id="editRowsCycle"></div>
+            <button type="button" class="add-col-row-btn" data-col="cycle">＋ 追加</button>
+          </div>
+        </div>
+
+        <div class="mini-grid" style="margin-top:10px;">
+          <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
+          <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
+        </div>
+
+        <button type="button" class="btn btn-primary" id="toolSaveBtn" style="margin-top:10px;">この内容で保存する</button>
+      </div>
+
+      <div class="status-note" id="toolsStatus"></div>
+      <button class="btn btn-secondary" id="toolsBackBtn">②に戻る</button>
     </section>
   </main>
 </div>
@@ -194,6 +345,20 @@
     var payload = JSON.parse(atob(response.credential.split('.')[1]));
     currentUser = { email: payload.email, name: payload.name };
     document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    fetchRole();
+  }
+
+  // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
+  var currentRole = null; // seizou / kensa / seisan / shukka / other
+  function fetchRole() {
+    if (!currentUser) return;
+    fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(currentUser.email))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        currentRole = data.role || 'other';
+        updateActionGate();
+      })
+      .catch(function () { currentRole = 'other'; updateActionGate(); });
   }
 
   // ==== recent list（localStorageに保存） ====
@@ -353,11 +518,16 @@
       });
   }
 
+  var currentZubanData = null;
+  var currentInspectionFolderUrl = null;
+
   function renderZubanInfo(data) {
     if (data.error) {
       document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">エラー: ' + data.error + '</p>';
       return;
     }
+    currentZubanData = data;
+    currentInspectionFolderUrl = null;
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
     var hasTrouble = (data.pastTrouble || []).length > 0;
@@ -394,7 +564,51 @@
     } else {
       qlSection.style.display = 'none';
     }
+
+    updateActionGate();
   }
+
+  document.getElementById('confirmCheck').addEventListener('change', updateActionGate);
+
+  // ==== ②画面：役割・過去トラ確認状況に応じたボタンの出し分け（確認するまで押せない） ====
+  function updateActionGate() {
+    var goToolsBtn = document.getElementById('goToolsBtn');
+    var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
+    if (!currentZubanData) {
+      goToolsBtn.classList.add('hidden');
+      openInspectionFolderBtn.classList.add('hidden');
+      return;
+    }
+    var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
+    var confirmed = hasTrouble ? document.getElementById('confirmCheck').checked : true;
+
+    goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou');
+    goToolsBtn.disabled = !confirmed;
+
+    var isKensa = currentRole === 'kensa';
+    openInspectionFolderBtn.classList.toggle('hidden', !isKensa);
+    openInspectionFolderBtn.disabled = !confirmed;
+    if (isKensa && currentInspectionFolderUrl === null) {
+      fetch(GAS_API_URL + '?action=inspectionFolder&zuban=' + encodeURIComponent(currentZubanData.zuban))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { currentInspectionFolderUrl = d.found ? d.url : ''; });
+    }
+  }
+
+  document.getElementById('goToolsBtn').addEventListener('click', function () {
+    if (this.disabled) return;
+    goToTools();
+  });
+  document.getElementById('openInspectionFolderBtn').addEventListener('click', function () {
+    if (this.disabled) return;
+    if (currentInspectionFolderUrl) {
+      window.open(currentInspectionFolderUrl, '_blank');
+    } else if (currentInspectionFolderUrl === '') {
+      alert('この図番の検査記録フォルダが見つかりませんでした（未作成の可能性があります）');
+    } else {
+      alert('確認中です。少し待ってからもう一度お試しください');
+    }
+  });
 
   function zubanLabel(data) {
     return data.zuban + (data.hinmei ? '　' + data.hinmei : '');
@@ -405,6 +619,322 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+
+  // ==== ③ ツール配置 ====
+  var toolEditMode = false;
+  var toolPositionsState = { front: [], back: [], cycle: [] };
+  var pendingMemoPhotoUrl = '';
+  var COL_LABELS = { front: '正面チャック径', back: '背面チャック径', cycle: 'サイクルタイム' };
+
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function escapeAttr(s) { return escapeHtml(String(s || '')); }
+
+  function goToTools() {
+    if (!currentZubanData) return;
+    setScreen('tools');
+    document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
+    document.getElementById('toolsStatus').textContent = '';
+    toolEditMode = false;
+    document.getElementById('toolViewToggle').textContent = '編集する';
+    document.getElementById('toolViewWrap').classList.remove('hidden');
+    document.getElementById('toolEditWrap').classList.add('hidden');
+    renderToolView(currentZubanData);
+  }
+
+  document.getElementById('toolsBackBtn').addEventListener('click', function () {
+    setScreen('history');
+  });
+
+  function refreshZubanData() {
+    return fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(currentZubanData.zuban))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.error) currentZubanData = data;
+      });
+  }
+
+  function groupToolPositions(positions) {
+    var out = { front: [], back: [], cycle: [] };
+    (positions || []).forEach(function (p) {
+      if (out[p['列区分']]) out[p['列区分']].push(p);
+    });
+    ['front', 'back', 'cycle'].forEach(function (k) {
+      out[k].sort(function (a, b) { return (Number(a['順番']) || 0) - (Number(b['順番']) || 0); });
+    });
+    return out;
+  }
+
+  function firstPositionValue(positions, key) {
+    return (positions && positions.length > 0) ? (positions[0][key] || '') : '';
+  }
+
+  function formatDate(ts) {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return "'" + String(d.getFullYear()).slice(2) + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  function toPreviewUrl(driveUrl) {
+    var m = /\/d\/([^/]+)/.exec(driveUrl || '');
+    return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600') : driveUrl;
+  }
+
+  function buildTipCard(m) {
+    var div = document.createElement('div');
+    div.className = 'tip-card';
+    var sharedTag = m['共有フラグ'] === true
+      ? '<span class="tag" style="background:var(--accent-soft);color:var(--accent-ink);">共有済み</span>' : '';
+    var photoHtml = m['写真URL'] ? '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(m['写真URL'])) + '" alt="">' : '';
+    div.innerHTML =
+      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + sharedTag + '</div>' +
+      photoHtml +
+      '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
+      '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span></div>';
+    return div;
+  }
+
+  function renderToolView(data) {
+    var memoZone = document.getElementById('memoZone');
+    memoZone.innerHTML = '';
+    var memos = (data.toolMemo || []).slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
+    if (memos.length === 0) {
+      memoZone.innerHTML = '<p class="status-note">まだ記録がありません</p>';
+    } else {
+      memos.forEach(function (m) { memoZone.appendChild(buildTipCard(m)); });
+    }
+
+    var grouped = groupToolPositions(data.toolPositions);
+    ['front', 'back', 'cycle'].forEach(function (colKey) {
+      var headEl = document.getElementById('toolView' + capitalize(colKey) + 'Head');
+      var chuckVal = firstPositionValue(data.toolPositions, COL_LABELS[colKey]);
+      headEl.textContent = COL_LABELS[colKey] + (chuckVal ? '　' + chuckVal : '');
+
+      var colEl = document.getElementById('toolView' + capitalize(colKey));
+      Array.prototype.slice.call(colEl.querySelectorAll('.tool-view-row')).forEach(function (el) { el.remove(); });
+      grouped[colKey].forEach(function (p) {
+        var row = document.createElement('div');
+        row.className = 'tool-view-row';
+        row.innerHTML = '<span class="t">' + escapeHtml(p['Tナンバー'] || '') + '</span><span class="d">' + escapeHtml(p['工具説明'] || '') + '</span>';
+        colEl.appendChild(row);
+      });
+    });
+
+    var specWrap = document.getElementById('toolViewSpec');
+    specWrap.innerHTML = '';
+    var storage = firstPositionValue(data.toolPositions, '専用ツール保管');
+    var forwardPos = firstPositionValue(data.toolPositions, '前進端位置');
+    if (storage) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">専用ツール保管　<b>' + escapeHtml(storage) + '</b></div>');
+    if (forwardPos) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">前進端位置　<b>' + escapeHtml(forwardPos) + '</b></div>');
+  }
+
+  document.getElementById('toolViewToggle').addEventListener('click', function () {
+    if (!toolEditMode) enterToolEdit(); else exitToolEdit();
+  });
+
+  function enterToolEdit() {
+    toolEditMode = true;
+    document.getElementById('toolViewToggle').textContent = '閲覧に戻る';
+    document.getElementById('toolViewWrap').classList.add('hidden');
+    document.getElementById('toolEditWrap').classList.remove('hidden');
+
+    var grouped = groupToolPositions(currentZubanData.toolPositions);
+    ['front', 'back', 'cycle'].forEach(function (colKey) {
+      toolPositionsState[colKey] = grouped[colKey].map(function (p) {
+        return { tNumber: p['Tナンバー'] || '', description: p['工具説明'] || '' };
+      });
+    });
+    document.getElementById('frontChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '正面チャック径');
+    document.getElementById('backChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '背面チャック径');
+    document.getElementById('cycleTimeInput').value = firstPositionValue(currentZubanData.toolPositions, 'サイクルタイム');
+    document.getElementById('toolStorageInput').value = firstPositionValue(currentZubanData.toolPositions, '専用ツール保管');
+    document.getElementById('forwardPositionInput').value = firstPositionValue(currentZubanData.toolPositions, '前進端位置');
+
+    renderEditColumn('front');
+    renderEditColumn('back');
+    renderEditColumn('cycle');
+
+    renderMemoEditList();
+    document.getElementById('toolMemoNew').value = '';
+    document.getElementById('memoShareCheck').checked = false;
+    resetMemoPhotoBtn();
+  }
+
+  function exitToolEdit() {
+    toolEditMode = false;
+    document.getElementById('toolViewToggle').textContent = '編集する';
+    document.getElementById('toolViewWrap').classList.remove('hidden');
+    document.getElementById('toolEditWrap').classList.add('hidden');
+    renderToolView(currentZubanData);
+  }
+
+  function renderEditColumn(colKey) {
+    var container = document.getElementById('editRows' + capitalize(colKey));
+    container.innerHTML = '';
+    toolPositionsState[colKey].forEach(function (row, idx) {
+      var div = document.createElement('div');
+      div.className = 'tool-edit-row';
+      div.innerHTML =
+        '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
+        '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番">' +
+        '<input type="text" class="rdesc" value="' + escapeAttr(row.description) + '" placeholder="工具の説明">' +
+        '<button type="button" class="row-remove">✕</button>';
+      div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
+      div.querySelector('[data-act="down"]').addEventListener('click', function () { moveRow(colKey, idx, 1); });
+      div.querySelector('.row-remove').addEventListener('click', function () { removeRow(colKey, idx); });
+      container.appendChild(div);
+    });
+  }
+
+  function syncColumnFromDom(colKey) {
+    var container = document.getElementById('editRows' + capitalize(colKey));
+    var arr = [];
+    container.querySelectorAll('.tool-edit-row').forEach(function (row) {
+      arr.push({ tNumber: row.querySelector('.tnum').value, description: row.querySelector('.rdesc').value });
+    });
+    toolPositionsState[colKey] = arr;
+  }
+
+  document.querySelectorAll('.add-col-row-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var colKey = btn.getAttribute('data-col');
+      syncColumnFromDom(colKey);
+      toolPositionsState[colKey].push({ tNumber: '', description: '' });
+      renderEditColumn(colKey);
+    });
+  });
+
+  function removeRow(colKey, idx) {
+    syncColumnFromDom(colKey);
+    toolPositionsState[colKey].splice(idx, 1);
+    renderEditColumn(colKey);
+  }
+
+  function moveRow(colKey, idx, dir) {
+    syncColumnFromDom(colKey);
+    var arr = toolPositionsState[colKey];
+    var newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= arr.length) return;
+    var tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+    renderEditColumn(colKey);
+  }
+
+  document.getElementById('toolSaveBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
+    syncColumnFromDom('front');
+    syncColumnFromDom('back');
+    syncColumnFromDom('cycle');
+
+    var positions = [];
+    ['front', 'back', 'cycle'].forEach(function (colKey) {
+      toolPositionsState[colKey].forEach(function (row, idx) {
+        if (!row.tNumber && !row.description) return;
+        positions.push({ column: colKey, order: idx + 1, tNumber: row.tNumber, description: row.description });
+      });
+    });
+
+    var payload = {
+      action: 'saveToolPositions',
+      zuban: currentZubanData.zuban,
+      positions: positions,
+      frontChuck: document.getElementById('frontChuckInput').value,
+      backChuck: document.getElementById('backChuckInput').value,
+      cycleTime: document.getElementById('cycleTimeInput').value,
+      toolStorage: document.getElementById('toolStorageInput').value,
+      forwardPosition: document.getElementById('forwardPositionInput').value,
+      userEmail: currentUser.email
+    };
+
+    document.getElementById('toolsStatus').textContent = '保存しています…';
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { document.getElementById('toolsStatus').textContent = '保存に失敗しました: ' + res.error; return Promise.reject(res.error); }
+        return refreshZubanData();
+      })
+      .then(function () {
+        document.getElementById('toolsStatus').textContent = '保存しました';
+        exitToolEdit();
+      })
+      .catch(function (err) {
+        if (err) document.getElementById('toolsStatus').textContent = '保存に失敗しました: ' + err;
+      });
+  });
+
+  function renderMemoEditList() {
+    var wrap = document.getElementById('memoEditList');
+    wrap.innerHTML = '';
+    var memos = (currentZubanData.toolMemo || []).slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
+    if (memos.length === 0) { wrap.innerHTML = '<p class="status-note">まだ記録がありません</p>'; return; }
+    memos.forEach(function (m) { wrap.appendChild(buildTipCard(m)); });
+  }
+
+  function resetMemoPhotoBtn() {
+    pendingMemoPhotoUrl = '';
+    document.getElementById('memoPhotoIcon').textContent = '📷';
+    document.getElementById('memoPhotoLabel').textContent = '写真を選ぶ';
+    document.getElementById('memoPhotoBtn').classList.remove('has-photo');
+    document.getElementById('memoPhotoInput').value = '';
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result.split(',')[1]); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  document.getElementById('memoPhotoBtn').addEventListener('click', function () {
+    document.getElementById('memoPhotoInput').click();
+  });
+
+  document.getElementById('memoPhotoInput').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file || !currentZubanData) return;
+    var label = document.getElementById('memoPhotoLabel');
+    label.textContent = 'アップロード中…';
+    fileToBase64(file).then(function (base64) {
+      return fetch(GAS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'uploadPhoto', zuban: currentZubanData.zuban,
+          filename: file.name, mimeType: file.type, dataBase64: base64
+        })
+      });
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + res.error); return; }
+        pendingMemoPhotoUrl = res.url;
+        document.getElementById('memoPhotoIcon').textContent = '✅';
+        label.textContent = '写真を添付しました';
+        document.getElementById('memoPhotoBtn').classList.add('has-photo');
+      })
+      .catch(function (err) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + err.message); });
+  });
+
+  document.getElementById('memoAddBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    var content = document.getElementById('toolMemoNew').value.trim();
+    if (!content) { alert('内容を入力してください'); return; }
+    var payload = {
+      action: 'postToolMemo', zuban: currentZubanData.zuban,
+      userEmail: currentUser.email, userName: currentUser.name,
+      content: content, photoUrl: pendingMemoPhotoUrl,
+      shared: document.getElementById('memoShareCheck').checked
+    };
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('記録に失敗しました: ' + res.error); return Promise.reject(); }
+        document.getElementById('toolMemoNew').value = '';
+        document.getElementById('memoShareCheck').checked = false;
+        resetMemoPhotoBtn();
+        return refreshZubanData();
+      })
+      .then(function () { renderMemoEditList(); })
+      .catch(function (err) { if (err) alert('記録に失敗しました: ' + err.message); });
+  });
 
   renderRecentList();
   initSignIn();
