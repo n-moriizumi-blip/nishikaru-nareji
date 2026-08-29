@@ -247,42 +247,69 @@ function findIproRowsByColumn_(columnName, value) {
   return out;
 }
 
+// 「(KP)社内不良改善計画書」フォルダ。不具合改善計画書フォルダはすべてこの直下にある（2026-08-29、Drive調査で確認済み）。
+var FUGUAI_PLAN_PARENT_FOLDER_ID = '16hp2_RHkhiIfrMy8ma4OfwLpYM2q0T6x';
+
 /**
- * 過去トラ：{図番} 品質情報 スプレッドシート／{得意先} {図番} {品名} 不具合改善計画書 フォルダを
- * Driveのタイトル部分一致で検索し、内容を要約して返す。
+ * DriveApp.searchFiles() / Folder.searchFiles() / Folder.getFoldersByName() は、
+ * 共有ドライブ（Team Drive）上のファイルを検索対象に含められない既知の制限があり、
+ * 検査記録フォルダ等が共有ドライブ「ドライブ」配下にあるため常に0件になっていた
+ * （2026-08-29、DriveApp.getFolderByIdでの直接アクセスは成功するのに検索系だけ0件になる現象で発覚）。
+ * 代わりにAdvanced Drive Service（appsscript.jsonでenabledAdvancedServicesに追加済み）の
+ * Drive.Files.listをsupportsAllDrives/includeItemsFromAllDrives付きで使う。
+ */
+function driveFilesList_(query) {
+  var res = Drive.Files.list({
+    q: query,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
+    fields: 'files(id, name, mimeType, webViewLink)'
+  });
+  return res.files || [];
+}
+
+/**
+ * 過去トラ：{図番} 品質情報 スプレッドシート／{得意先} {図番} {品名} 不具合改善計画書 フォルダを検索し、内容を要約して返す。
  * 品質情報はそのまま、不具合改善計画書は一行要約＋元ファイルへのリンクのみ返す（本文は開かない）。
+ *
+ * パフォーマンス上の注意（2026-08-29）：Drive調査の結果、「{図番} 品質情報」は検査記録／社名／図番／の
+ * 図番フォルダ内に、「不具合改善計画書」フォルダは単一の親フォルダ（FUGUAI_PLAN_PARENT_FOLDER_ID）の
+ * 直下にあることが判明したため、それぞれ該当フォルダの中だけを検索するようスコープを絞っている。
  */
 function findPastTrouble_(zuban) {
   var items = [];
 
-  // 品質情報スプレッドシート（タイトルに図番を含むもの）
-  var qiFiles = DriveApp.searchFiles(
-    'title contains "' + zuban.replace(/"/g, '') + '" and title contains "品質情報" and mimeType = "application/vnd.google-apps.spreadsheet"'
-  );
-  while (qiFiles.hasNext()) {
-    var f = qiFiles.next();
-    items.push({
-      source: '品質情報',
-      title: f.getName(),
-      url: f.getUrl(),
-      // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
-      note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
+  // 品質情報スプレッドシート：図番フォルダ（検査記録／社名／図番／）の中だけを検索
+  var zubanFolder = findZubanFolder_(zuban);
+  if (zubanFolder) {
+    var qiFiles = driveFilesList_(
+      "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+    );
+    qiFiles.forEach(function (f) {
+      items.push({
+        source: '品質情報',
+        title: f.name,
+        url: f.webViewLink,
+        // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
+        note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
+      });
     });
   }
 
-  // 不具合改善計画書フォルダ（タイトルに図番を含むもの）
-  var fkFolders = DriveApp.searchFiles(
-    'title contains "' + zuban.replace(/"/g, '') + '" and title contains "不具合改善計画書" and mimeType = "application/vnd.google-apps.folder"'
+  // 不具合改善計画書フォルダ：専用の親フォルダの中だけを検索
+  var zubanEsc = String(zuban).replace(/'/g, "\\'");
+  var fkFiles = driveFilesList_(
+    "name contains '" + zubanEsc + "' and name contains '不具合改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + FUGUAI_PLAN_PARENT_FOLDER_ID + "' in parents"
   );
-  while (fkFolders.hasNext()) {
-    var folder = fkFolders.next();
+  fkFiles.forEach(function (f) {
     items.push({
       source: '不具合改善計画書',
-      title: folder.getName(),
-      url: folder.getUrl(),
+      title: f.name,
+      url: f.webViewLink,
       note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
     });
-  }
+  });
 
   // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ
   items = items.concat(findSharedEntries_(SHEET_QUALITY_LOG, zuban));
@@ -554,13 +581,19 @@ function getInspectionFolderUrl_(zuban) {
   return { found: true, zuban: zuban, url: folder.getUrl() };
 }
 
-/** タイトルが図番と完全一致するフォルダをDrive全体から探す（検査記録／社名／図番／の図番フォルダを想定）。 */
+/**
+ * タイトルが図番と完全一致するフォルダを探す（検査記録／社名／図番／の図番フォルダを想定）。
+ * 検索自体はAdvanced Drive Service（driveFilesList_）で行い、見つかったIDをDriveApp.getFolderByIdで
+ * 開き直してFolderオブジェクトとして返す（getFolderByIdは共有ドライブ上でも問題なく使えるため、
+ * 戻り値を使う側（createFolder/createFile等）はこれまでどおりDriveAppのAPIで操作できる）。
+ */
 function findZubanFolder_(zuban) {
-  var exact = DriveApp.searchFiles(
-    'title = "' + String(zuban).replace(/"/g, '') + '" and mimeType = "application/vnd.google-apps.folder"'
+  var name = String(zuban).replace(/'/g, "\\'");
+  var files = driveFilesList_(
+    "name = '" + name + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
-  if (exact.hasNext()) return exact.next();
-  return null;
+  if (files.length === 0) return null;
+  return DriveApp.getFolderById(files[0].id);
 }
 
 /**
@@ -575,8 +608,10 @@ function uploadPhoto_(payload) {
   if (!zubanFolder) {
     return { error: 'この図番の検査記録フォルダが見つからないため、写真を保存できません（図番: ' + payload.zuban + '）' };
   }
-  var photoFolders = zubanFolder.getFoldersByName('写真');
-  var photoFolder = photoFolders.hasNext() ? photoFolders.next() : zubanFolder.createFolder('写真');
+  var photoFiles = driveFilesList_(
+    "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+  );
+  var photoFolder = photoFiles.length > 0 ? DriveApp.getFolderById(photoFiles[0].id) : zubanFolder.createFolder('写真');
 
   var mimeType = payload.mimeType || 'image/jpeg';
   var bytes = Utilities.base64Decode(payload.dataBase64);
