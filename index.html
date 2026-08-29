@@ -437,9 +437,8 @@
   // ==== 設定 ====
   // GAS Web App（デプロイ済み）のURL
   var GAS_API_URL = 'https://script.google.com/macros/s/AKfycbzqgdS5B5jlg5M11acnfkQAhfk_8Rso7R70CQ37LGUqVMakL9MQva1Dn_sm8p3Upo-a/exec';
-  // TODO: Google OAuthクライアントID未設定（実装ページ.md「投稿者の識別」参照）。
-  // 共有GCPプロジェクト(800178947678)に追加後、ここに設定すること。未設定の間はサインインボタンが機能しない。
-  var GOOGLE_CLIENT_ID = '';
+  // 共有GCPプロジェクト「Nishikaru PWA Test」(800178947678)に2026-08-29追加。
+  var GOOGLE_CLIENT_ID = '800178947678-t49i9pr40ci70th6dgpuslfr4dldqjqh.apps.googleusercontent.com';
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(function () {});
