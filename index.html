@@ -15,6 +15,7 @@
     --accent: #b9741e; --accent-soft: #f3e2c4; --accent-ink: #6e4512;
     --alert: #b23b2e; --alert-soft: #f7e1dc; --alert-ink: #7a2a20;
     --ok: #3f7d53;
+    --viewfinder-bg: #17120c;
     --font-ui: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Roboto Mono", Consolas, "Courier New", monospace;
   }
@@ -36,9 +37,24 @@
   .scan-copy { text-align: center; }
   .scan-copy h2 { font-size: 1.1rem; margin: 0 0 6px; }
   .scan-copy p { color: var(--ink-soft); font-size: 0.9rem; margin: 0; }
-  #video { width: 100%; max-width: 340px; margin: 0 auto; border-radius: 16px; background: #000; display: block; }
   #camWrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
   #camWrap.hidden { display: none; }
+  .viewfinder {
+    position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 340px;
+    background: var(--viewfinder-bg); border-radius: 16px; overflow: hidden;
+  }
+  .viewfinder video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .vf-corner { position: absolute; width: 30px; height: 30px; border: 3px solid var(--accent); }
+  .vf-corner.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
+  .vf-corner.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
+  .vf-corner.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
+  .vf-corner.br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+  .vf-scanline {
+    position: absolute; left: 14px; right: 14px; height: 2px; background: var(--accent);
+    box-shadow: 0 0 8px var(--accent); animation: vf-scan 2.4s ease-in-out infinite;
+  }
+  @keyframes vf-scan { 0%, 100% { top: 14px; } 50% { top: calc(100% - 16px); } }
+  @media (prefers-reduced-motion: reduce) { .vf-scanline { animation: none; } }
 
   .btn { font-family: inherit; font-size: 0.95rem; font-weight: 700; border-radius: 12px; border: none; padding: 14px 16px; cursor: pointer; text-align: center; }
   .btn-primary { background: var(--accent); color: #fff; }
@@ -189,7 +205,12 @@
         <p>I-PROが自動生成しているQRコードをそのまま使います</p>
       </div>
       <div id="camWrap" class="hidden">
-        <video id="video" playsinline></video>
+        <div class="viewfinder">
+          <video id="video" playsinline></video>
+          <div class="vf-corner tl"></div><div class="vf-corner tr"></div>
+          <div class="vf-corner bl"></div><div class="vf-corner br"></div>
+          <div class="vf-scanline"></div>
+        </div>
         <canvas id="canvas" style="display:none;"></canvas>
       </div>
       <button class="btn btn-primary" id="startScanBtn">QRを読み取る</button>
