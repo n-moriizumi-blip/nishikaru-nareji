@@ -72,6 +72,12 @@
   .coming-soon { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
 
   .recent-chip { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.85rem; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; cursor: pointer; }
+
+  .candidate-select { display: flex; flex-direction: column; gap: 8px; }
+  .candidate-select.hidden { display: none; }
+  .candidate-item { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+  .candidate-item .candidate-zuban { font-family: var(--font-mono); font-weight: 700; font-size: 0.9rem; }
+  .candidate-item .candidate-hinmei { font-size: 0.78rem; color: var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -100,6 +106,10 @@
       <div class="manual-entry" id="manualEntry">
         <input type="text" id="manualZubanInput" placeholder="例：9081-6120-Z000">
         <button class="btn btn-secondary" id="manualGoBtn">この図番で進む</button>
+      </div>
+      <div class="candidate-select hidden" id="candidateSelect">
+        <div class="section-label">この製番に対応する図番が複数見つかりました。選んでください</div>
+        <div id="candidateList"></div>
       </div>
       <div id="recentList"></div>
       <div class="status-note" id="scanStatus"></div>
@@ -259,13 +269,55 @@
 
   function handleScannedUrl(qrText) {
     // I-PROのQRは 192.168.0.131/workresult/index/{工程}/{製番} のようなURL。
-    // 製番→図番の変換はGAS側で行う想定だが、変換API(lookupZubanMaster_)が未実装のため、
-    // 今は末尾のパス要素を「製番」とみなし、図番と同一のものとして暫定的に扱う。
-    // TODO: 製番→図番変換が実装され次第、ここを修正すること。
+    // 末尾のパス要素が製番。製番→図番の変換はGAS側(resolveZuban)で行う。
     var parts = qrText.split('/').filter(Boolean);
-    var seibanOrZuban = parts[parts.length - 1] || qrText;
-    document.getElementById('scanStatus').textContent = '';
-    goToZuban(seibanOrZuban);
+    var seiban = parts[parts.length - 1] || qrText;
+    hideCandidateSelect();
+    document.getElementById('scanStatus').textContent = '図番を確認しています…';
+
+    fetch(GAS_API_URL + '?action=resolveZuban&seiban=' + encodeURIComponent(seiban))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          document.getElementById('scanStatus').textContent = '変換に失敗しました: ' + data.error;
+          return;
+        }
+        if (!data.found) {
+          document.getElementById('scanStatus').textContent =
+            '製番「' + seiban + '」に対応する図番が見つかりませんでした。直接入力してください。';
+          return;
+        }
+        document.getElementById('scanStatus').textContent = '';
+        if (data.multiple) {
+          showCandidateSelect(data.candidates);
+          return;
+        }
+        goToZuban(data.zuban);
+      })
+      .catch(function (err) {
+        document.getElementById('scanStatus').textContent = '変換に失敗しました: ' + err.message;
+      });
+  }
+
+  function showCandidateSelect(candidates) {
+    var list = document.getElementById('candidateList');
+    list.innerHTML = '';
+    candidates.forEach(function (c) {
+      var div = document.createElement('div');
+      div.className = 'candidate-item';
+      div.innerHTML = '<span class="candidate-zuban">' + escapeHtml(c.zuban) + '</span>' +
+        (c.hinmei ? '<span class="candidate-hinmei">' + escapeHtml(c.hinmei) + '</span>' : '');
+      div.addEventListener('click', function () {
+        hideCandidateSelect();
+        goToZuban(c.zuban);
+      });
+      list.appendChild(div);
+    });
+    document.getElementById('candidateSelect').classList.remove('hidden');
+  }
+
+  function hideCandidateSelect() {
+    document.getElementById('candidateSelect').classList.add('hidden');
   }
 
   // ==== 手入力 ====
@@ -283,6 +335,7 @@
 
   // ==== 図番確定 → ②画面へ ====
   function goToZuban(zuban) {
+    hideCandidateSelect();
     pushRecentZuban(zuban);
     setScreen('history');
     document.getElementById('historyZubanHeader').textContent = zuban + '（品名取得は未実装）';

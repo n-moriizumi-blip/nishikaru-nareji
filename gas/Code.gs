@@ -11,6 +11,10 @@ var SHEET_TOOL_MEMO = 'ツール配置メモ';
 var SHEET_TOOL_POSITIONS = 'ツール配置ポジション';
 var SHEET_SHIPPING_SPEC = '出荷仕様';
 
+// I-PRO同期データ（進捗状況照会と共有）。2026-08-14に列構成を確認済み：
+// 工場番号／製造番号／材料手配区分／得意先コード／品番(図番）／品名／担当者／…
+var IPRO_SOURCE_SPREADSHEET_ID = '1g-NnnSgGyS_5oIINuUfvNi7_o7iWPik6aL0HmoL5VO4';
+
 /** タブとヘッダー行を作る。既存タブがあれば何もしない。GASエディタで1回だけ手動実行。 */
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -70,6 +74,9 @@ function doGet(e) {
     if (action === 'zubanInfo') {
       return jsonResponse_(getZubanInfo_(e.parameter.zuban));
     }
+    if (action === 'resolveZuban') {
+      return jsonResponse_(resolveZubanFromSeiban_(e.parameter.seiban));
+    }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -126,9 +133,78 @@ function getZubanInfo_(zuban) {
   };
 }
 
-/** TODO: 進捗状況照会のI-PRO同期データから品名・得意先を引く。列構成の確認待ち。 */
+/**
+ * QRから取り出した製番（例: I-PROのURL末尾の値）から、対応する図番を探す。
+ * I-PRO同期データの「製造番号」列と一致する行を探し、「品番(図番）」「品名」「得意先コード」を返す。
+ * 1製番に図番が複数見つかった場合はcandidatesに全件返す（呼び出し側で選択画面を出す想定）。
+ */
+function resolveZubanFromSeiban_(seiban) {
+  if (!seiban) return { error: 'seiban is required' };
+  var rows = findIproRowsByColumn_('製造番号', seiban);
+  if (rows.length === 0) return { found: false, seiban: seiban };
+  var candidates = rows.map(function (row) {
+    return {
+      zuban: row['品番(図番）'] || row['品番(図番)'],
+      hinmei: row['品名'],
+      tokuisakiCode: row['得意先コード']
+    };
+  }).filter(function (c) {
+    // 「製造番号」列を持つが図番の列名が違う／無い別タブ（進捗管理など）がヒットして
+    // 空の候補が混ざることがあるため、図番が取れているものだけ残す
+    return !!c.zuban;
+  });
+  // 図番が重複している場合（同じ図番が別行にある等）は1つにまとめる
+  var uniqueByZuban = {};
+  candidates.forEach(function (c) { uniqueByZuban[c.zuban] = c; });
+  var uniqueCandidates = Object.keys(uniqueByZuban).map(function (z) { return uniqueByZuban[z]; });
+  return {
+    found: true,
+    seiban: seiban,
+    // 1製番に図番が複数見つかった場合、呼び出し側（フロント）で選択画面を出す
+    multiple: uniqueCandidates.length > 1,
+    candidates: uniqueCandidates,
+    zuban: uniqueCandidates.length === 1 ? uniqueCandidates[0].zuban : null,
+    hinmei: uniqueCandidates.length === 1 ? uniqueCandidates[0].hinmei : null,
+    tokuisakiCode: uniqueCandidates.length === 1 ? uniqueCandidates[0].tokuisakiCode : null
+  };
+}
+
+/** 図番から品名・得意先コードを引く（②画面のヘッダー表示用）。 */
 function lookupZubanMaster_(zuban) {
-  return { hinmei: null, tokuisaki: null };
+  var row = findIproRowByColumn_('品番(図番）', zuban) || findIproRowByColumn_('品番(図番)', zuban);
+  if (!row) return { hinmei: null, tokuisaki: null };
+  return { hinmei: row['品名'] || null, tokuisaki: row['得意先コード'] || null };
+}
+
+/**
+ * I-PRO同期データ（進捗状況照会と共有のスプレッドシート）から、指定列が指定値と一致する最初の行を返す。
+ * どのタブに目的の列があるか固定できていないため、全タブを順に探す。
+ */
+function findIproRowByColumn_(columnName, value) {
+  var rows = findIproRowsByColumn_(columnName, value);
+  return rows.length > 0 ? rows[0] : null;
+}
+
+/** findIproRowByColumn_ の複数件版。1製番に図番が複数ある場合の検出に使う。 */
+function findIproRowsByColumn_(columnName, value) {
+  if (!value) return [];
+  var ss = SpreadsheetApp.openById(IPRO_SOURCE_SPREADSHEET_ID);
+  var sheets = ss.getSheets();
+  var out = [];
+  for (var s = 0; s < sheets.length; s++) {
+    var sheet = sheets[s];
+    if (sheet.getLastRow() < 2) continue;
+    var values = sheet.getDataRange().getValues();
+    var header = values[0];
+    var col = header.indexOf(columnName);
+    if (col === -1) continue;
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][col]) === String(value)) {
+        out.push(rowToObject_(header, values[i]));
+      }
+    }
+  }
+  return out;
 }
 
 /**
