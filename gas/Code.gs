@@ -83,6 +83,9 @@ function doGet(e) {
     if (action === 'resolveZuban') {
       return jsonResponse_(resolveZubanFromSeiban_(e.parameter.seiban));
     }
+    if (action === 'scanZuban') {
+      return jsonResponse_(scanZuban_(e.parameter.seiban));
+    }
     if (action === 'role') {
       return jsonResponse_(getRole_(e.parameter.email));
     }
@@ -129,7 +132,7 @@ function jsonResponse_(obj) {
  * 5分間キャッシュする（CacheService）。品質情報記録・ツール配置メモ等を投稿/保存した際は
  * invalidateZubanCache_でその図番のキャッシュを即座に破棄し、「送信したら即座に反映」を保つ。
  */
-function getZubanInfo_(zuban) {
+function getZubanInfo_(zuban, knownMaster) {
   if (!zuban) return { error: 'zuban is required' };
 
   var cache = CacheService.getScriptCache();
@@ -137,7 +140,8 @@ function getZubanInfo_(zuban) {
   var cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  var master = lookupZubanMaster_(zuban);
+  // knownMaster（{hinmei, tokuisaki}）が渡された場合はI-PROスキャンを省略する（scanZuban_から使用）。
+  var master = knownMaster || lookupZubanMaster_(zuban);
   var pastTrouble = findPastTrouble_(zuban);
   var qualityLog = readQualityLog_(zuban);
   var toolMemo = readToolMemo_(zuban);
@@ -200,6 +204,29 @@ function resolveZubanFromSeiban_(seiban) {
     hinmei: uniqueCandidates.length === 1 ? uniqueCandidates[0].hinmei : null,
     tokuisakiCode: uniqueCandidates.length === 1 ? uniqueCandidates[0].tokuisakiCode : null
   };
+}
+
+/**
+ * QRスキャン専用の統合エンドポイント。①製番→図番変換と②その図番の情報一式取得を1回のリクエストに
+ * まとめる。resolveZuban→zubanInfoを別々に呼ぶと、どちらも内部でI-PRO同期データ（大きいスプレッドシート）
+ * をスキャンするため、QRスキャン1回あたりの待ち時間がほぼ倍になっていた（2026-08-29発見）。
+ * resolveZubanFromSeiban_の時点で品名・得意先は既に分かっているため、getZubanInfo_に渡してスキャンを省略する。
+ */
+function scanZuban_(seiban) {
+  var resolved = resolveZubanFromSeiban_(seiban);
+  if (resolved.error || !resolved.found || resolved.multiple) {
+    // 見つからない／複数候補の場合はフロント側で処理する（追加のzubanInfo取得はしない）
+    return resolved;
+  }
+  // 製造番号で見つかる行は品名が入っていないシートのこともあるため（2026-08-29実データで確認）、
+  // hinmeiが取れている場合だけ渡して省略し、取れていない場合はgetZubanInfo_側の
+  // lookupZubanMaster_（図番での再検索）にフォールバックさせて正しさを優先する。
+  var knownMaster = resolved.hinmei ? { hinmei: resolved.hinmei, tokuisaki: resolved.tokuisakiCode } : null;
+  var info = getZubanInfo_(resolved.zuban, knownMaster);
+  info.seiban = seiban;
+  info.found = true;
+  info.multiple = false;
+  return info;
 }
 
 /** 図番から品名・得意先コードを引く（②画面のヘッダー表示用）。 */
