@@ -247,9 +247,6 @@ function findIproRowsByColumn_(columnName, value) {
   return out;
 }
 
-// 「(KP)社内不良改善計画書」フォルダ。不具合改善計画書フォルダはすべてこの直下にある（2026-08-29、Drive調査で確認済み）。
-var FUGUAI_PLAN_PARENT_FOLDER_ID = '16hp2_RHkhiIfrMy8ma4OfwLpYM2q0T6x';
-
 /**
  * DriveApp.searchFiles() / Folder.searchFiles() / Folder.getFoldersByName() は、
  * 共有ドライブ（Team Drive）上のファイルを検索対象に含められない既知の制限があり、
@@ -273,56 +270,53 @@ function driveFilesList_(query) {
  * 過去トラ：{図番} 品質情報 スプレッドシート／改善計画書フォルダを検索し、内容を要約して返す。
  * 品質情報はそのまま、改善計画書は一行要約＋元ファイルへのリンクのみ返す（本文は開かない）。
  *
- * 改善計画書フォルダの命名・置き場所は実データ上ゆれがあることが判明済み（2026-08-29）：
+ * 改善計画書フォルダの命名・置き場所は実データ上ゆれが大きいことが判明済み（2026-08-29）：
  * 「不具合改善計画書」「不適合改善計画書」の両方の表記があり、置き場所も
- * ①専用の集約フォルダ（FUGUAI_PLAN_PARENT_FOLDER_ID）直下の場合と、
- * ②図番フォルダ（検査記録／社名／図番／）自体の直下の場合、の両方が実在する。
- * そのため両方の表記に共通する「改善計画書」で緩く一致させ、両方の置き場所を検索する。
+ * 少なくとも3パターン確認済み（①「(KP)社内不良改善計画書」フォルダ直下、
+ * ②「(CC)客先クレーム改善計画書」フォルダ直下、③図番フォルダ自体の直下）。
+ * 集約フォルダが今後も増える／変わる可能性があるため、特定の親フォルダに絞り込む
+ * アプローチはやめ、両方の表記に共通する「改善計画書」で緩く一致させたうえで
+ * 共有ドライブ全体を対象に検索する（Advanced Drive Serviceで共有ドライブ対応済みのため可能）。
  */
 function findPastTrouble_(zuban) {
   var items = [];
+  var seenFileIds = {};
   var zubanEsc = String(zuban).replace(/'/g, "\\'");
 
-  // 品質情報スプレッドシート・改善計画書フォルダ：図番フォルダ（検査記録／社名／図番／）の中を検索
+  function pushUnique(item, fileId) {
+    if (seenFileIds[fileId]) return;
+    seenFileIds[fileId] = true;
+    items.push(item);
+  }
+
+  // 品質情報スプレッドシート：図番フォルダ（検査記録／社名／図番／）の中を検索
   var zubanFolder = findZubanFolder_(zuban);
   if (zubanFolder) {
     var qiFiles = driveFilesList_(
       "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
     );
     qiFiles.forEach(function (f) {
-      items.push({
+      pushUnique({
         source: '品質情報',
         title: f.name,
         url: f.webViewLink,
         // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
         note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
-      });
-    });
-
-    var fkInZubanFolder = driveFilesList_(
-      "name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
-    );
-    fkInZubanFolder.forEach(function (f) {
-      items.push({
-        source: '改善計画書',
-        title: f.name,
-        url: f.webViewLink,
-        note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
-      });
+      }, f.id);
     });
   }
 
-  // 改善計画書フォルダ：専用の集約フォルダの中も検索（上記と別の置き場所のケースをカバー）
-  var fkInParent = driveFilesList_(
-    "name contains '" + zubanEsc + "' and name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + FUGUAI_PLAN_PARENT_FOLDER_ID + "' in parents"
+  // 改善計画書フォルダ：置き場所が一定しないため、図番名を含むフォルダを共有ドライブ全体から検索
+  var fkFiles = driveFilesList_(
+    "name contains '" + zubanEsc + "' and name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
-  fkInParent.forEach(function (f) {
-    items.push({
+  fkFiles.forEach(function (f) {
+    pushUnique({
       source: '改善計画書',
       title: f.name,
       url: f.webViewLink,
       note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
-    });
+    }, f.id);
   });
 
   // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ
