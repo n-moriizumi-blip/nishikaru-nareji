@@ -592,13 +592,14 @@
 
   function handleScannedUrl(qrText) {
     // I-PROのQRは 192.168.0.131/workresult/index/{工程}/{製番} のようなURL。
-    // 末尾のパス要素が製番。製番→図番の変換はGAS側(resolveZuban)で行う。
+    // 末尾のパス要素が製番。製番→図番の変換とその図番の情報取得はGAS側(scanZuban)で1回にまとめて行う
+    // （resolveZuban→zubanInfoを別々に呼ぶと同じI-PROスキャンを2回行うことになり遅かったため）。
     var parts = qrText.split('/').filter(Boolean);
     var seiban = parts[parts.length - 1] || qrText;
     hideCandidateSelect();
     document.getElementById('scanStatus').textContent = '図番を確認しています…';
 
-    fetch(GAS_API_URL + '?action=resolveZuban&seiban=' + encodeURIComponent(seiban))
+    fetch(GAS_API_URL + '?action=scanZuban&seiban=' + encodeURIComponent(seiban))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data.error) {
@@ -615,7 +616,7 @@
           showCandidateSelect(data.candidates);
           return;
         }
-        goToZuban(data.zuban);
+        goToZuban(data.zuban, data);
       })
       .catch(function (err) {
         document.getElementById('scanStatus').textContent = '変換に失敗しました: ' + err.message;
@@ -657,10 +658,19 @@
   });
 
   // ==== 図番確定 → ②画面へ ====
-  function goToZuban(zuban) {
+  // prefetchedData：QRスキャン時にscanZuban(製番→図番変換＋図番情報を1リクエストにまとめたAPI)で
+  // 既に取得済みのデータがあれば渡す。渡された場合はzubanInfoの再取得をスキップする
+  // （手入力・最近の図番一覧からの遷移は図番情報をまだ持っていないので通常どおり取得する）。
+  function goToZuban(zuban, prefetchedData) {
     hideCandidateSelect();
     pushRecentZuban(zuban);
     setScreen('history');
+
+    if (prefetchedData) {
+      renderZubanInfo(prefetchedData);
+      return;
+    }
+
     document.getElementById('historyZubanHeader').textContent = zuban + '（品名取得は未実装）';
     document.getElementById('pastTroubleWrap').style.display = 'none';
     document.getElementById('freshWrap').style.display = 'none';
