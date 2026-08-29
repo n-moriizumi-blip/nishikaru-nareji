@@ -18,6 +18,9 @@ var IPRO_SOURCE_SPREADSHEET_ID = '1g-NnnSgGyS_5oIINuUfvNi7_o7iWPik6aL0HmoL5VO4';
 // 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
 var ORG_MASTER_SPREADSHEET_ID = '1fffjE_bwrzswvRO62U0OHwvqrs5b_UuSV5IbudUMxec';
 
+// 動作確認用：全部署の画面にアクセスできるアカウント（本来の役割による出し分けとは別に、確認のため常時allAccess:trueを返す）。
+var ALL_ACCESS_EMAILS = ['n-moriizumi@nishikaru.co.jp'];
+
 /** タブとヘッダー行を作る。既存タブがあれば何もしない。GASエディタで1回だけ手動実行。 */
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -395,6 +398,7 @@ function deleteRowsByZuban_(sheet, zuban) {
  */
 function getRole_(email) {
   if (!email) return { error: 'email is required' };
+  var allAccess = ALL_ACCESS_EMAILS.indexOf(String(email).trim().toLowerCase()) !== -1;
   var ss = SpreadsheetApp.openById(ORG_MASTER_SPREADSHEET_ID);
   var sheets = ss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
@@ -418,12 +422,13 @@ function getRole_(email) {
           name: nameCol >= 0 ? values[i][nameCol] : '',
           section: section,
           process: process,
-          role: resolveRole_(section, process)
+          role: resolveRole_(section, process),
+          allAccess: allAccess
         };
       }
     }
   }
-  return { found: false, role: 'other' };
+  return { found: false, role: 'other', allAccess: allAccess };
 }
 
 /** 課名・工程名の文字列から役割キーを判定する。想定外の組み合わせはother（安全側）にフォールバック。 */

@@ -350,12 +350,14 @@
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / other
+  var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
     if (!currentUser) return;
     fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(currentUser.email))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         currentRole = data.role || 'other';
+        currentAllAccess = !!data.allAccess;
         updateActionGate();
       })
       .catch(function () { currentRole = 'other'; updateActionGate(); });
@@ -582,13 +584,13 @@
     var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
     var confirmed = hasTrouble ? document.getElementById('confirmCheck').checked : true;
 
-    goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou');
+    goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
 
-    var isKensa = currentRole === 'kensa';
-    openInspectionFolderBtn.classList.toggle('hidden', !isKensa);
+    var showInspectionFolderBtn = currentRole === 'kensa' || currentAllAccess;
+    openInspectionFolderBtn.classList.toggle('hidden', !showInspectionFolderBtn);
     openInspectionFolderBtn.disabled = !confirmed;
-    if (isKensa && currentInspectionFolderUrl === null) {
+    if (showInspectionFolderBtn && currentInspectionFolderUrl === null) {
       fetch(GAS_API_URL + '?action=inspectionFolder&zuban=' + encodeURIComponent(currentZubanData.zuban))
         .then(function (r) { return r.json(); })
         .then(function (d) { currentInspectionFolderUrl = d.found ? d.url : ''; });
