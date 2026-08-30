@@ -831,9 +831,11 @@ function uploadPhoto_(payload) {
  * 例えば「1回目の検査時点では検査記録フォルダ・品質情報が無かったが、後から作成された」ケースも、
  * この再チェックで拾われて図番インデックスに反映される。
  *
- * GASの実行時間制限（6分）に収まるよう、時間切れなら2分後に自身を再実行して続きから再開する
+ * GASの実行時間制限（6分）に収まるよう、時間切れなら1分後に自身を再実行して続きから再開する
  * （seedZubanIndexと同じ仕組み）。図番インデックスの件数が多い場合、1日の実行だけでは
  * 全件を再チェックしきれないことがあるが、続きは翌日の実行が同じ再開ロジックで拾う。
+ * 完全に再チェックし終えたら、続けてchainSeedZubanIndex_経由でseedZubanIndexを実行する
+ * （新規図番の索引化。2つを同時に走らせず、この順で連結することで所要時間を短くしている）。
  * setupDailyIndexTriggerを1回実行してトリガー登録すること。
  */
 function refreshZubanIndex() {
@@ -849,6 +851,7 @@ function refreshZubanIndex() {
   var zubanSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   if (!zubanSheet || zubanSheet.getLastRow() < 2) {
     Logger.log('図番インデックスは空のため、更新対象なし');
+    chainSeedZubanIndex_();
     return;
   }
   var header = zubanSheet.getRange(1, 1, 1, zubanSheet.getLastColumn()).getValues()[0];
@@ -870,14 +873,27 @@ function refreshZubanIndex() {
 
   if (i < rows.length) {
     props.setProperty('refreshZubanIndexCursor', String(i));
-    var t = ScriptApp.newTrigger('refreshZubanIndex').timeBased().after(2 * 60 * 1000).create();
+    var t = ScriptApp.newTrigger('refreshZubanIndex').timeBased().after(60 * 1000).create();
     props.setProperty('refreshZubanIndexContinuationTriggerId', t.getUniqueId());
-    Logger.log('実行時間の上限のため中断（今回' + refreshed + '件更新、' + i + '/' + (rows.length - 1) + '。2分後に自動で続きを実行します）');
+    Logger.log('実行時間の上限のため中断（今回' + refreshed + '件更新、' + i + '/' + (rows.length - 1) + '。1分後に自動で続きを実行します）');
     return;
   }
 
   props.deleteProperty('refreshZubanIndexCursor');
   Logger.log('図番インデックス更新完了: ' + refreshed + '件（全' + (rows.length - 1) + '件）');
+
+  // 続けてseedZubanIndex（新規図番の索引化）を実行する。固定時刻の別トリガーにせず、
+  // refreshZubanIndexの完了直後につなげることで、2つが同時に走ってDrive/I-PROへの
+  // 負荷が競合するのを避け、全体の所要時間を短くする（ユーザー指摘、2026-08-30）。
+  chainSeedZubanIndex_();
+}
+
+/** refreshZubanIndexの完了直後にseedZubanIndexを実行する一時トリガーを予約する。 */
+function chainSeedZubanIndex_() {
+  var props = PropertiesService.getScriptProperties();
+  deleteTriggerById_(props.getProperty('seedZubanIndexContinuationTriggerId'));
+  var t = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(30 * 1000).create();
+  props.setProperty('seedZubanIndexContinuationTriggerId', t.getUniqueId());
 }
 
 /** 指定した図番1件分を、インデックスを使わずライブスキャンして図番インデックスを上書きする。 */
@@ -897,24 +913,19 @@ function refreshOneZuban_(zuban) {
 
 /** 図番インデックスの毎日自動更新トリガーを登録する。GASエディタで1回だけ手動実行すること。 */
 function setupDailyIndexTrigger() {
+  // refreshZubanIndexだけを固定時刻（深夜0時台）で毎日実行する。完了したらrefreshZubanIndex自身が
+  // 続けてseedZubanIndexを実行する（chainSeedZubanIndex_）ため、seedZubanIndex用の固定時刻トリガーは
+  // 別途登録しない（2つを同時に走らせて所要時間が伸びるのを防ぐため、2026-08-30変更）。
+  // 開始を深夜0時に早めたのも、勤務開始時間までに確実に終わらせるため（ユーザー指摘、2026-08-30）。
   deleteTriggersByHandler_('refreshZubanIndex');
+  deleteTriggersByHandler_('seedZubanIndex');
   ScriptApp.newTrigger('refreshZubanIndex')
     .timeBased()
     .everyDays(1)
-    .atHour(3)
+    .atHour(0)
     .create();
 
-  // seedZubanIndexも毎日実行する。「進捗状況照会」に新しく増えた図番（新規受注等）を、
-  // 誰かが初めてスキャンするより前に索引化しておくため（ユーザー提案、2026-08-30）。
-  // refreshZubanIndexと時間帯をずらし、同時にDrive/I-PROへ負荷をかけないようにする。
-  deleteTriggersByHandler_('seedZubanIndex');
-  ScriptApp.newTrigger('seedZubanIndex')
-    .timeBased()
-    .everyDays(1)
-    .atHour(4)
-    .create();
-
-  Logger.log('毎日3時台にrefreshZubanIndex、4時台にseedZubanIndexを実行するトリガーを登録しました');
+  Logger.log('毎日0時台にrefreshZubanIndexを実行するトリガーを登録しました（完了後、自動でseedZubanIndexが続けて実行されます）');
 }
 
 /**
@@ -924,9 +935,10 @@ function setupDailyIndexTrigger() {
  * これにより、初めてスキャンされる図番でも即座に結果を返せるようになる。
  *
  * GASの実行時間制限（6分）があるため、件数が多いと1回では終わらないことがある。
- * その場合はPropertiesServiceに進捗（どこまで処理したか）を保存し、2分後に自分自身を
- * 再実行するトリガーを自動登録するので、GASエディタで1回実行すれば、あとは放置で完了する。
- * 完了すると実行ログに「事前作成が完了しました」と出る（実行トリガーの実行数からも進捗を確認できる）。
+ * その場合は1分後に自分自身を再実行するトリガーを自動登録するので、GASエディタで1回実行すれば、
+ * あとは放置で完了する。完了すると実行ログに「事前作成が完了しました」と出る。
+ * 通常はrefreshZubanIndexの完了直後にchainSeedZubanIndex_経由で自動的に呼ばれる
+ * （setupDailyIndexTriggerで登録される固定時刻トリガーはrefreshZubanIndexのみ）。
  */
 function seedZubanIndex() {
   var startTime = Date.now();
@@ -954,9 +966,9 @@ function seedZubanIndex() {
   }
 
   if (remaining > 0) {
-    var t = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(2 * 60 * 1000).create();
+    var t = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(60 * 1000).create();
     props.setProperty('seedZubanIndexContinuationTriggerId', t.getUniqueId());
-    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、残り約' + remaining + '件。2分後に自動で続きを実行します）');
+    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、残り約' + remaining + '件。1分後に自動で続きを実行します）');
     return;
   }
 
