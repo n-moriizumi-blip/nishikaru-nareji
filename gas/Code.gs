@@ -1081,9 +1081,14 @@ function setupDailyIndexTrigger() {
  * （setupDailyIndexTriggerで登録される固定時刻トリガーはrefreshZubanIndexのみ）。
  */
 function seedZubanIndex() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('seedZubanIndexPaused') === 'true') {
+    Logger.log('seedZubanIndexPaused中のため何もせず終了します（resumeSeedZubanIndex()で再開）');
+    return;
+  }
+
   var startTime = Date.now();
   var maxRunMs = 5 * 60 * 1000;
-  var props = PropertiesService.getScriptProperties();
 
   // 前回、時間切れで自分自身を再実行するために予約した一時トリガー（今動いているのでもう不要）だけを消す。
   // 毎日4時台に実行される本来のトリガーはハンドラー名が同じでも別トリガーなので、これでは消えない。
@@ -1113,6 +1118,88 @@ function seedZubanIndex() {
   }
 
   Logger.log('図番インデックスの事前作成が完了しました（今回新規' + processed + '件、既存スキップ' + skipped + '件、全' + allZubans.length + '件）');
+}
+
+/**
+ * seedZubanIndexを一時停止する（2026-08-30、重複行の急増に対する応急処置）。
+ * 予約済みの継続トリガーを削除し、以後seedZubanIndexが呼ばれても即座に終了するフラグを立てる。
+ * GASエディタで手動実行。再開はresumeSeedZubanIndex()。
+ */
+function pauseSeedZubanIndex() {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('seedZubanIndexPaused', 'true');
+  deleteTriggerById_(props.getProperty('seedZubanIndexContinuationTriggerId'));
+  props.deleteProperty('seedZubanIndexContinuationTriggerId');
+  deleteTriggersByHandler_('seedZubanIndex'); // seedZubanIndex専用の固定時刻トリガーは存在しないため、これで全て消して問題ない
+  Logger.log('seedZubanIndexを一時停止しました。再開はresumeSeedZubanIndex()を実行してください。');
+}
+
+/** pauseSeedZubanIndex()で立てた一時停止フラグを解除する。GASエディタで手動実行。 */
+function resumeSeedZubanIndex() {
+  PropertiesService.getScriptProperties().deleteProperty('seedZubanIndexPaused');
+  Logger.log('一時停止を解除しました。次はrefreshZubanIndexの完了時か、seedZubanIndexを手動実行した時に動きます。');
+}
+
+/**
+ * 【調査用・一時関数】図番インデックスに大量の重複行が発生している原因調査（2026-08-30）。
+ * 見た目は同じ図番でも、末尾の空白等の表記ゆれがあると完全一致の重複チェックをすり抜けて
+ * 別行として追加されてしまう可能性がある。図番インデックス内の重複候補（trim後は同じだが
+ * 生の値が違うもの）と、進捗状況照会側で同じ問題が起きていないかをJSON.stringifyで
+ * 可視化して報告する。データは一切変更しない。確認が終わったら削除する。
+ */
+function diagnoseZubanIndexDuplicates() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('図番');
+
+  var byTrimmed = {};
+  for (var i = 1; i < values.length; i++) {
+    var raw = values[i][col];
+    if (!raw) continue;
+    var trimmed = String(raw).trim();
+    if (!byTrimmed[trimmed]) byTrimmed[trimmed] = [];
+    byTrimmed[trimmed].push(raw);
+  }
+
+  Logger.log('=== 図番インデックス: trim後は同じだが生の値が複数種類あるもの ===');
+  var suspectCount = 0;
+  Object.keys(byTrimmed).forEach(function (trimmed) {
+    var raws = byTrimmed[trimmed];
+    var uniqueRaws = {};
+    raws.forEach(function (r) { uniqueRaws[JSON.stringify(r)] = (uniqueRaws[JSON.stringify(r)] || 0) + 1; });
+    if (Object.keys(uniqueRaws).length > 1) {
+      suspectCount++;
+      Logger.log(trimmed + '（' + raws.length + '行）: ' + JSON.stringify(uniqueRaws));
+    }
+  });
+  Logger.log('表記ゆれ疑いのある図番: ' + suspectCount + '種類');
+
+  Logger.log('=== 図番インデックス: trim後は同じ値で、単純に行数が多いもの（表記ゆれではなく単純重複の可能性） ===');
+  Object.keys(byTrimmed).forEach(function (trimmed) {
+    if (byTrimmed[trimmed].length >= 5) {
+      Logger.log(trimmed + ': ' + byTrimmed[trimmed].length + '行、生の値の例=' + JSON.stringify(byTrimmed[trimmed][0]));
+    }
+  });
+
+  Logger.log('=== 進捗状況照会側の「3624100」表記ゆれ確認 ===');
+  var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  ss.getSheets().forEach(function (sheet2) {
+    var lastRow = sheet2.getLastRow();
+    var lastCol = sheet2.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+    var header2 = sheet2.getRange(1, 1, 1, lastCol).getValues()[0];
+    var col2 = header2.indexOf('品番(図番)');
+    if (col2 === -1) col2 = header2.indexOf('品番(図番）');
+    if (col2 === -1) return;
+    var vals2 = sheet2.getRange(2, col2 + 1, lastRow - 1, 1).getValues();
+    vals2.forEach(function (row2, idx2) {
+      var v = row2[0];
+      if (v && String(v).trim() === '3624100') {
+        Logger.log('  タブ「' + sheet2.getName() + '」行' + (idx2 + 2) + ': raw=' + JSON.stringify(v) + ' typeof=' + (typeof v));
+      }
+    });
+  });
 }
 
 /** 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。 */
