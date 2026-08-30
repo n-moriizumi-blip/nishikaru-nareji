@@ -1171,38 +1171,358 @@ function listAllKnownZubans_() {
 }
 
 /**
- * 【調査用・一時関数】既存「{図番} 品質情報」スプレッドシートの写真移行を検討するため、
- * 埋め込み画像の実体を取得する方法を確認する。
- * 第1回調査（getImages()＋CellImage判定）の結果：3ファイルとも「テンプレート」タブに
- * getImages()で3〜4件ヒットしたが、OverGridImageにgetBlob()が無くバイト取得不可と判明。
- * セル内画像（CellImage）は0件だった。
- * 今回はDriveApp.getAs()でxlsx変換し、Utilities.unzip()でxl/media/配下の画像ファイルを
- * 直接取り出せるか確認する。GASエディタで手動実行し、ログのmedia件数・サイズを報告すること。
- * 確認が終わったら削除する。
+ * 既存「{図番} 品質情報」スプレッドシートの品質情報記録ログへの一括移行（2026-08-30）。
+ *
+ * 対象ファイルの構造（実データ十数件で確認済み）：
+ *   1シート目に「得意先／図番／品名」のラベル付きヘッダーと、その下に自由記述の本文が続く。
+ *   本文は1件のみのシートもあれば、複数の日付の記録が同じ領域に蓄積されているシートもあり、
+ *   日付書式も統一されていない（"2026/08/27" "2026.8.21" "'25.04.04" など）。
+ *   → 日付らしき文字列で始まるセルが見つかった場合のみ、そこを区切りとして複数エントリーに
+ *     分割する（QUALITY_INFO_DATE_RE_）。見つからなければ全体を1件として扱う（ユーザー合意、2026-08-30）。
+ *   写真はセル上配置の画像（OverGridImage）としてtypically 1〜4枚埋め込まれているが、
+ *   Apps ScriptのOverGridImageにはgetBlob()が無くバイトを直接取得できないため、
+ *   スプレッドシートをxlsx形式でエクスポートし、Utilities.unzip()でxl/media/配下から
+ *   画像ファイルそのものを取り出す方式を採る（実データで動作確認済み）。
+ *   日付エントリーごとの写真の対応付けはできないため、抽出した写真は全て最後（最新）の
+ *   エントリーにのみ紐づける（ユーザー合意）。
+ *
+ * 実行順序：
+ *   1. addMigrationSourceColumn() を1回手動実行（「移行元ファイルID」列を追加）
+ *   2. previewMigrateQualityInfo() を実行 → 「移行プレビュー」タブで図番・ランク・本文・写真枚数を確認
+ *   3. 問題なければ runMigrateQualityInfo() を実行 → 品質情報記録ログへ実際に登録（共有フラグtrue）
+ * いずれもGASの6分制限に収まらない場合は1分後に自動で自分自身を再実行し、続きから再開する
+ * （refreshZubanIndex/seedZubanIndexと同じ自己再実行の仕組み）。runMigrateQualityInfoは
+ * 「移行元ファイルID」列で処理済みファイルを判定するため、再実行しても重複登録されない。
  */
-function testImageExtractionViaXlsx() {
-  var ids = [
-    '1zVY8MZAeNQ5olyFmTrxYhT-coWOIaPgEitiWCLxDz18', // C8550-121B 品質情報
-    '17vvyIkHC0I2PQZkfC5t_PzWHOUcnpaJw2dKaIFLQdCU', // 007454-001-02 品質情報
-    '1MBF_vOAAWp6EO3fymzPTsAbH5jVPSckPYBnterrVdoA'  // AE48690A01 品質情報
-  ];
-  ids.forEach(function (id) {
-    Logger.log('=== ' + id + ' ===');
-    try {
-      var url = 'https://docs.google.com/spreadsheets/d/' + id + '/export?format=xlsx';
-      var resp = UrlFetchApp.fetch(url, {
-        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
-      });
-      var xlsxBlob = resp.getBlob().setContentType('application/zip');
-      Logger.log('xlsx変換サイズ=' + xlsxBlob.getBytes().length);
-      var entries = Utilities.unzip(xlsxBlob);
-      var mediaEntries = entries.filter(function (e) { return e.getName().indexOf('xl/media/') === 0; });
-      Logger.log('xl/media/ 件数=' + mediaEntries.length);
-      mediaEntries.forEach(function (e) {
-        Logger.log('  ' + e.getName() + ' type=' + e.getContentType() + ' bytes=' + e.getBytes().length);
-      });
-    } catch (e) {
-      Logger.log('ERROR: ' + e);
+var QUALITY_INFO_LABEL_TOKENS_ = ['品質情報', '外観ランク', '得意先', '図番', '品名'];
+var QUALITY_INFO_RANK_VALUES_ = ['A', 'B', 'C', 'D', 'E'];
+var QUALITY_INFO_DATE_RE_ = /^'?(\d{2,4})[.\/](\d{1,2})[.\/](\d{1,2})/;
+
+/** SHEET_QUALITY_LOGに「移行元ファイルID」列を追加する（既存シート用、初回のみ手動実行）。 */
+function addMigrationSourceColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('移行元ファイルID') !== -1) {
+    Logger.log('既に追加済みです');
+    return;
+  }
+  sheet.getRange(1, lastCol + 1).setValue('移行元ファイルID');
+  Logger.log('「移行元ファイルID」列を追加しました');
+}
+
+function ensureMigrationPreviewSheet_() {
+  return ensureSheet_(SpreadsheetApp.getActiveSpreadsheet(), '移行プレビュー', [
+    '元ファイル名', '元URL', '図番', '外観ランク', '分割件数', '内容プレビュー', '写真枚数', '状態'
+  ]);
+}
+
+/** Drive全体（共有ドライブ含む）から「{図番} 品質情報」候補ファイルを全件（ページング対応）取得する。 */
+function listQualityInfoCandidateFiles_() {
+  var out = [];
+  var pageToken = null;
+  do {
+    var res = Drive.Files.list({
+      q: "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'allDrives',
+      pageSize: 1000,
+      pageToken: pageToken,
+      fields: 'nextPageToken, files(id, name, webViewLink, modifiedTime)'
+    });
+    (res.files || []).forEach(function (f) { out.push(f); });
+    pageToken = res.nextPageToken || null;
+  } while (pageToken);
+  return out;
+}
+
+function extractZubanFromQualityInfoTitle_(title) {
+  var t = String(title);
+  if (t.trim() === '品質情報テンプレート') return null; // 未使用の雛形そのもの
+  t = t.replace(/\s*品質情報テンプレート\s*$/, '');
+  t = t.replace(/\s*品質情報\s*$/, '');
+  t = t.trim();
+  return t || null;
+}
+
+function parseQualityInfoDate_(text) {
+  var m = QUALITY_INFO_DATE_RE_.exec(String(text).trim());
+  if (!m) return null;
+  var y = Number(m[1]);
+  if (y < 100) y += 2000;
+  var date = new Date(y, Number(m[2]) - 1, Number(m[3]));
+  return isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * 「{図番} 品質情報」スプレッドシート1件を解析する。
+ * ラベル・見出し・図番/品名/外観ランクの値そのものを除いた残りのセル文字列を本文候補として集め、
+ * 日付らしきセルを区切りにエントリーへ分割する（見つからなければ1件にまとめる）。
+ * 戻り値: { error } または { zuban, rank, hinmei, entries: [{ timestamp, content }] }
+ *         entries が空配列＝未使用の空テンプレート（本文なし）。
+ */
+function parseQualityInfoSpreadsheet_(file, lastUpdatedDate) {
+  var zuban = extractZubanFromQualityInfoTitle_(file.name);
+  if (!zuban) return { error: '図番をファイル名から特定できません' };
+
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(file.id);
+  } catch (e) {
+    return { error: '開けませんでした: ' + e };
+  }
+  var sheet = ss.getSheets()[0];
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return { zuban: zuban, rank: '', hinmei: '', entries: [] };
+  var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+
+  var excludeValues = {};
+  QUALITY_INFO_LABEL_TOKENS_.forEach(function (t) { excludeValues[t] = true; });
+  excludeValues[zuban] = true;
+
+  var rank = '';
+  var hinmei = '';
+  for (var r = 0; r < values.length; r++) {
+    for (var c = 0; c < values[r].length; c++) {
+      var raw = values[r][c];
+      if (raw === '' || raw === null) continue;
+      var v = String(raw).trim();
+      if (v === '図番' && c + 1 < values[r].length) excludeValues[String(values[r][c + 1]).trim()] = true;
+      if (v === '品名' && c + 1 < values[r].length) {
+        hinmei = String(values[r][c + 1]).trim();
+        excludeValues[hinmei] = true;
+      }
+      if (!rank && r < 6 && QUALITY_INFO_RANK_VALUES_.indexOf(v) !== -1) rank = v;
+    }
+  }
+  if (rank) excludeValues[rank] = true;
+
+  // 得意先名（会社名）はマージセルの都合で同じ行に複数回現れるため、
+  // 「得意先」ラベルと同じ行にある文字列（品名の値以外）はまとめて除外する。
+  for (var r2 = 0; r2 < values.length; r2++) {
+    var rowHasLabel = false;
+    for (var c2 = 0; c2 < values[r2].length; c2++) {
+      if (String(values[r2][c2]).trim() === '得意先') { rowHasLabel = true; break; }
+    }
+    if (!rowHasLabel) continue;
+    values[r2].forEach(function (x) {
+      var v2 = String(x).trim();
+      if (v2 && v2 !== '得意先' && v2 !== '品名' && v2 !== hinmei) excludeValues[v2] = true;
+    });
+  }
+
+  var cells = [];
+  for (var r3 = 0; r3 < values.length; r3++) {
+    for (var c3 = 0; c3 < values[r3].length; c3++) {
+      var raw3 = values[r3][c3];
+      if (raw3 === '' || raw3 === null || raw3 === undefined) continue;
+      var v3 = String(raw3).trim();
+      if (!v3 || excludeValues[v3]) continue;
+      cells.push(v3);
+    }
+  }
+
+  if (cells.length === 0) return { zuban: zuban, rank: rank, hinmei: hinmei, entries: [] };
+
+  var entries = [];
+  var current = null;
+  cells.forEach(function (text) {
+    var d = parseQualityInfoDate_(text);
+    if (d) {
+      current = { timestamp: d, lines: [text] };
+      entries.push(current);
+    } else if (current) {
+      current.lines.push(text);
+    } else {
+      current = { timestamp: null, lines: [text] };
+      entries.push(current);
     }
   });
+  entries.forEach(function (e) {
+    e.content = e.lines.join('\n');
+    if (!e.timestamp) e.timestamp = lastUpdatedDate;
+    delete e.lines;
+  });
+
+  return { zuban: zuban, rank: rank, hinmei: hinmei, entries: entries };
+}
+
+/** xlsxエクスポート+unzipで、埋め込み画像のBlob配列を取得する。 */
+function extractQualityInfoPhotoBlobs_(fileId) {
+  var url = 'https://docs.google.com/spreadsheets/d/' + fileId + '/export?format=xlsx';
+  var resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+  var xlsxBlob = resp.getBlob().setContentType('application/zip');
+  return Utilities.unzip(xlsxBlob).filter(function (e) { return e.getName().indexOf('xl/media/') === 0; });
+}
+
+/** 抽出した写真Blobを、通常のアップロード先（図番フォルダ配下の「写真」サブフォルダ）へ保存しURLを返す。 */
+function uploadMigratedPhotos_(zuban, blobs) {
+  if (blobs.length === 0) return [];
+  var zubanFolder = findZubanFolder_(zuban) || createZubanFolderIfCompanyKnown_(zuban);
+  if (!zubanFolder) return [];
+  var photoFiles = driveFilesList_(
+    "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+  );
+  var photoFolder = photoFiles.length > 0 ? DriveApp.getFolderById(photoFiles[0].id) : zubanFolder.createFolder('写真');
+  return blobs.map(function (blob) { return photoFolder.createFile(blob).getUrl(); });
+}
+
+/**
+ * 移行対象の一覧をドライラン解析し、「移行プレビュー」タブに結果を書き出す（品質情報記録ログには一切書き込まない）。
+ * 写真は枚数のみ確認し、この時点ではアップロードしない。GASエディタで手動実行。
+ */
+function previewMigrateQualityInfo() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  deleteTriggerById_(props.getProperty('migratePreviewContinuationTriggerId'));
+  props.deleteProperty('migratePreviewContinuationTriggerId');
+
+  var sheet = ensureMigrationPreviewSheet_();
+  var listJson = props.getProperty('migratePreviewFileList');
+  var files;
+  if (listJson) {
+    files = JSON.parse(listJson);
+  } else {
+    files = listQualityInfoCandidateFiles_();
+    props.setProperty('migratePreviewFileList', JSON.stringify(files));
+    if (sheet.getLastRow() > 1) sheet.getRange(2, 1, sheet.getLastRow() - 1, 8).clearContent();
+    Logger.log('対象候補: ' + files.length + '件');
+  }
+
+  var cursor = Number(props.getProperty('migratePreviewCursor') || '0');
+  var rowsToAppend = [];
+  var i;
+  for (i = cursor; i < files.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
+    var f = files[i];
+    if (f.name.trim() === '品質情報テンプレート') continue;
+
+    var parsed = parseQualityInfoSpreadsheet_(f, new Date(f.modifiedTime));
+    if (parsed.error) {
+      rowsToAppend.push([f.name, f.webViewLink, '', '', 0, '', 0, 'スキップ: ' + parsed.error]);
+      continue;
+    }
+    if (parsed.entries.length === 0) {
+      rowsToAppend.push([f.name, f.webViewLink, parsed.zuban, parsed.rank, 0, '', 0, 'スキップ: 本文なし（未使用テンプレート）']);
+      continue;
+    }
+    var photoCount = 0;
+    try {
+      photoCount = extractQualityInfoPhotoBlobs_(f.id).length;
+    } catch (e) {
+      photoCount = -1;
+    }
+    var summary = parsed.entries.map(function (e) {
+      var d = e.timestamp ? Utilities.formatDate(e.timestamp, 'Asia/Tokyo', 'yyyy/MM/dd') : '(日付不明)';
+      return d + ': ' + e.content.replace(/\n/g, ' ').substring(0, 60);
+    }).join(' / ');
+    rowsToAppend.push([f.name, f.webViewLink, parsed.zuban, parsed.rank, parsed.entries.length, summary, photoCount, 'OK']);
+  }
+
+  if (rowsToAppend.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 8).setValues(rowsToAppend);
+  }
+
+  if (i < files.length) {
+    props.setProperty('migratePreviewCursor', String(i));
+    var t = ScriptApp.newTrigger('previewMigrateQualityInfo').timeBased().after(60 * 1000).create();
+    props.setProperty('migratePreviewContinuationTriggerId', t.getUniqueId());
+    Logger.log('実行時間の上限のため中断（' + i + '/' + files.length + '。1分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('migratePreviewCursor');
+  props.deleteProperty('migratePreviewFileList');
+  Logger.log('プレビュー作成完了。「移行プレビュー」タブを確認してください（全' + files.length + '件）');
+}
+
+/**
+ * previewMigrateQualityInfoで内容を確認した後、実際に品質情報記録ログへ登録する（共有フラグtrue）。
+ * 「移行元ファイルID」列で処理済みファイルを判定するため、途中で中断されても再実行すれば
+ * 未処理分だけ続きから処理する（addMigrationSourceColumn()を先に1回実行しておくこと）。
+ */
+function runMigrateQualityInfo() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  deleteTriggerById_(props.getProperty('migrateRunContinuationTriggerId'));
+  props.deleteProperty('migrateRunContinuationTriggerId');
+
+  var qlSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = qlSheet.getRange(1, 1, 1, qlSheet.getLastColumn()).getValues()[0];
+  var sourceCol = header.indexOf('移行元ファイルID');
+  if (sourceCol === -1) {
+    Logger.log('「移行元ファイルID」列がありません。先にaddMigrationSourceColumn()を実行してください。');
+    return;
+  }
+
+  var listJson = props.getProperty('migrateRunFileList');
+  var files;
+  if (listJson) {
+    files = JSON.parse(listJson);
+  } else {
+    files = listQualityInfoCandidateFiles_();
+    props.setProperty('migrateRunFileList', JSON.stringify(files));
+    Logger.log('対象候補: ' + files.length + '件');
+  }
+
+  var alreadyDone = {};
+  if (qlSheet.getLastRow() >= 2) {
+    qlSheet.getRange(2, sourceCol + 1, qlSheet.getLastRow() - 1, 1).getValues().forEach(function (row) {
+      if (row[0]) alreadyDone[row[0]] = true;
+    });
+  }
+
+  var cursor = Number(props.getProperty('migrateRunCursor') || '0');
+  var rowsToAppend = [];
+  var inserted = 0, skipped = 0;
+  var i;
+  for (i = cursor; i < files.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
+    var f = files[i];
+    if (f.name.trim() === '品質情報テンプレート') continue;
+    if (alreadyDone[f.id]) { skipped++; continue; }
+
+    var parsed = parseQualityInfoSpreadsheet_(f, new Date(f.modifiedTime));
+    if (parsed.error || parsed.entries.length === 0) { skipped++; continue; }
+
+    var photoUrls = [];
+    try {
+      photoUrls = uploadMigratedPhotos_(parsed.zuban, extractQualityInfoPhotoBlobs_(f.id));
+    } catch (e) {
+      Logger.log('写真取得エラー(' + f.name + '): ' + e);
+    }
+
+    parsed.entries.forEach(function (entry, idx) {
+      var isLast = idx === parsed.entries.length - 1;
+      rowsToAppend.push([
+        Utilities.getUuid(), entry.timestamp, parsed.zuban, '',
+        '', '(移行データ)', parsed.rank, entry.content,
+        isLast ? photoUrls.join('\n') : '', true, f.id
+      ]);
+    });
+    invalidateZubanCache_(parsed.zuban);
+    inserted++;
+  }
+
+  if (rowsToAppend.length > 0) {
+    qlSheet.getRange(qlSheet.getLastRow() + 1, 1, rowsToAppend.length, 11).setValues(rowsToAppend);
+  }
+
+  if (i < files.length) {
+    props.setProperty('migrateRunCursor', String(i));
+    var t = ScriptApp.newTrigger('runMigrateQualityInfo').timeBased().after(60 * 1000).create();
+    props.setProperty('migrateRunContinuationTriggerId', t.getUniqueId());
+    Logger.log('実行時間の上限のため中断（' + i + '/' + files.length + '件処理、今回' + inserted + '件登録。1分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('migrateRunCursor');
+  props.deleteProperty('migrateRunFileList');
+  Logger.log('移行完了。新規登録' + inserted + 'ファイル分、スキップ' + skipped + '件（全' + files.length + '件）');
 }

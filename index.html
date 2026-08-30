@@ -132,6 +132,8 @@
     background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
   }
   .tip-card img.tip-photo { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
+  .tip-card .tip-photos { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; }
+  .tip-card .tip-photos img.tip-photo { flex: 0 0 auto; width: 120px; margin-bottom: 0; }
 
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
@@ -930,6 +932,17 @@
     return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600') : driveUrl;
   }
 
+  function buildPhotoHtml_(photoUrlField) {
+    var urls = String(photoUrlField || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (urls.length === 0) return '';
+    if (urls.length === 1) {
+      return '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(urls[0])) + '" alt="">';
+    }
+    return '<div class="tip-photos">' + urls.map(function (u) {
+      return '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(u)) + '" alt="">';
+    }).join('') + '</div>';
+  }
+
   function buildTipCard(m, opts) {
     opts = opts || {};
     var div = document.createElement('div');
@@ -938,7 +951,7 @@
       ? '<span class="tag" style="background:var(--accent-soft);color:var(--accent-ink);">共有済み</span>' : '';
     var deptTag = m['部署'] ? '<span class="tag">' + escapeHtml(String(m['部署'])) + '</span>' : '';
     var rankTag = m['外観ランク'] ? '<span class="tag">ランク' + escapeHtml(String(m['外観ランク'])) + '</span>' : '';
-    var photoHtml = m['写真URL'] ? '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(m['写真URL'])) + '" alt="">' : '';
+    var photoHtml = buildPhotoHtml_(m['写真URL']);
     var actionsHtml = (opts.editable)
       ? '<span class="meta-actions"><button type="button" data-act="edit">編集</button><button type="button" data-act="delete">削除</button></span>'
       : '';
