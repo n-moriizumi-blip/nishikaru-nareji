@@ -375,7 +375,6 @@
             <button type="button" class="chip">無</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">共通情報（検査項目）を保存する</button>
       </div>
 
       <div id="specCommonSection" class="hidden">
@@ -387,7 +386,6 @@
             <button type="button" class="chip">無</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specCommonSaveBtn">共通情報（共通項目）を保存する</button>
       </div>
 
       <div id="specSeisanSection" class="hidden">
@@ -417,8 +415,9 @@
           <label>ゲージの種類（自由入力）</label>
           <input type="text" id="gaugeDetailInput" placeholder="例：限界ピンゲージ φ8.0">
         </div>
-        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">共通情報（生産管理項目）を保存する</button>
       </div>
+
+      <button type="button" class="btn btn-secondary hidden" id="specCommonSaveBtn">共通情報を保存する</button>
 
       <div id="specShukkaSection" class="hidden">
         <div class="section-label">出荷｜梱包・その他（生産管理課「出荷」担当のみ編集・図番ごとに1件、上書き）</div>
@@ -1385,6 +1384,7 @@
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
+    document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !(showKensa || showCommon || showSeisan));
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
 
@@ -1489,20 +1489,24 @@
       .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
   }
 
-  document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
-      'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample')
-    }, '共通情報（検査項目）');
-  });
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({ 'キーエンス測定': getChipValue('keyence') }, '共通情報（共通項目）');
-  });
-  document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
-      '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
-    }, '共通情報（生産管理項目）');
+    var fields = {};
+    if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
+      fields['検査記録の添付'] = getChipValue('inspRecord');
+      fields['ミルシート'] = getChipValue('millSheet');
+      fields['トレー梱包'] = getChipValue('tray');
+      fields['NG限度見本'] = getChipValue('ngSample');
+    }
+    if (!document.getElementById('specCommonSection').classList.contains('hidden')) {
+      fields['キーエンス測定'] = getChipValue('keyence');
+    }
+    if (!document.getElementById('specSeisanSection').classList.contains('hidden')) {
+      fields['カット品'] = getChipValue('cutSample');
+      fields['テストピース'] = getChipValue('testPiece');
+      fields['借用ゲージ有無'] = getChipValue('gauge');
+      fields['借用ゲージ種類'] = document.getElementById('gaugeDetailInput').value;
+    }
+    saveShippingSpecFields(fields, '共通情報');
   });
   document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
