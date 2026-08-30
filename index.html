@@ -741,12 +741,30 @@
       var list = document.getElementById('pastTroubleList');
       list.innerHTML = '';
       data.pastTrouble.forEach(function (item) {
-        var div = document.createElement('div');
-        div.className = 'alert-item';
-        var titleText = item.title || (item.row && item.row['内容']) || item.source;
-        var link = item.url ? '<br><a href="' + item.url + '" target="_blank" rel="noopener">詳細を見る（元シートを開く）</a>' : '';
-        div.innerHTML = '<span class="date">' + (item.source || '') + '</span>' + escapeHtml(String(titleText)) + link;
-        list.appendChild(div);
+        if (item.row) {
+          // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ。
+          // 写真・編集/削除ボタンも他の一覧と同じtip-card形式で表示する。
+          var isQualityLog = item.source === '品質情報記録ログ';
+          var card = buildTipCard(item.row, {
+            editable: true,
+            onEdit: isQualityLog ? startEditQualityLog : startEditMemoFromHistory,
+            onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory
+          });
+          var tagsEl = card.querySelector('.tags');
+          if (tagsEl) {
+            tagsEl.insertAdjacentHTML('afterbegin',
+              '<span class="tag" style="background:var(--alert-soft);color:var(--alert-ink);">' + escapeHtml(item.source) + '</span>');
+          }
+          list.appendChild(card);
+        } else {
+          // 既存の「品質情報」スプレッドシート／改善計画書フォルダ（Drive検索、リンクのみ）
+          var div = document.createElement('div');
+          div.className = 'alert-item';
+          var titleText = item.title || item.source;
+          var link = item.url ? '<br><a href="' + item.url + '" target="_blank" rel="noopener">詳細を見る（元シートを開く）</a>' : '';
+          div.innerHTML = '<span class="date">' + (item.source || '') + '</span>' + escapeHtml(String(titleText)) + link;
+          list.appendChild(div);
+        }
       });
     }
   }
@@ -917,13 +935,14 @@
     div.className = 'tip-card';
     var sharedTag = m['共有フラグ'] === true
       ? '<span class="tag" style="background:var(--accent-soft);color:var(--accent-ink);">共有済み</span>' : '';
+    var deptTag = m['部署'] ? '<span class="tag">' + escapeHtml(String(m['部署'])) + '</span>' : '';
     var rankTag = m['外観ランク'] ? '<span class="tag">ランク' + escapeHtml(String(m['外観ランク'])) + '</span>' : '';
     var photoHtml = m['写真URL'] ? '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(m['写真URL'])) + '" alt="">' : '';
     var actionsHtml = (opts.editable)
       ? '<span class="meta-actions"><button type="button" data-act="edit">編集</button><button type="button" data-act="delete">削除</button></span>'
       : '';
     div.innerHTML =
-      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + rankTag + sharedTag + '</div>' +
+      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + deptTag + rankTag + sharedTag + '</div>' +
       photoHtml +
       '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
       '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span>' + actionsHtml + '</div>';
@@ -1151,6 +1170,26 @@
         return refreshZubanData();
       })
       .then(function () { renderMemoEditList(); })
+      .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
+  }
+
+  // ②画面の過去トラ一覧（共有されたツール配置メモ）から編集・削除する場合は、③画面へ移動して
+  // 編集モードに入ってからフォームに読み込む（③画面自体からの編集はstartEditMemo/deleteMemoを使う）。
+  function startEditMemoFromHistory(m) {
+    goToTools();
+    enterToolEdit();
+    startEditMemo(m);
+  }
+
+  function deleteMemoFromHistory(m) {
+    if (!confirm('この記録を削除しますか？')) return;
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'] }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
+        return refreshZubanData();
+      })
+      .then(function () { renderPastTroubleDisplay(currentZubanData); })
       .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   }
 
