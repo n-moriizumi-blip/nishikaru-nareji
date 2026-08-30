@@ -207,6 +207,22 @@ function stripZubanPrefix_(value) {
   return String(value || '').replace(/^(KP|CC)\s+/, '');
 }
 
+/**
+ * 数字だけの図番を照合する際のキーを作る（2026-08-30）。
+ * 「進捗状況照会」は10分ごとに外部連携でデータが更新されるため、数字だけの図番
+ * （例:"03624100"）のセルがテキスト（0付き）と数値（0落ち、"3624100"）の間で
+ * 更新のたびに不安定に変わることが実データで確認された。単純な文字列一致で
+ * 図番インデックスの行を照合すると、この0落ちのタイミングで「別の図番」と
+ * 誤認識され、seedZubanIndexが同じ図番を何度も新規と判定して重複行を量産して
+ * しまう（実例：3624100が50行以上重複）。数字だけの図番は先頭の0の有無に
+ * 関わらず同じ図番として扱うため、整数値としてのキーに正規化する。
+ * 数字以外を含む図番（ハイフンや英字入り）はそのまま。
+ */
+function numericZubanKey_(value) {
+  var s = String(value || '');
+  return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s;
+}
+
 function resolveZubanFromSeiban_(seiban) {
   if (!seiban) return { error: 'seiban is required' };
 
@@ -556,8 +572,9 @@ function findZubanIndexRow_(zuban) {
   var values = sheet.getDataRange().getValues();
   var header = values[0];
   var col = header.indexOf('図番');
+  var key = numericZubanKey_(zuban);
   for (var i = 1; i < values.length; i++) {
-    if (String(values[i][col]) === String(zuban)) return rowToObject_(header, values[i]);
+    if (numericZubanKey_(values[i][col]) === key) return rowToObject_(header, values[i]);
   }
   return null;
 }
@@ -575,8 +592,9 @@ function upsertZubanIndex_(zuban, fields) {
     var values = sheet.getDataRange().getValues();
     var header = values[0];
     var col = header.indexOf('図番');
+    var key = numericZubanKey_(zuban);
     for (var i = 1; i < values.length; i++) {
-      if (String(values[i][col]) === String(zuban)) {
+      if (numericZubanKey_(values[i][col]) === key) {
         var existing = rowToObject_(header, values[i]);
         var merged = Object.assign({}, existing, fields, { '更新日時': new Date() });
         var updatedRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
@@ -1113,10 +1131,11 @@ function seedZubanIndex() {
   var remaining = 0;
   for (var i = 0; i < allZubans.length; i++) {
     var zuban = allZubans[i];
-    if (already[zuban]) { skipped++; continue; }
+    var key = numericZubanKey_(zuban);
+    if (already[key]) { skipped++; continue; }
     if (Date.now() - startTime > maxRunMs) { remaining++; continue; } // 時間切れ後は件数だけ数える
     refreshOneZuban_(zuban);
-    already[zuban] = true;
+    already[key] = true;
     processed++;
   }
 
@@ -1152,8 +1171,8 @@ function resumeSeedZubanIndex() {
 
 /**
  * 図番インデックスの重複行を整理する（2026-08-30、進捗状況照会の10分更新による0落ち混在で
- * 発生した大量重複行への対処）。canonicalizeNumericZuban_で数字だけの図番を正式表記に
- * 統一した上でグループ化し、同じ図番のグループは一番更新日時が新しい行だけを残して他を削除する。
+ * 発生した大量重複行への対処）。numericZubanKey_で数字だけの図番の0落ちを吸収した上で
+ * グループ化し、同じ図番のグループは一番更新日時が新しい行だけを残して他を削除する。
  * GASエディタで手動実行。完了後にresumeSeedZubanIndex()で再開すること。
  */
 function dedupeZubanIndex() {
@@ -1163,52 +1182,38 @@ function dedupeZubanIndex() {
   var col = header.indexOf('図番');
   var updatedCol = header.indexOf('更新日時');
 
-  var rawZubans = [];
+  var groups = {}; // numericZubanKey_ -> values配列上のindexのリスト
   for (var i = 1; i < values.length; i++) {
-    if (values[i][col]) rawZubans.push(String(values[i][col]));
-  }
-  var canonicalize = canonicalizeNumericZuban_(rawZubans);
-
-  var groups = {}; // 正式な図番 -> values配列上のindexのリスト
-  for (var i2 = 1; i2 < values.length; i2++) {
-    var raw = values[i2][col];
+    var raw = values[i][col];
     if (!raw) continue;
-    var c = canonicalize(String(raw));
-    if (!groups[c]) groups[c] = [];
-    groups[c].push(i2);
+    var key = numericZubanKey_(raw);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(i);
   }
 
   var rowsToDelete = [];
-  var rowsToRenormalize = [];
-  Object.keys(groups).forEach(function (canonical) {
-    var idxList = groups[canonical];
-    if (idxList.length === 1) {
-      if (String(values[idxList[0]][col]) !== canonical) {
-        rowsToRenormalize.push({ sheetRow: idxList[0] + 1, canonical: canonical });
-      }
-      return;
-    }
+  Object.keys(groups).forEach(function (key) {
+    var idxList = groups[key];
+    if (idxList.length === 1) return;
     idxList.sort(function (a, b) {
       var da = values[a][updatedCol] ? new Date(values[a][updatedCol]).getTime() : 0;
       var db = values[b][updatedCol] ? new Date(values[b][updatedCol]).getTime() : 0;
-      return db - da; // 新しい順
+      return db - da; // 新しい順。先頭（idxList[0]）を残し、残りを削除する
     });
-    var keepIdx = idxList[0];
-    rowsToRenormalize.push({ sheetRow: keepIdx + 1, canonical: canonical });
     idxList.slice(1).forEach(function (dupIdx) { rowsToDelete.push(dupIdx + 1); });
-  });
-
-  rowsToRenormalize.forEach(function (u) {
-    sheet.getRange(u.sheetRow, col + 1).setValue(u.canonical);
   });
 
   rowsToDelete.sort(function (a, b) { return b - a; }); // 行番号が大きい順に削除（後続行のズレ防止）
   rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
 
-  Logger.log('図番インデックスの重複整理が完了しました。削除' + rowsToDelete.length + '行、表記統一' + rowsToRenormalize.length + '行（統合後の図番数: ' + Object.keys(groups).length + '）');
+  Logger.log('図番インデックスの重複整理が完了しました。削除' + rowsToDelete.length + '行（統合後の図番数: ' + Object.keys(groups).length + '）');
 }
 
-/** 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。 */
+/**
+ * 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。
+ * numericZubanKey_で正規化したキーを使うことで、数字だけの図番の0落ち表記ゆれがあっても
+ * 「既にインデックス済み」と正しく判定できるようにしている（2026-08-30）。
+ */
 function loadIndexedZubanSet_() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   var set = {};
@@ -1217,7 +1222,7 @@ function loadIndexedZubanSet_() {
   var header = values[0];
   var col = header.indexOf('図番');
   for (var i = 1; i < values.length; i++) {
-    if (values[i][col]) set[values[i][col]] = true;
+    if (values[i][col]) set[numericZubanKey_(values[i][col])] = true;
   }
   return set;
 }
@@ -1241,34 +1246,14 @@ function deleteTriggerById_(id) {
   });
 }
 
-/** 「進捗状況照会」の全タブから「品番(図番)」列の値を重複なく集める（＝実在する図番の一覧）。 */
 /**
- * 数字だけの図番は、進捗状況照会が10分ごとの外部連携更新でセルがテキスト（"03624100"）と
- * 数値（3624100、0落ち）の間で不安定に変わることがあり、そのままだと別の図番として扱われて
- * 図番インデックスに大量の重複行を生む原因になっていた（2026-08-30に確認）。
- * 同じ数値になる表記をグループ化し、その中で一番桁が長い（0埋めされた）表記を正式な図番として
- * 統一するための正規化関数を返す。数字以外の図番はそのまま。
+ * 「進捗状況照会」の全タブから「品番(図番)」列の値を重複なく集める（＝実在する図番の一覧）。
+ * numericZubanKey_でのdedupにより、数字だけの図番が0落ち表記で複数回現れても1件に収まる。
  */
-function canonicalizeNumericZuban_(rawList) {
-  var byInt = {};
-  rawList.forEach(function (z) {
-    if (/^\d+$/.test(z)) {
-      var key = String(parseInt(z, 10));
-      if (!byInt[key] || z.length > byInt[key].length) byInt[key] = z;
-    }
-  });
-  return function (z) {
-    if (/^\d+$/.test(z)) {
-      var key = String(parseInt(z, 10));
-      return byInt[key] || z;
-    }
-    return z;
-  };
-}
-
 function listAllKnownZubans_() {
   var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
-  var raw = [];
+  var seen = {};
+  var out = [];
   ss.getSheets().forEach(function (sheet) {
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
@@ -1280,16 +1265,9 @@ function listAllKnownZubans_() {
     var values = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues();
     values.forEach(function (row) {
       var z = stripZubanPrefix_(row[0]);
-      if (z) raw.push(z);
+      var key = numericZubanKey_(z);
+      if (z && !seen[key]) { seen[key] = true; out.push(z); }
     });
-  });
-
-  var canonicalize = canonicalizeNumericZuban_(raw);
-  var seen = {};
-  var out = [];
-  raw.forEach(function (z) {
-    var c = canonicalize(z);
-    if (!seen[c]) { seen[c] = true; out.push(c); }
   });
   return out;
 }
