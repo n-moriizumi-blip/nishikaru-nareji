@@ -10,10 +10,16 @@ var SHEET_QUALITY_LOG = '品質情報記録ログ';
 var SHEET_TOOL_MEMO = 'ツール配置メモ';
 var SHEET_TOOL_POSITIONS = 'ツール配置ポジション';
 var SHEET_SHIPPING_SPEC = '出荷仕様';
+var SHEET_ZUBAN_INDEX = '図番インデックス';
+var SHEET_SEIBAN_INDEX = '製番インデックス';
 
-// I-PRO同期データ（進捗状況照会と共有）。2026-08-14に列構成を確認済み：
-// 工場番号／製造番号／材料手配区分／得意先コード／品番(図番）／品名／担当者／…
+// I-PRO同期データ。2026-08-14に列構成を確認済み：
+// 工場番号／製造番号／材料手配区分／得意先コード／品番(図番）／品名／担当者／…（60列、約1.4MB、全件）
 var IPRO_SOURCE_SPREADSHEET_ID = '1g-NnnSgGyS_5oIINuUfvNi7_o7iWPik6aL0HmoL5VO4';
+// 「進捗状況照会」共有スプレッドシート。製造番号・品番(図番)・品名・得意先コード・得意先名が
+// 同じ行に揃っており、I-Pro Sourceの約1/10のサイズ（約145KB）。ユーザー提案(2026-08-30)により、
+// こちらを優先的に検索し、見つからない場合のみI-Pro Sourceにフォールバックする。
+var IPRO_PROGRESS_SPREADSHEET_ID = '1F9Iu5t62WDW5lg_eeEa6XW9ngCUJ2DmXTKjqd5oXrac';
 
 // 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
 var ORG_MASTER_SPREADSHEET_ID = '1fffjE_bwrzswvRO62U0OHwvqrs5b_UuSV5IbudUMxec';
@@ -47,6 +53,14 @@ function setupSheets() {
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
     '梱包方法', 'その他必要事項',
     '最終更新者メール', '最終更新日時'
+  ]);
+
+  ensureSheet_(ss, SHEET_ZUBAN_INDEX, [
+    '図番', '品名', '得意先コード', '検査記録フォルダURL', '品質情報リンク', '改善計画書リンク', '更新日時'
+  ]);
+
+  ensureSheet_(ss, SHEET_SEIBAN_INDEX, [
+    '製造番号', '図番', '品名', '得意先コード', '更新日時'
   ]);
 
   // デフォルトのSheet1が残っていれば削除（タブ構成を綺麗に保つ）
@@ -172,11 +186,23 @@ function invalidateZubanCache_(zuban) {
 
 /**
  * QRから取り出した製番（例: I-PROのURL末尾の値）から、対応する図番を探す。
- * I-PRO同期データの「製造番号」列と一致する行を探し、「品番(図番）」「品名」「得意先コード」を返す。
- * 1製番に図番が複数見つかった場合はcandidatesに全件返す（呼び出し側で選択画面を出す想定）。
+ * まず「製番インデックス」シートを見て、あれば即座に返す（I-PROスキャン省略）。
+ * 無ければI-PRO同期データの「製造番号」列と一致する行を探し、見つかった単一候補の場合のみ
+ * インデックスに書き込む（1製番に図番が複数見つかるケースはインデックス化しない。稀なケースであり、
+ * 常にライブスキャンで正しく複数候補を出したいため）。
  */
 function resolveZubanFromSeiban_(seiban) {
   if (!seiban) return { error: 'seiban is required' };
+
+  var indexed = findSeibanIndexRow_(seiban);
+  if (indexed) {
+    return {
+      found: true, seiban: seiban, multiple: false,
+      candidates: [{ zuban: indexed['図番'], hinmei: indexed['品名'] || null, tokuisakiCode: indexed['得意先コード'] || null }],
+      zuban: indexed['図番'], hinmei: indexed['品名'] || null, tokuisakiCode: indexed['得意先コード'] || null
+    };
+  }
+
   var rows = findIproRowsByColumn_('製造番号', seiban);
   if (rows.length === 0) return { found: false, seiban: seiban };
   var candidates = rows.map(function (row) {
@@ -194,7 +220,8 @@ function resolveZubanFromSeiban_(seiban) {
   var uniqueByZuban = {};
   candidates.forEach(function (c) { uniqueByZuban[c.zuban] = c; });
   var uniqueCandidates = Object.keys(uniqueByZuban).map(function (z) { return uniqueByZuban[z]; });
-  return {
+
+  var result = {
     found: true,
     seiban: seiban,
     // 1製番に図番が複数見つかった場合、呼び出し側（フロント）で選択画面を出す
@@ -204,6 +231,11 @@ function resolveZubanFromSeiban_(seiban) {
     hinmei: uniqueCandidates.length === 1 ? uniqueCandidates[0].hinmei : null,
     tokuisakiCode: uniqueCandidates.length === 1 ? uniqueCandidates[0].tokuisakiCode : null
   };
+
+  if (!result.multiple && result.zuban) {
+    upsertSeibanIndex_(seiban, result.zuban, result.hinmei, result.tokuisakiCode);
+  }
+  return result;
 }
 
 /**
@@ -229,15 +261,32 @@ function scanZuban_(seiban) {
   return info;
 }
 
-/** 図番から品名・得意先コードを引く（②画面のヘッダー表示用）。 */
+/**
+ * 図番から品名・得意先コードを引く（②画面のヘッダー表示用）。
+ * まず「図番インデックス」シートを見て、あれば即座に返す（I-PROスキャン省略）。
+ * 無ければライブスキャン（scanZubanMaster_）し、結果をインデックスに書き込む。
+ */
 function lookupZubanMaster_(zuban) {
+  var indexed = findZubanIndexRow_(zuban);
+  if (indexed && indexed['品名']) {
+    return { hinmei: indexed['品名'] || null, tokuisaki: indexed['得意先コード'] || null };
+  }
+  var master = scanZubanMaster_(zuban);
+  if (master.hinmei) {
+    upsertZubanIndex_(zuban, { '品名': master.hinmei, '得意先コード': master.tokuisaki || '' });
+  }
+  return master;
+}
+
+/** lookupZubanMaster_のインデックスを使わない版。インデックス自体の再構築（refreshOneZuban_）で使う。 */
+function scanZubanMaster_(zuban) {
   var row = findIproRowByColumn_('品番(図番）', zuban) || findIproRowByColumn_('品番(図番)', zuban);
   if (!row) return { hinmei: null, tokuisaki: null };
   return { hinmei: row['品名'] || null, tokuisaki: row['得意先コード'] || null };
 }
 
 /**
- * I-PRO同期データ（進捗状況照会と共有のスプレッドシート）から、指定列が指定値と一致する最初の行を返す。
+ * I-PRO関連データから、指定列が指定値と一致する最初の行を返す。
  * どのタブに目的の列があるか固定できていないため、全タブを順に探す。
  */
 function findIproRowByColumn_(columnName, value) {
@@ -247,13 +296,24 @@ function findIproRowByColumn_(columnName, value) {
 
 /**
  * findIproRowByColumn_ の複数件版。1製番に図番が複数ある場合の検出に使う。
- * パフォーマンス上の注意：I-PRO同期データは複数タブ・数千行規模のため、
- * 目的の列を持たないタブの全データを読み込まない（ヘッダー行だけ先に確認し、
- * 列が無ければ即スキップする）。これが無いと1回の呼び出しに30秒近くかかっていた（2026-08-29計測）。
+ * まず小さく速い「進捗状況照会」（製造番号・品番(図番)・品名・得意先が同じ行に揃っている）を探し、
+ * 見つからない場合のみ大きい「I-Pro Source」（全件、約10倍のサイズ）にフォールバックする
+ * （ユーザー提案、2026-08-30）。
  */
 function findIproRowsByColumn_(columnName, value) {
   if (!value) return [];
-  var ss = SpreadsheetApp.openById(IPRO_SOURCE_SPREADSHEET_ID);
+  var fromProgress = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, columnName, value);
+  if (fromProgress.length > 0) return fromProgress;
+  return findRowsInSpreadsheet_(IPRO_SOURCE_SPREADSHEET_ID, columnName, value);
+}
+
+/**
+ * 指定スプレッドシート内で、指定列が指定値と一致する行をすべて返す（全タブ対象）。
+ * パフォーマンス上の注意：目的の列を持たないタブの全データを読み込まない（ヘッダー行だけ先に確認し、
+ * 列が無ければ即スキップする）。これが無いと1回の呼び出しに30秒近くかかっていた（2026-08-29計測）。
+ */
+function findRowsInSpreadsheet_(spreadsheetId, columnName, value) {
+  var ss = SpreadsheetApp.openById(spreadsheetId);
   var sheets = ss.getSheets();
   var out = [];
   for (var s = 0; s < sheets.length; s++) {
@@ -297,6 +357,65 @@ function driveFilesList_(query) {
  * 過去トラ：{図番} 品質情報 スプレッドシート／改善計画書フォルダを検索し、内容を要約して返す。
  * 品質情報はそのまま、改善計画書は一行要約＋元ファイルへのリンクのみ返す（本文は開かない）。
  *
+ * まず「図番インデックス」シートを見て、既に調べたことがあれば（更新日時があれば）そのリンクを
+ * そのまま使い、Drive検索を省略する。無ければscanPastTroubleFiles_でライブ検索し、結果をインデックスに書き込む。
+ * refreshZubanIndex()が毎日1回、インデックス済みの図番だけ再スキャンして最新化する。
+ */
+function findPastTrouble_(zuban) {
+  var items = [];
+  var seenKeys = {};
+  function pushUnique(item, key) {
+    if (seenKeys[key]) return;
+    seenKeys[key] = true;
+    items.push(item);
+  }
+
+  // 「更新日時」は品名等インデックス（lookupZubanMaster_）と共用の列のため、そちらだけが先に
+  // 書き込まれているケースがある（getZubanInfo_内でlookupZubanMaster_→findPastTrouble_の順に呼ばれるため）。
+  // 更新日時だけでなく、この機能が実際に書き込む品質情報リンク・改善計画書リンク自体が
+  // 存在するか（JSON.stringifyされた文字列は結果が0件でも"[]"という空でない文字列になる）で判定する。
+  var indexed = findZubanIndexRow_(zuban);
+  var qiFiles, fkFiles;
+  if (indexed && indexed['品質情報リンク'] && indexed['改善計画書リンク']) {
+    try { qiFiles = JSON.parse(indexed['品質情報リンク'] || '[]'); } catch (e) { qiFiles = []; }
+    try { fkFiles = JSON.parse(indexed['改善計画書リンク'] || '[]'); } catch (e) { fkFiles = []; }
+  } else {
+    var scanned = scanPastTroubleFiles_(zuban);
+    qiFiles = scanned.qi;
+    fkFiles = scanned.fk;
+    upsertZubanIndex_(zuban, {
+      '品質情報リンク': JSON.stringify(qiFiles),
+      '改善計画書リンク': JSON.stringify(fkFiles)
+    });
+  }
+
+  qiFiles.forEach(function (f) {
+    pushUnique({
+      source: '品質情報',
+      title: f.name,
+      url: f.url,
+      // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
+      note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
+    }, f.url);
+  });
+  fkFiles.forEach(function (f) {
+    pushUnique({
+      source: '改善計画書',
+      title: f.name,
+      url: f.url,
+      note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
+    }, f.url);
+  });
+
+  // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ
+  items = items.concat(findSharedEntries_(SHEET_QUALITY_LOG, zuban));
+  items = items.concat(findSharedEntries_(SHEET_TOOL_MEMO, zuban));
+
+  return items;
+}
+
+/**
+ * findPastTrouble_のライブスキャン部分（インデックスを使わない）。
  * 改善計画書フォルダの命名・置き場所は実データ上ゆれが大きいことが判明済み（2026-08-29）：
  * 「不具合改善計画書」「不適合改善計画書」の両方の表記があり、置き場所も
  * 少なくとも3パターン確認済み（①「(KP)社内不良改善計画書」フォルダ直下、
@@ -305,52 +424,21 @@ function driveFilesList_(query) {
  * アプローチはやめ、両方の表記に共通する「改善計画書」で緩く一致させたうえで
  * 共有ドライブ全体を対象に検索する（Advanced Drive Serviceで共有ドライブ対応済みのため可能）。
  */
-function findPastTrouble_(zuban) {
-  var items = [];
-  var seenFileIds = {};
-  var zubanEsc = String(zuban).replace(/'/g, "\\'");
-
-  function pushUnique(item, fileId) {
-    if (seenFileIds[fileId]) return;
-    seenFileIds[fileId] = true;
-    items.push(item);
-  }
-
-  // 品質情報スプレッドシート：図番フォルダ（検査記録／社名／図番／）の中を検索
+function scanPastTroubleFiles_(zuban) {
+  var qi = [];
   var zubanFolder = findZubanFolder_(zuban);
   if (zubanFolder) {
-    var qiFiles = driveFilesList_(
+    driveFilesList_(
       "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
-    );
-    qiFiles.forEach(function (f) {
-      pushUnique({
-        source: '品質情報',
-        title: f.name,
-        url: f.webViewLink,
-        // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
-        note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
-      }, f.id);
-    });
+    ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
   }
 
-  // 改善計画書フォルダ：置き場所が一定しないため、図番名を含むフォルダを共有ドライブ全体から検索
-  var fkFiles = driveFilesList_(
+  var zubanEsc = String(zuban).replace(/'/g, "\\'");
+  var fk = driveFilesList_(
     "name contains '" + zubanEsc + "' and name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-  );
-  fkFiles.forEach(function (f) {
-    pushUnique({
-      source: '改善計画書',
-      title: f.name,
-      url: f.webViewLink,
-      note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'
-    }, f.id);
-  });
+  ).map(function (f) { return { name: f.name, url: f.webViewLink }; });
 
-  // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ
-  items = items.concat(findSharedEntries_(SHEET_QUALITY_LOG, zuban));
-  items = items.concat(findSharedEntries_(SHEET_TOOL_MEMO, zuban));
-
-  return items;
+  return { qi: qi, fk: fk };
 }
 
 function findSharedEntries_(sheetName, zuban) {
@@ -403,6 +491,72 @@ function rowToObject_(header, row) {
   var obj = {};
   for (var i = 0; i < header.length; i++) obj[header[i]] = row[i];
   return obj;
+}
+
+/**
+ * 図番インデックス・製番インデックス（2026-08-30追加）。
+ * 一度調べた図番・製番の結果（品名・得意先・検査記録フォルダ・品質情報リンク・改善計画書リンク）を
+ * 「西軽精機ナレッジ DB」の専用シートに保存し、次回以降はI-PROスキャンやDrive検索を省略して
+ * このシートを読むだけで返せるようにする（ユーザー提案、2026-08-30）。refreshZubanIndex()が
+ * 毎日1回、既にインデックス済みの分だけ再スキャンして最新化する。
+ */
+function findSeibanIndexRow_(seiban) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SEIBAN_INDEX);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('製造番号');
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][col]) === String(seiban)) return rowToObject_(header, values[i]);
+  }
+  return null;
+}
+
+function upsertSeibanIndex_(seiban, zuban, hinmei, tokuisakiCode) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SEIBAN_INDEX);
+  var newRow = [seiban, zuban, hinmei || '', tokuisakiCode || '', new Date()];
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('製造番号');
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][col]) === String(seiban)) {
+      sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
+      return;
+    }
+  }
+  sheet.appendRow(newRow);
+}
+
+function findZubanIndexRow_(zuban) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('図番');
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][col]) === String(zuban)) return rowToObject_(header, values[i]);
+  }
+  return null;
+}
+
+/** fieldsに渡したキーだけ更新する（他の既存フィールドはそのまま残す）。図番の行が無ければ新規追加。 */
+function upsertZubanIndex_(zuban, fields) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('図番');
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][col]) === String(zuban)) {
+      var existing = rowToObject_(header, values[i]);
+      var merged = Object.assign({}, existing, fields, { '更新日時': new Date() });
+      var updatedRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
+      sheet.getRange(i + 1, 1, 1, header.length).setValues([updatedRow]);
+      return;
+    }
+  }
+  var merged2 = Object.assign({ '図番': zuban }, fields, { '更新日時': new Date() });
+  var newRow = header.map(function (h) { return merged2[h] !== undefined ? merged2[h] : ''; });
+  sheet.appendRow(newRow);
 }
 
 /** 品質情報記録の投稿（⑤画面）。承認フローなし、送信したら即座に反映。 */
@@ -607,12 +761,17 @@ function resolveRole_(section, process) {
 
 /**
  * 図番に対応する検査記録フォルダ（検査記録の親フォルダ／社名／図番／）を探し、URLを返す。
- * フォルダ名の完全一致を優先し、無ければ部分一致で探す。見つからなければfound:falseを返す。
+ * 「図番インデックス」に既にURLがあればそれを返し、無ければfindZubanFolder_で探してインデックスに書き込む。
  */
 function getInspectionFolderUrl_(zuban) {
   if (!zuban) return { error: 'zuban is required' };
+  var indexed = findZubanIndexRow_(zuban);
+  if (indexed && indexed['更新日時'] && indexed['検査記録フォルダURL']) {
+    return { found: true, zuban: zuban, url: indexed['検査記録フォルダURL'] };
+  }
   var folder = findZubanFolder_(zuban);
   if (!folder) return { found: false, zuban: zuban };
+  upsertZubanIndex_(zuban, { '検査記録フォルダURL': folder.getUrl() });
   return { found: true, zuban: zuban, url: folder.getUrl() };
 }
 
@@ -653,4 +812,65 @@ function uploadPhoto_(payload) {
   var blob = Utilities.newBlob(bytes, mimeType, payload.filename || (Utilities.getUuid() + '.jpg'));
   var file = photoFolder.createFile(blob);
   return { url: file.getUrl() };
+}
+
+/**
+ * 図番インデックスを最新化する（2026-08-30追加）。時間主導トリガーから1日1回呼ばれる想定。
+ * 全件スキャンではなく、既にインデックス済みの図番だけを再チェックする
+ * （新規に検索されたことのない図番はここでは追加しない。初回スキャン時に自動でインデックスされるため）。
+ * GASの実行時間制限（6分）に収まるよう、時間を超えたら打ち切って次回の実行に委ねる。
+ * setupDailyIndexTriggerを1回実行してトリガー登録すること。
+ */
+function refreshZubanIndex() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+
+  var zubanSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  if (!zubanSheet || zubanSheet.getLastRow() < 2) {
+    Logger.log('図番インデックスは空のため、更新対象なし');
+    return;
+  }
+  var header = zubanSheet.getRange(1, 1, 1, zubanSheet.getLastColumn()).getValues()[0];
+  var zubanCol = header.indexOf('図番');
+  var rows = zubanSheet.getDataRange().getValues();
+  var refreshed = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (Date.now() - startTime > maxRunMs) {
+      Logger.log('実行時間の上限に近づいたため打ち切り（' + refreshed + '件更新、残り' + (rows.length - i) + '件は次回に持ち越し）');
+      break;
+    }
+    var zuban = rows[i][zubanCol];
+    if (!zuban) continue;
+    refreshOneZuban_(zuban);
+    refreshed++;
+  }
+  Logger.log('図番インデックス更新完了: ' + refreshed + '件');
+}
+
+/** 指定した図番1件分を、インデックスを使わずライブスキャンして図番インデックスを上書きする。 */
+function refreshOneZuban_(zuban) {
+  var master = scanZubanMaster_(zuban);
+  var scanned = scanPastTroubleFiles_(zuban);
+  var zubanFolder = findZubanFolder_(zuban);
+  upsertZubanIndex_(zuban, {
+    '品名': master.hinmei || '',
+    '得意先コード': master.tokuisaki || '',
+    '検査記録フォルダURL': zubanFolder ? zubanFolder.getUrl() : '',
+    '品質情報リンク': JSON.stringify(scanned.qi),
+    '改善計画書リンク': JSON.stringify(scanned.fk)
+  });
+  invalidateZubanCache_(zuban); // zubanInfoの5分キャッシュも合わせて破棄し、更新をすぐ反映させる
+}
+
+/** 図番インデックスの毎日自動更新トリガーを登録する。GASエディタで1回だけ手動実行すること。 */
+function setupDailyIndexTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'refreshZubanIndex') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('refreshZubanIndex')
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .create();
+  Logger.log('毎日3時台にrefreshZubanIndexを実行するトリガーを登録しました');
 }
