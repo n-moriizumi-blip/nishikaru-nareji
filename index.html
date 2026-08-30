@@ -1154,12 +1154,38 @@
       .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   }
 
-  function fileToBase64(file) {
+  function fileToBase64(fileOrBlob) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onload = function () { resolve(reader.result.split(',')[1]); };
       reader.onerror = reject;
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(fileOrBlob);
+    });
+  }
+
+  // スマホ・タブレットのカメラで撮った写真はそのままだと数MBあり、Base64化して1リクエストで
+  // 送ろうとすると通信が不安定な環境で失敗しやすい（"Failed to fetch"）。アップロード前に
+  // 長辺1600pxまで縮小・JPEG圧縮する。何らかの理由で縮小に失敗した場合は元のファイルのまま送る。
+  function resizeImageForUpload_(file) {
+    var maxDimension = 1600;
+    var quality = 0.8;
+    return new Promise(function (resolve) {
+      if (!file.type || file.type.indexOf('image/') !== 0) { resolve(file); return; }
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale) || 1;
+        var h = Math.round(img.height * scale) || 1;
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) { resolve(blob || file); }, 'image/jpeg', quality);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
     });
   }
 
@@ -1173,14 +1199,18 @@
     input.addEventListener('change', function (e) {
       var file = e.target.files[0];
       if (!file || !currentZubanData) return;
-      label.textContent = 'アップロード中…';
-      fileToBase64(file).then(function (base64) {
-        return fetch(GAS_API_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-            action: 'uploadPhoto', zuban: currentZubanData.zuban,
-            filename: file.name, mimeType: file.type, dataBase64: base64
-          })
+      label.textContent = '画像を処理しています…';
+      resizeImageForUpload_(file).then(function (uploadBlob) {
+        label.textContent = 'アップロード中…';
+        return fileToBase64(uploadBlob).then(function (base64) {
+          var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+          return fetch(GAS_API_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'uploadPhoto', zuban: currentZubanData.zuban,
+              filename: filename, mimeType: uploadBlob.type || 'image/jpeg', dataBase64: base64
+            })
+          });
         });
       }).then(function (r) { return r.json(); })
         .then(function (res) {
