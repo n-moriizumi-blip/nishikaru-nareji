@@ -345,8 +345,8 @@
         <div class="mini-field"><label>日付（自動）</label><input type="text" id="qiDateDisplay" disabled></div>
       </div>
 
-      <div id="specKensaSection" class="hidden">
-        <div class="section-label">共通情報｜検査項目（検査部署のみ編集・図番ごとに1件、上書き）</div>
+      <div id="specCommonSection" class="hidden">
+        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>検査記録の添付</label>
           <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
@@ -375,10 +375,6 @@
             <button type="button" class="chip">無</button>
           </div>
         </div>
-      </div>
-
-      <div id="specCommonSection" class="hidden">
-        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>キーエンス測定</label>
           <div class="chip-row" data-group="keyence" data-field="キーエンス測定">
@@ -386,10 +382,6 @@
             <button type="button" class="chip">無</button>
           </div>
         </div>
-      </div>
-
-      <div id="specSeisanSection" class="hidden">
-        <div class="section-label">共通情報｜生産管理項目（生産管理課のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>カット品</label>
           <div class="chip-row" data-group="cutSample" data-field="カット品">
@@ -1375,29 +1367,21 @@
     document.getElementById('qiStatus').textContent = '';
 
     var spec = currentZubanData.shippingSpec || {};
-    var showKensa = currentRole === 'kensa' || currentAllAccess;
-    var showSeisan = currentRole === 'seisan' || currentAllAccess;
+    var showCommon = currentRole === 'kensa' || currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
-    var showCommon = showKensa || showSeisan;
     var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentAllAccess;
 
-    document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
-    document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
-    document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !(showKensa || showCommon || showSeisan));
+    document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !showCommon);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
 
-    if (showKensa) {
+    if (showCommon) {
       setChipValue('inspRecord', spec['検査記録の添付']);
       setChipValue('millSheet', spec['ミルシート']);
       setChipValue('tray', spec['トレー梱包']);
       setChipValue('ngSample', spec['NG限度見本']);
-    }
-    if (showCommon) {
       setChipValue('keyence', spec['キーエンス測定']);
-    }
-    if (showSeisan) {
       setChipValue('cutSample', spec['カット品']);
       setChipValue('testPiece', spec['テストピース']);
       setChipValue('gauge', spec['借用ゲージ有無']);
@@ -1490,23 +1474,13 @@
   }
 
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
-    var fields = {};
-    if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
-      fields['検査記録の添付'] = getChipValue('inspRecord');
-      fields['ミルシート'] = getChipValue('millSheet');
-      fields['トレー梱包'] = getChipValue('tray');
-      fields['NG限度見本'] = getChipValue('ngSample');
-    }
-    if (!document.getElementById('specCommonSection').classList.contains('hidden')) {
-      fields['キーエンス測定'] = getChipValue('keyence');
-    }
-    if (!document.getElementById('specSeisanSection').classList.contains('hidden')) {
-      fields['カット品'] = getChipValue('cutSample');
-      fields['テストピース'] = getChipValue('testPiece');
-      fields['借用ゲージ有無'] = getChipValue('gauge');
-      fields['借用ゲージ種類'] = document.getElementById('gaugeDetailInput').value;
-    }
-    saveShippingSpecFields(fields, '共通情報');
+    saveShippingSpecFields({
+      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
+      'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
+      'キーエンス測定': getChipValue('keyence'),
+      'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
+      '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
+    }, '共通情報');
   });
   document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
