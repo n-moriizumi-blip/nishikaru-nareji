@@ -1,0 +1,31 @@
+name: Deploy GAS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gas/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials
+        run: echo "$CLASPRC_JSON" > ~/.clasprc.json
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+
+      - name: Push and deploy to GAS
+        working-directory: gas
+        run: |
+          clasp push --force
+          clasp deploy --deploymentId AKfycbzqgdS5B5jlg5M11acnfkQAhfk_8Rso7R70CQ37LGUqVMakL9MQva1Dn_sm8p3Upo-a --description "Auto-deploy via GitHub Actions ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
