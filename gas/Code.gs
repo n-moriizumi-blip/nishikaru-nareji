@@ -1182,8 +1182,21 @@ function diagnoseZubanIndexDuplicates() {
     }
   });
 
-  Logger.log('=== 進捗状況照会側の「3624100」表記ゆれ確認 ===');
+  Logger.log('=== 実際のパイプライン関数を直接呼んで「3624100」を追跡 ===');
+  var allZubans = listAllKnownZubans_();
+  var occurrences = allZubans.filter(function (z) { return z === '3624100'; });
+  Logger.log('listAllKnownZubans_()内の"3624100"の出現回数: ' + occurrences.length + '（全' + allZubans.length + '件中）');
+
+  var already = loadIndexedZubanSet_();
+  Logger.log('loadIndexedZubanSet_()で already["3624100"] = ' + already['3624100']);
+  Logger.log('  Object.keys(already).length = ' + Object.keys(already).length);
+
+  var foundRow = findZubanIndexRow_('3624100');
+  Logger.log('findZubanIndexRow_("3624100") = ' + (foundRow ? JSON.stringify(foundRow) : 'null（見つからず）'));
+
+  Logger.log('=== 進捗状況照会内で、接頭辞を外すと"3624100"になる生の値 ===');
   var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  var rawCount = 0;
   ss.getSheets().forEach(function (sheet2) {
     var lastRow = sheet2.getLastRow();
     var lastCol = sheet2.getLastColumn();
@@ -1195,11 +1208,15 @@ function diagnoseZubanIndexDuplicates() {
     var vals2 = sheet2.getRange(2, col2 + 1, lastRow - 1, 1).getValues();
     vals2.forEach(function (row2, idx2) {
       var v = row2[0];
-      if (v && String(v).trim() === '3624100') {
-        Logger.log('  タブ「' + sheet2.getName() + '」行' + (idx2 + 2) + ': raw=' + JSON.stringify(v) + ' typeof=' + (typeof v));
+      if (v && stripZubanPrefix_(v) === '3624100') {
+        rawCount++;
+        if (rawCount <= 5) {
+          Logger.log('  タブ「' + sheet2.getName() + '」行' + (idx2 + 2) + ': raw=' + JSON.stringify(v) + ' typeof=' + (typeof v));
+        }
       }
     });
   });
+  Logger.log('該当する生の行の総数: ' + rawCount);
 }
 
 /** 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。 */
