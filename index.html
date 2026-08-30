@@ -132,8 +132,8 @@
     background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
   }
   .tip-card img.tip-photo { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
-  .tip-card .tip-photos { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; }
-  .tip-card .tip-photos img.tip-photo { flex: 0 0 auto; width: 120px; margin-bottom: 0; }
+  .tip-card .tip-photos { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 6px; scroll-snap-type: x mandatory; }
+  .tip-card .tip-photos img.tip-photo { flex: 0 0 88%; max-width: 88%; margin-bottom: 0; scroll-snap-align: start; }
 
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
