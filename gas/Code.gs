@@ -292,9 +292,16 @@ function lookupZubanMaster_(zuban) {
   return master;
 }
 
-/** lookupZubanMaster_のインデックスを使わない版。インデックス自体の再構築（refreshOneZuban_）で使う。 */
+/**
+ * lookupZubanMaster_のインデックスを使わない版。インデックス自体の再構築（refreshOneZuban_）で使う。
+ * 「進捗状況照会」の品番(図番)列には、社内不良(KP)・客先クレーム(CC)関連の作業行だけ
+ * 「KP 」「CC 」という接頭辞が付くことがある（stripZubanPrefix_の説明を参照）。図番から逆引きする
+ * ここでは、接頭辞付きの値でも見つけられるよう両方の形で探す（2026-08-30、実データで発覚・修正）。
+ */
 function scanZubanMaster_(zuban) {
-  var row = findIproRowByColumn_('品番(図番）', zuban) || findIproRowByColumn_('品番(図番)', zuban);
+  var row = findIproRowByColumn_('品番(図番）', zuban) || findIproRowByColumn_('品番(図番)', zuban) ||
+    findIproRowByColumn_('品番(図番）', 'KP ' + zuban) || findIproRowByColumn_('品番(図番)', 'KP ' + zuban) ||
+    findIproRowByColumn_('品番(図番）', 'CC ' + zuban) || findIproRowByColumn_('品番(図番)', 'CC ' + zuban);
   if (!row) return { hinmei: null, tokuisaki: null };
   return { hinmei: row['品名'] || null, tokuisaki: row['得意先コード'] || null };
 }
@@ -663,6 +670,22 @@ function findRowIndexById_(sheet, idCol, id) {
   return -1;
 }
 
+/**
+ * URLからDriveファイルIDを取り出し、ゴミ箱に移動する（完全削除ではなく、誤操作時に復元できるように）。
+ * ファイルが既に無い等のエラーは無視する（孤立ファイルの掃除が主目的で、失敗しても投稿の更新・削除自体は
+ * 妨げたくないため）。
+ */
+function trashDriveFileByUrl_(url) {
+  if (!url) return;
+  var m = /\/d\/([^/]+)/.exec(String(url));
+  if (!m) return;
+  try {
+    DriveApp.getFileById(m[1]).setTrashed(true);
+  } catch (e) {
+    // ファイルが見つからない等は無視
+  }
+}
+
 function updatePostById_(sheetName, postId, fields) {
   if (!postId) return { error: 'postId is required' };
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
@@ -670,6 +693,18 @@ function updatePostById_(sheetName, postId, fields) {
   var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
   if (rowNum === -1) return { error: '投稿が見つかりません' };
   var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
+
+  // 写真が新しいものに差し替えられた場合、Drive上の古い写真ファイルが孤立して残らないようゴミ箱へ移動する。
+  if (Object.prototype.hasOwnProperty.call(fields, '写真URL')) {
+    var photoCol = header.indexOf('写真URL');
+    if (photoCol !== -1) {
+      var oldPhotoUrl = sheet.getRange(rowNum, photoCol + 1).getValue();
+      if (oldPhotoUrl && oldPhotoUrl !== fields['写真URL']) {
+        trashDriveFileByUrl_(oldPhotoUrl);
+      }
+    }
+  }
+
   Object.keys(fields).forEach(function (key) {
     var col = header.indexOf(key);
     if (col !== -1) sheet.getRange(rowNum, col + 1).setValue(fields[key]);
@@ -685,6 +720,14 @@ function deletePostById_(sheetName, postId) {
   var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
   if (rowNum === -1) return { error: '投稿が見つかりません' };
   var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
+
+  // 投稿削除時、写真が添付されていればDrive上のファイルもゴミ箱へ移動する（孤立ファイル防止）。
+  var photoCol = header.indexOf('写真URL');
+  if (photoCol !== -1) {
+    var photoUrl = sheet.getRange(rowNum, photoCol + 1).getValue();
+    if (photoUrl) trashDriveFileByUrl_(photoUrl);
+  }
+
   sheet.deleteRow(rowNum);
   invalidateZubanCache_(zuban);
   return { ok: true };
@@ -856,16 +899,56 @@ function findZubanFolder_(zuban) {
 }
 
 /**
+ * 図番フォルダが無い場合、得意先名から既存の会社名フォルダを探し、その下に図番フォルダを新規作成する
+ * （2026-08-30追加、ユーザー提案）。
+ *
+ * 会社名の完全一致のみで探す（前方一致は一度実装したが、実データで「松永精密」→
+ * 「松永精密工業 KSP75-FP-007479(3)-003-01 マグネットキャッチ 不適合改善計画書」という
+ * 別図番の改善計画書フォルダを会社フォルダと誤認識し、無関係な場所に図番フォルダを作ってしまう
+ * 事故が発生したため、2026-08-30に完全一致のみに変更した）。
+ * 完全一致が見つからない場合は自動作成をあきらめ、エラーを返す（想定外の場所に新しいフォルダを
+ * 作って既存の置き場所と混同・分散するより、作成できない方が安全なため）。
+ */
+function findExistingCompanyFolder_(companyName) {
+  var nameEsc = String(companyName).replace(/'/g, "\\'");
+  var exact = driveFilesList_(
+    "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+  );
+  return exact.length > 0 ? exact[0] : null;
+}
+
+/** 得意先コードから得意先名を引く（「進捗状況照会」に得意先コード・得意先名が同じ行に揃っているため）。 */
+function lookupTokuisakiName_(tokuisakiCode) {
+  if (!tokuisakiCode) return null;
+  var rows = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, '得意先コード', tokuisakiCode);
+  return rows.length > 0 ? (rows[0]['得意先名'] || null) : null;
+}
+
+/** 図番フォルダが無い場合に、既存の会社名フォルダの下へ新規作成を試みる。作れなければnullを返す。 */
+function createZubanFolderIfCompanyKnown_(zuban) {
+  var master = scanZubanMaster_(zuban);
+  var tokuisakiName = lookupTokuisakiName_(master.tokuisaki);
+  if (!tokuisakiName) return null;
+  var companyFolderMeta = findExistingCompanyFolder_(tokuisakiName);
+  if (!companyFolderMeta) return null;
+  var companyFolder = DriveApp.getFolderById(companyFolderMeta.id);
+  return companyFolder.createFolder(zuban);
+}
+
+/**
  * 写真アップロード（③ツール配置メモ・⑤品質情報記録の写真添付欄）。
  * 図番フォルダ（検査記録／社名／図番／）配下の「写真」サブフォルダに保存する。
- * 図番フォルダがまだ存在しない場合（検査記録が未作成の図番）はエラーを返す
- * （社名フォルダの自動作成は、得意先コード→社名の対応表が未整備のため未実装。TODO）。
+ * 図番フォルダがまだ存在しない場合は、既存の会社名フォルダが見つかれば自動作成する
+ * （createZubanFolderIfCompanyKnown_）。会社名フォルダ自体が見つからない場合はエラーを返す。
  */
 function uploadPhoto_(payload) {
   if (!payload.zuban || !payload.dataBase64) return { error: 'zuban and dataBase64 are required' };
   var zubanFolder = findZubanFolder_(payload.zuban);
   if (!zubanFolder) {
-    return { error: 'この図番の検査記録フォルダが見つからないため、写真を保存できません（図番: ' + payload.zuban + '）' };
+    zubanFolder = createZubanFolderIfCompanyKnown_(payload.zuban);
+  }
+  if (!zubanFolder) {
+    return { error: 'この図番の検査記録フォルダが見つからず、自動作成もできませんでした（得意先が特定できないか、既存の会社名フォルダが見つかりません）。図番: ' + payload.zuban };
   }
   var photoFiles = driveFilesList_(
     "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
