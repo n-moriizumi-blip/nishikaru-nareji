@@ -1189,8 +1189,11 @@ function testImageExtractionViaXlsx() {
   ids.forEach(function (id) {
     Logger.log('=== ' + id + ' ===');
     try {
-      var file = DriveApp.getFileById(id);
-      var xlsxBlob = file.getAs('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      var url = 'https://docs.google.com/spreadsheets/d/' + id + '/export?format=xlsx';
+      var resp = UrlFetchApp.fetch(url, {
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+      });
+      var xlsxBlob = resp.getBlob();
       Logger.log('xlsx変換サイズ=' + xlsxBlob.getBytes().length);
       var entries = Utilities.unzip(xlsxBlob);
       var mediaEntries = entries.filter(function (e) { return e.getName().indexOf('xl/media/') === 0; });
