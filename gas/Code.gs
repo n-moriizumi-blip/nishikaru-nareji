@@ -1196,7 +1196,7 @@ function listAllKnownZubans_() {
  */
 var QUALITY_INFO_LABEL_TOKENS_ = ['品質情報', '外観ランク', '得意先', '図番', '品名'];
 var QUALITY_INFO_RANK_VALUES_ = ['A', 'B', 'C', 'D', 'E'];
-var QUALITY_INFO_DATE_RE_ = /^'?(\d{2,4})[.\/](\d{1,2})[.\/](\d{1,2})/;
+var QUALITY_INFO_DATE_RE_ = /^[\s　・\-◆●○□■]*'?(\d{2,4})[.\/](\d{1,2})[.\/](\d{1,2})/;
 
 /** SHEET_QUALITY_LOGに「移行元ファイルID」列を追加する（既存シート用、初回のみ手動実行）。 */
 function addMigrationSourceColumn() {
@@ -1262,6 +1262,21 @@ function parseQualityInfoDate_(text) {
  * 戻り値: { error } または { zuban, rank, hinmei, entries: [{ timestamp, content }] }
  *         entries が空配列＝未使用の空テンプレート（本文なし）。
  */
+function normalizeQualityInfoToken_(s) {
+  return String(s).replace(/[\s　]+/g, '');
+}
+
+/**
+ * セルの値を比較・格納用の文字列に変換する。日付型セル（Sheets側で日付として認識された値）は
+ * Dateオブジェクトで返ってくるため、そのままString()するとDate.toString()の英語表記
+ * （"Mon Jul 27 2026 16:00:00 GMT+0900..."）になってしまい、日付らしき行の検出に失敗する。
+ * 必ずyyyy/MM/dd形式の文字列に揃える。
+ */
+function qualityInfoCellToText_(raw) {
+  if (raw instanceof Date) return Utilities.formatDate(raw, 'Asia/Tokyo', 'yyyy/MM/dd');
+  return String(raw).trim();
+}
+
 function parseQualityInfoSpreadsheet_(file, lastUpdatedDate) {
   var zuban = extractZubanFromQualityInfoTitle_(file.name);
   if (!zuban) return { error: '図番をファイル名から特定できません' };
@@ -1278,48 +1293,49 @@ function parseQualityInfoSpreadsheet_(file, lastUpdatedDate) {
   if (lastRow < 1 || lastCol < 1) return { zuban: zuban, rank: '', hinmei: '', entries: [] };
   var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
 
-  var excludeValues = {};
-  QUALITY_INFO_LABEL_TOKENS_.forEach(function (t) { excludeValues[t] = true; });
-  excludeValues[zuban] = true;
+  var excludeTokens = {};
+  QUALITY_INFO_LABEL_TOKENS_.forEach(function (t) { excludeTokens[normalizeQualityInfoToken_(t)] = true; });
+  excludeTokens[normalizeQualityInfoToken_(zuban)] = true;
 
   var rank = '';
   var hinmei = '';
+  var labelRows = {}; // 「図番」「得意先」「品名」ラベルが実際に存在する行番号（この行は丸ごと除外する）
   for (var r = 0; r < values.length; r++) {
     for (var c = 0; c < values[r].length; c++) {
       var raw = values[r][c];
       if (raw === '' || raw === null) continue;
-      var v = String(raw).trim();
-      if (v === '図番' && c + 1 < values[r].length) excludeValues[String(values[r][c + 1]).trim()] = true;
+      var v = qualityInfoCellToText_(raw);
+      if (v === '図番' || v === '得意先' || v === '品名') labelRows[r] = true;
+      if (v === '図番' && c + 1 < values[r].length) excludeTokens[normalizeQualityInfoToken_(values[r][c + 1])] = true;
       if (v === '品名' && c + 1 < values[r].length) {
-        hinmei = String(values[r][c + 1]).trim();
-        excludeValues[hinmei] = true;
+        hinmei = qualityInfoCellToText_(values[r][c + 1]);
+        excludeTokens[normalizeQualityInfoToken_(hinmei)] = true;
       }
       if (!rank && r < 6 && QUALITY_INFO_RANK_VALUES_.indexOf(v) !== -1) rank = v;
     }
   }
-  if (rank) excludeValues[rank] = true;
+  if (rank) excludeTokens[normalizeQualityInfoToken_(rank)] = true;
 
-  // 得意先名（会社名）はマージセルの都合で同じ行に複数回現れるため、
-  // 「得意先」ラベルと同じ行にある文字列（品名の値以外）はまとめて除外する。
-  for (var r2 = 0; r2 < values.length; r2++) {
-    var rowHasLabel = false;
-    for (var c2 = 0; c2 < values[r2].length; c2++) {
-      if (String(values[r2][c2]).trim() === '得意先') { rowHasLabel = true; break; }
-    }
-    if (!rowHasLabel) continue;
-    values[r2].forEach(function (x) {
-      var v2 = String(x).trim();
-      if (v2 && v2 !== '得意先' && v2 !== '品名' && v2 !== hinmei) excludeValues[v2] = true;
+  // 得意先名（会社名）は「図番」「得意先」ラベルの行にまたがってマージされているため、
+  // どちらかのラベルが存在する行は、ラベル自体・品名の値以外の文字列をまとめて除外する。
+  Object.keys(labelRows).forEach(function (rowIndexStr) {
+    var row = values[Number(rowIndexStr)];
+    row.forEach(function (x) {
+      if (x === '' || x === null) return;
+      var v2 = qualityInfoCellToText_(x);
+      if (v2 && v2 !== '図番' && v2 !== '得意先' && v2 !== '品名' && v2 !== hinmei) {
+        excludeTokens[normalizeQualityInfoToken_(v2)] = true;
+      }
     });
-  }
+  });
 
   var cells = [];
   for (var r3 = 0; r3 < values.length; r3++) {
     for (var c3 = 0; c3 < values[r3].length; c3++) {
       var raw3 = values[r3][c3];
       if (raw3 === '' || raw3 === null || raw3 === undefined) continue;
-      var v3 = String(raw3).trim();
-      if (!v3 || excludeValues[v3]) continue;
+      var v3 = qualityInfoCellToText_(raw3);
+      if (!v3 || excludeTokens[normalizeQualityInfoToken_(v3)]) continue;
       cells.push(v3);
     }
   }
