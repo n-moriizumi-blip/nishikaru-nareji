@@ -1193,7 +1193,7 @@ function testImageExtractionViaXlsx() {
       var resp = UrlFetchApp.fetch(url, {
         headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
       });
-      var xlsxBlob = resp.getBlob();
+      var xlsxBlob = resp.getBlob().setContentType('application/zip');
       Logger.log('xlsx変換サイズ=' + xlsxBlob.getBytes().length);
       var entries = Utilities.unzip(xlsxBlob);
       var mediaEntries = entries.filter(function (e) { return e.getName().indexOf('xl/media/') === 0; });
