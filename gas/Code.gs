@@ -3,7 +3,9 @@
  * DBスプレッドシート: 1wmPkFZ-EdtUQchWlVGspeclP3yHbO9YyViAM5AraQj0
  *
  * デプロイ後の確認手順は加工ナレッジ/CLAUDE.mdの「デプロイ・動作確認の手順」に準拠。
- * setupSheets_ はタブ構成を作る一回限りの関数。GASエディタで手動実行すること。
+ * setupSheets はタブ構成を作る一回限りの関数。GASエディタで手動実行すること。
+ * gas/への変更はmainにpushすればGitHub Actionsが自動でclasp push/deployする
+ * （.github/workflows/deploy-gas.yml、2026-08-30導入）。
  */
 
 var SHEET_QUALITY_LOG = '品質情報記録ログ';
