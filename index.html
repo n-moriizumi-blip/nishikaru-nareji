@@ -1426,7 +1426,12 @@
         if (editingQiId === row['投稿ID']) cancelEditQualityLog();
         return refreshZubanData();
       })
-      .then(function () { renderQualityLogSection(currentZubanData); })
+      .then(function () {
+        // 削除した投稿は「自部署の品質情報」（②）と「過去トラ」（共有された投稿、②）の
+        // どちらに表示されていたか呼び出し元だけでは判別しないため、両方を再描画する。
+        renderQualityLogSection(currentZubanData);
+        renderPastTroubleDisplay(currentZubanData);
+      })
       .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   }
 
