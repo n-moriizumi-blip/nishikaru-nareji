@@ -828,12 +828,23 @@ function uploadPhoto_(payload) {
  * 図番インデックスを最新化する（2026-08-30追加）。時間主導トリガーから1日1回呼ばれる想定。
  * 全件スキャンではなく、既にインデックス済みの図番だけを再チェックする
  * （新規に検索されたことのない図番はここでは追加しない。初回スキャン時に自動でインデックスされるため）。
- * GASの実行時間制限（6分）に収まるよう、時間を超えたら打ち切って次回の実行に委ねる。
+ * 例えば「1回目の検査時点では検査記録フォルダ・品質情報が無かったが、後から作成された」ケースも、
+ * この再チェックで拾われて図番インデックスに反映される。
+ *
+ * GASの実行時間制限（6分）に収まるよう、時間切れなら2分後に自身を再実行して続きから再開する
+ * （seedZubanIndexと同じ仕組み）。図番インデックスの件数が多い場合、1日の実行だけでは
+ * 全件を再チェックしきれないことがあるが、続きは翌日の実行が同じ再開ロジックで拾う。
  * setupDailyIndexTriggerを1回実行してトリガー登録すること。
  */
 function refreshZubanIndex() {
   var startTime = Date.now();
   var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  // 前回、時間切れで自分自身を再実行するために予約した一時トリガー（今動いているのでもう不要）だけを消す。
+  // 毎日3時台に実行される本来のトリガーはハンドラー名が同じでも別トリガーなので、これでは消えない。
+  deleteTriggerById_(props.getProperty('refreshZubanIndexContinuationTriggerId'));
+  props.deleteProperty('refreshZubanIndexContinuationTriggerId');
 
   var zubanSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   if (!zubanSheet || zubanSheet.getLastRow() < 2) {
@@ -843,18 +854,30 @@ function refreshZubanIndex() {
   var header = zubanSheet.getRange(1, 1, 1, zubanSheet.getLastColumn()).getValues()[0];
   var zubanCol = header.indexOf('図番');
   var rows = zubanSheet.getDataRange().getValues();
+
+  var cursor = Number(props.getProperty('refreshZubanIndexCursor') || '1');
+  if (cursor < 1 || cursor >= rows.length) cursor = 1; // 前回で最後まで終わっていたら最初の行から
+
   var refreshed = 0;
-  for (var i = 1; i < rows.length; i++) {
-    if (Date.now() - startTime > maxRunMs) {
-      Logger.log('実行時間の上限に近づいたため打ち切り（' + refreshed + '件更新、残り' + (rows.length - i) + '件は次回に持ち越し）');
-      break;
-    }
+  var i;
+  for (i = cursor; i < rows.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
     var zuban = rows[i][zubanCol];
     if (!zuban) continue;
     refreshOneZuban_(zuban);
     refreshed++;
   }
-  Logger.log('図番インデックス更新完了: ' + refreshed + '件');
+
+  if (i < rows.length) {
+    props.setProperty('refreshZubanIndexCursor', String(i));
+    var t = ScriptApp.newTrigger('refreshZubanIndex').timeBased().after(2 * 60 * 1000).create();
+    props.setProperty('refreshZubanIndexContinuationTriggerId', t.getUniqueId());
+    Logger.log('実行時間の上限のため中断（今回' + refreshed + '件更新、' + i + '/' + (rows.length - 1) + '。2分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('refreshZubanIndexCursor');
+  Logger.log('図番インデックス更新完了: ' + refreshed + '件（全' + (rows.length - 1) + '件）');
 }
 
 /** 指定した図番1件分を、インデックスを使わずライブスキャンして図番インデックスを上書きする。 */
@@ -880,7 +903,18 @@ function setupDailyIndexTrigger() {
     .everyDays(1)
     .atHour(3)
     .create();
-  Logger.log('毎日3時台にrefreshZubanIndexを実行するトリガーを登録しました');
+
+  // seedZubanIndexも毎日実行する。「進捗状況照会」に新しく増えた図番（新規受注等）を、
+  // 誰かが初めてスキャンするより前に索引化しておくため（ユーザー提案、2026-08-30）。
+  // refreshZubanIndexと時間帯をずらし、同時にDrive/I-PROへ負荷をかけないようにする。
+  deleteTriggersByHandler_('seedZubanIndex');
+  ScriptApp.newTrigger('seedZubanIndex')
+    .timeBased()
+    .everyDays(1)
+    .atHour(4)
+    .create();
+
+  Logger.log('毎日3時台にrefreshZubanIndex、4時台にseedZubanIndexを実行するトリガーを登録しました');
 }
 
 /**
@@ -899,36 +933,66 @@ function seedZubanIndex() {
   var maxRunMs = 5 * 60 * 1000;
   var props = PropertiesService.getScriptProperties();
 
+  // 前回、時間切れで自分自身を再実行するために予約した一時トリガー（今動いているのでもう不要）だけを消す。
+  // 毎日4時台に実行される本来のトリガーはハンドラー名が同じでも別トリガーなので、これでは消えない。
+  deleteTriggerById_(props.getProperty('seedZubanIndexContinuationTriggerId'));
+  props.deleteProperty('seedZubanIndexContinuationTriggerId');
+
   var allZubans = listAllKnownZubans_();
-  var cursor = Number(props.getProperty('seedZubanIndexCursor') || '0');
+  var already = loadIndexedZubanSet_(); // 図番インデックスを1回だけ読み込んでSetにする（毎回全件チェックしても軽い）
 
   var processed = 0;
   var skipped = 0;
-  var i;
-  for (i = cursor; i < allZubans.length; i++) {
-    if (Date.now() - startTime > maxRunMs) break;
+  var remaining = 0;
+  for (var i = 0; i < allZubans.length; i++) {
     var zuban = allZubans[i];
-    if (findZubanIndexRow_(zuban)) { skipped++; continue; } // 既にインデックス済みならスキップ
+    if (already[zuban]) { skipped++; continue; }
+    if (Date.now() - startTime > maxRunMs) { remaining++; continue; } // 時間切れ後は件数だけ数える
     refreshOneZuban_(zuban);
+    already[zuban] = true;
     processed++;
   }
 
-  if (i < allZubans.length) {
-    props.setProperty('seedZubanIndexCursor', String(i));
-    deleteTriggersByHandler_('seedZubanIndex');
-    ScriptApp.newTrigger('seedZubanIndex').timeBased().after(2 * 60 * 1000).create();
-    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、' + i + '/' + allZubans.length + '。2分後に自動で続きを実行します）');
+  if (remaining > 0) {
+    var t = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(2 * 60 * 1000).create();
+    props.setProperty('seedZubanIndexContinuationTriggerId', t.getUniqueId());
+    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、残り約' + remaining + '件。2分後に自動で続きを実行します）');
     return;
   }
 
-  props.deleteProperty('seedZubanIndexCursor');
-  deleteTriggersByHandler_('seedZubanIndex');
   Logger.log('図番インデックスの事前作成が完了しました（今回新規' + processed + '件、既存スキップ' + skipped + '件、全' + allZubans.length + '件）');
 }
 
+/** 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。 */
+function loadIndexedZubanSet_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var set = {};
+  if (!sheet || sheet.getLastRow() < 2) return set;
+  var values = sheet.getDataRange().getValues();
+  var header = values[0];
+  var col = header.indexOf('図番');
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][col]) set[values[i][col]] = true;
+  }
+  return set;
+}
+
+/** ハンドラー名が一致するトリガーを全部削除する。setupDailyIndexTriggerでの再登録（意図的な全消し）専用。 */
 function deleteTriggersByHandler_(handlerName) {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === handlerName) ScriptApp.deleteTrigger(t);
+  });
+}
+
+/**
+ * 特定の1つのトリガーだけをユニークIDで削除する。seedZubanIndex/refreshZubanIndexの自己再実行用の
+ * 一時トリガーを消す際に使う（deleteTriggersByHandler_だとハンドラー名が同じ毎日実行トリガーまで
+ * 巻き込んで消してしまうため、こちらを使う必要がある）。
+ */
+function deleteTriggerById_(id) {
+  if (!id) return;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getUniqueId() === id) ScriptApp.deleteTrigger(t);
   });
 }
 
