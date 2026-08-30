@@ -1169,3 +1169,60 @@ function listAllKnownZubans_() {
   });
   return out;
 }
+
+/**
+ * 【調査用・一時関数】既存「{図番} 品質情報」スプレッドシートの写真移行を検討するため、
+ * 埋め込み画像がgetImages()（セル上配置の旧方式）とセル内画像（CellImage、新方式）の
+ * どちらで格納されているか、実データで確認する。GASエディタで手動実行し、
+ * 「実行数」→ログでcell-image/getImagesの件数を見て報告すること。確認が終わったら削除する。
+ */
+function testImageExtraction() {
+  var ids = [
+    '1zVY8MZAeNQ5olyFmTrxYhT-coWOIaPgEitiWCLxDz18', // C8550-121B 品質情報
+    '17vvyIkHC0I2PQZkfC5t_PzWHOUcnpaJw2dKaIFLQdCU', // 007454-001-02 品質情報
+    '1MBF_vOAAWp6EO3fymzPTsAbH5jVPSckPYBnterrVdoA'  // AE48690A01 品質情報
+  ];
+  ids.forEach(function (id) {
+    Logger.log('=== ' + id + ' ===');
+    try {
+      var ss = SpreadsheetApp.openById(id);
+      ss.getSheets().forEach(function (sheet) {
+        var images = sheet.getImages();
+        Logger.log(sheet.getName() + ': getImages()件数=' + images.length);
+        images.forEach(function (img, i) {
+          try {
+            var blob = img.getBlob();
+            Logger.log('  [floating image ' + i + '] anchor=' + img.getAnchorCell().getA1Notation() +
+              ' size=' + img.getWidth() + 'x' + img.getHeight() +
+              ' blobType=' + blob.getContentType() + ' blobBytes=' + blob.getBytes().length);
+          } catch (e2) {
+            Logger.log('  [floating image ' + i + '] getBlob失敗: ' + e2);
+          }
+        });
+
+        var lastRow = sheet.getLastRow();
+        var lastCol = sheet.getLastColumn();
+        var cellImageCount = 0;
+        if (lastRow > 0 && lastCol > 0) {
+          var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+          for (var r = 0; r < values.length; r++) {
+            for (var c = 0; c < values[r].length; c++) {
+              var v = values[r][c];
+              if (v && typeof v === 'object' && typeof v.getContentUrl === 'function') {
+                cellImageCount++;
+                var contentUrl = null, sourceUrl = null;
+                try { contentUrl = v.getContentUrl(); } catch (e3) {}
+                try { sourceUrl = v.getUrl(); } catch (e4) {}
+                Logger.log('  [cell image] row' + (r + 1) + ' col' + (c + 1) +
+                  ' contentUrl=' + contentUrl + ' sourceUrl=' + sourceUrl);
+              }
+            }
+          }
+        }
+        Logger.log(sheet.getName() + ': セル内画像件数=' + cellImageCount);
+      });
+    } catch (e) {
+      Logger.log('ERROR: ' + e);
+    }
+  });
+}
