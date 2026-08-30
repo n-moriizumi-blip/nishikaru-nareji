@@ -562,24 +562,34 @@ function findZubanIndexRow_(zuban) {
   return null;
 }
 
-/** fieldsに渡したキーだけ更新する（他の既存フィールドはそのまま残す）。図番の行が無ければ新規追加。 */
+/**
+ * fieldsに渡したキーだけ更新する（他の既存フィールドはそのまま残す）。図番の行が無ければ新規追加。
+ * 読み取り→書き込みの間にLockServiceで排他制御し、実行が重なっても重複行ができないようにする
+ * （2026-08-30、図番インデックスに大量の重複行が発生した問題への対処の一環）。
+ */
 function upsertZubanIndex_(zuban, fields) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
-  var values = sheet.getDataRange().getValues();
-  var header = values[0];
-  var col = header.indexOf('図番');
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][col]) === String(zuban)) {
-      var existing = rowToObject_(header, values[i]);
-      var merged = Object.assign({}, existing, fields, { '更新日時': new Date() });
-      var updatedRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
-      sheet.getRange(i + 1, 1, 1, header.length).setValues([updatedRow]);
-      return;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+    var values = sheet.getDataRange().getValues();
+    var header = values[0];
+    var col = header.indexOf('図番');
+    for (var i = 1; i < values.length; i++) {
+      if (String(values[i][col]) === String(zuban)) {
+        var existing = rowToObject_(header, values[i]);
+        var merged = Object.assign({}, existing, fields, { '更新日時': new Date() });
+        var updatedRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
+        sheet.getRange(i + 1, 1, 1, header.length).setValues([updatedRow]);
+        return;
+      }
     }
+    var merged2 = Object.assign({ '図番': zuban }, fields, { '更新日時': new Date() });
+    var newRow = header.map(function (h) { return merged2[h] !== undefined ? merged2[h] : ''; });
+    sheet.appendRow(newRow);
+  } finally {
+    lock.releaseLock();
   }
-  var merged2 = Object.assign({ '図番': zuban }, fields, { '更新日時': new Date() });
-  var newRow = header.map(function (h) { return merged2[h] !== undefined ? merged2[h] : ''; });
-  sheet.appendRow(newRow);
 }
 
 /**
@@ -1141,82 +1151,61 @@ function resumeSeedZubanIndex() {
 }
 
 /**
- * 【調査用・一時関数】図番インデックスに大量の重複行が発生している原因調査（2026-08-30）。
- * 見た目は同じ図番でも、末尾の空白等の表記ゆれがあると完全一致の重複チェックをすり抜けて
- * 別行として追加されてしまう可能性がある。図番インデックス内の重複候補（trim後は同じだが
- * 生の値が違うもの）と、進捗状況照会側で同じ問題が起きていないかをJSON.stringifyで
- * 可視化して報告する。データは一切変更しない。確認が終わったら削除する。
+ * 図番インデックスの重複行を整理する（2026-08-30、進捗状況照会の10分更新による0落ち混在で
+ * 発生した大量重複行への対処）。canonicalizeNumericZuban_で数字だけの図番を正式表記に
+ * 統一した上でグループ化し、同じ図番のグループは一番更新日時が新しい行だけを残して他を削除する。
+ * GASエディタで手動実行。完了後にresumeSeedZubanIndex()で再開すること。
  */
-function diagnoseZubanIndexDuplicates() {
+function dedupeZubanIndex() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   var values = sheet.getDataRange().getValues();
   var header = values[0];
   var col = header.indexOf('図番');
+  var updatedCol = header.indexOf('更新日時');
 
-  var byTrimmed = {};
+  var rawZubans = [];
   for (var i = 1; i < values.length; i++) {
-    var raw = values[i][col];
+    if (values[i][col]) rawZubans.push(String(values[i][col]));
+  }
+  var canonicalize = canonicalizeNumericZuban_(rawZubans);
+
+  var groups = {}; // 正式な図番 -> values配列上のindexのリスト
+  for (var i2 = 1; i2 < values.length; i2++) {
+    var raw = values[i2][col];
     if (!raw) continue;
-    var trimmed = String(raw).trim();
-    if (!byTrimmed[trimmed]) byTrimmed[trimmed] = [];
-    byTrimmed[trimmed].push(raw);
+    var c = canonicalize(String(raw));
+    if (!groups[c]) groups[c] = [];
+    groups[c].push(i2);
   }
 
-  Logger.log('=== 図番インデックス: trim後は同じだが生の値が複数種類あるもの ===');
-  var suspectCount = 0;
-  Object.keys(byTrimmed).forEach(function (trimmed) {
-    var raws = byTrimmed[trimmed];
-    var uniqueRaws = {};
-    raws.forEach(function (r) { uniqueRaws[JSON.stringify(r)] = (uniqueRaws[JSON.stringify(r)] || 0) + 1; });
-    if (Object.keys(uniqueRaws).length > 1) {
-      suspectCount++;
-      Logger.log(trimmed + '（' + raws.length + '行）: ' + JSON.stringify(uniqueRaws));
-    }
-  });
-  Logger.log('表記ゆれ疑いのある図番: ' + suspectCount + '種類');
-
-  Logger.log('=== 図番インデックス: trim後は同じ値で、単純に行数が多いもの（表記ゆれではなく単純重複の可能性） ===');
-  Object.keys(byTrimmed).forEach(function (trimmed) {
-    if (byTrimmed[trimmed].length >= 5) {
-      Logger.log(trimmed + ': ' + byTrimmed[trimmed].length + '行、生の値の例=' + JSON.stringify(byTrimmed[trimmed][0]));
-    }
-  });
-
-  Logger.log('=== 実際のパイプライン関数を直接呼んで「3624100」を追跡 ===');
-  var allZubans = listAllKnownZubans_();
-  var occurrences = allZubans.filter(function (z) { return z === '3624100'; });
-  Logger.log('listAllKnownZubans_()内の"3624100"の出現回数: ' + occurrences.length + '（全' + allZubans.length + '件中）');
-
-  var already = loadIndexedZubanSet_();
-  Logger.log('loadIndexedZubanSet_()で already["3624100"] = ' + already['3624100']);
-  Logger.log('  Object.keys(already).length = ' + Object.keys(already).length);
-
-  var foundRow = findZubanIndexRow_('3624100');
-  Logger.log('findZubanIndexRow_("3624100") = ' + (foundRow ? JSON.stringify(foundRow) : 'null（見つからず）'));
-
-  Logger.log('=== 進捗状況照会内で、接頭辞を外すと"3624100"になる生の値 ===');
-  var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
-  var rawCount = 0;
-  ss.getSheets().forEach(function (sheet2) {
-    var lastRow = sheet2.getLastRow();
-    var lastCol = sheet2.getLastColumn();
-    if (lastRow < 2 || lastCol < 1) return;
-    var header2 = sheet2.getRange(1, 1, 1, lastCol).getValues()[0];
-    var col2 = header2.indexOf('品番(図番)');
-    if (col2 === -1) col2 = header2.indexOf('品番(図番）');
-    if (col2 === -1) return;
-    var vals2 = sheet2.getRange(2, col2 + 1, lastRow - 1, 1).getValues();
-    vals2.forEach(function (row2, idx2) {
-      var v = row2[0];
-      if (v && stripZubanPrefix_(v) === '3624100') {
-        rawCount++;
-        if (rawCount <= 5) {
-          Logger.log('  タブ「' + sheet2.getName() + '」行' + (idx2 + 2) + ': raw=' + JSON.stringify(v) + ' typeof=' + (typeof v));
-        }
+  var rowsToDelete = [];
+  var rowsToRenormalize = [];
+  Object.keys(groups).forEach(function (canonical) {
+    var idxList = groups[canonical];
+    if (idxList.length === 1) {
+      if (String(values[idxList[0]][col]) !== canonical) {
+        rowsToRenormalize.push({ sheetRow: idxList[0] + 1, canonical: canonical });
       }
+      return;
+    }
+    idxList.sort(function (a, b) {
+      var da = values[a][updatedCol] ? new Date(values[a][updatedCol]).getTime() : 0;
+      var db = values[b][updatedCol] ? new Date(values[b][updatedCol]).getTime() : 0;
+      return db - da; // 新しい順
     });
+    var keepIdx = idxList[0];
+    rowsToRenormalize.push({ sheetRow: keepIdx + 1, canonical: canonical });
+    idxList.slice(1).forEach(function (dupIdx) { rowsToDelete.push(dupIdx + 1); });
   });
-  Logger.log('該当する生の行の総数: ' + rawCount);
+
+  rowsToRenormalize.forEach(function (u) {
+    sheet.getRange(u.sheetRow, col + 1).setValue(u.canonical);
+  });
+
+  rowsToDelete.sort(function (a, b) { return b - a; }); // 行番号が大きい順に削除（後続行のズレ防止）
+  rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+
+  Logger.log('図番インデックスの重複整理が完了しました。削除' + rowsToDelete.length + '行、表記統一' + rowsToRenormalize.length + '行（統合後の図番数: ' + Object.keys(groups).length + '）');
 }
 
 /** 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。 */
@@ -1253,10 +1242,33 @@ function deleteTriggerById_(id) {
 }
 
 /** 「進捗状況照会」の全タブから「品番(図番)」列の値を重複なく集める（＝実在する図番の一覧）。 */
+/**
+ * 数字だけの図番は、進捗状況照会が10分ごとの外部連携更新でセルがテキスト（"03624100"）と
+ * 数値（3624100、0落ち）の間で不安定に変わることがあり、そのままだと別の図番として扱われて
+ * 図番インデックスに大量の重複行を生む原因になっていた（2026-08-30に確認）。
+ * 同じ数値になる表記をグループ化し、その中で一番桁が長い（0埋めされた）表記を正式な図番として
+ * 統一するための正規化関数を返す。数字以外の図番はそのまま。
+ */
+function canonicalizeNumericZuban_(rawList) {
+  var byInt = {};
+  rawList.forEach(function (z) {
+    if (/^\d+$/.test(z)) {
+      var key = String(parseInt(z, 10));
+      if (!byInt[key] || z.length > byInt[key].length) byInt[key] = z;
+    }
+  });
+  return function (z) {
+    if (/^\d+$/.test(z)) {
+      var key = String(parseInt(z, 10));
+      return byInt[key] || z;
+    }
+    return z;
+  };
+}
+
 function listAllKnownZubans_() {
   var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
-  var seen = {};
-  var out = [];
+  var raw = [];
   ss.getSheets().forEach(function (sheet) {
     var lastRow = sheet.getLastRow();
     var lastCol = sheet.getLastColumn();
@@ -1268,8 +1280,16 @@ function listAllKnownZubans_() {
     var values = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues();
     values.forEach(function (row) {
       var z = stripZubanPrefix_(row[0]);
-      if (z && !seen[z]) { seen[z] = true; out.push(z); }
+      if (z) raw.push(z);
     });
+  });
+
+  var canonicalize = canonicalizeNumericZuban_(raw);
+  var seen = {};
+  var out = [];
+  raw.forEach(function (z) {
+    var c = canonicalize(z);
+    if (!seen[c]) { seen[c] = true; out.push(c); }
   });
   return out;
 }
