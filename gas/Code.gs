@@ -24,6 +24,10 @@ var IPRO_PROGRESS_SPREADSHEET_ID = '1F9Iu5t62WDW5lg_eeEa6XW9ngCUJ2DmXTKjqd5oXrac
 // 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
 var ORG_MASTER_SPREADSHEET_ID = '1fffjE_bwrzswvRO62U0OHwvqrs5b_UuSV5IbudUMxec';
 
+// Google OAuthクライアントID（index.htmlのGOOGLE_CLIENT_IDと同じ値）。IDトークンのサーバー側検証で、
+// 他アプリ向けに発行されたトークンを受け付けないようaudクレームと突き合わせるのに使う。
+var OAUTH_CLIENT_ID = '800178947678-t49i9pr40ci70th6dgpuslfr4dldqjqh.apps.googleusercontent.com';
+
 // 動作確認用：全部署の画面にアクセスできるアカウント（本来の役割による出し分けとは別に、確認のため常時allAccess:trueを返す）。
 var ALL_ACCESS_EMAILS = ['n-moriizumi@nishikaru.co.jp'];
 
@@ -569,32 +573,79 @@ function upsertZubanIndex_(zuban, fields) {
   sheet.appendRow(newRow);
 }
 
+/**
+ * GoogleのIDトークンをサーバー側で検証し、検証済みのメールアドレス・氏名を返す（2026-08-30追加）。
+ * これまではクライアント側でJWTをデコードしただけの値（`payload.userEmail`/`userName`）を
+ * そのまま信用していたため、理論上は誰でもfetch()を直接叩いて他人になりすまして投稿できた。
+ * 投稿者の身元を記録する系のAPI（postQualityLog_/postToolMemo_/saveToolPositions_/
+ * saveShippingSpec_）は、この検証を通った値だけを信用するようにする。
+ * GAS単体でJWTの署名検証を実装するのは煩雑なため、Google公式のtokeninfoエンドポイントを使う
+ * （検証はGoogle側で行われ、結果としてデコード済みのクレームが返る）。
+ */
+function verifyIdToken_(idToken) {
+  if (!idToken) return { error: 'ログインが必要です（IDトークンがありません）' };
+  var res;
+  try {
+    res = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true }
+    );
+  } catch (e) {
+    return { error: 'ログイン情報の確認に失敗しました: ' + String(e) };
+  }
+  if (res.getResponseCode() !== 200) {
+    return { error: 'ログイン情報が無効です。再度サインインしてからお試しください。' };
+  }
+  var claims = JSON.parse(res.getContentText());
+  if (claims.aud !== OAUTH_CLIENT_ID) {
+    return { error: 'ログイン情報が無効です（対象アプリが一致しません）' };
+  }
+  if (claims.email_verified !== 'true' && claims.email_verified !== true) {
+    return { error: 'メールアドレスが確認されていません' };
+  }
+  if (!claims.email || claims.email.toLowerCase().indexOf('@nishikaru.co.jp') === -1) {
+    return { error: '社内アカウントでのログインが必要です' };
+  }
+  return { email: claims.email, name: claims.name || claims.email };
+}
+
+/** payload.idTokenを検証し、成功したら検証済みidentityを渡してfnを実行する。失敗時はエラーをそのまま返す。 */
+function withVerifiedIdentity_(payload, fn) {
+  var identity = verifyIdToken_(payload.idToken);
+  if (identity.error) return identity;
+  return fn(identity);
+}
+
 /** 品質情報記録の投稿（⑤画面）。承認フローなし、送信したら即座に反映。 */
 function postQualityLog_(payload) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
-  var id = Utilities.getUuid();
-  sheet.appendRow([
-    id, new Date(), payload.zuban, payload.department,
-    payload.userEmail, payload.userName,
-    payload.rank || '', payload.content || '', payload.photoUrl || '',
-    !!payload.shared
-  ]);
-  invalidateZubanCache_(payload.zuban);
-  return { id: id };
+  return withVerifiedIdentity_(payload, function (identity) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+    var id = Utilities.getUuid();
+    sheet.appendRow([
+      id, new Date(), payload.zuban, payload.department,
+      identity.email, identity.name,
+      payload.rank || '', payload.content || '', payload.photoUrl || '',
+      !!payload.shared
+    ]);
+    invalidateZubanCache_(payload.zuban);
+    return { id: id };
+  });
 }
 
 /** ツール配置メモの投稿（③画面）。承認フローなし。 */
 function postToolMemo_(payload) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
-  var id = Utilities.getUuid();
-  sheet.appendRow([
-    id, new Date(), payload.zuban,
-    payload.userEmail, payload.userName,
-    payload.content || '', payload.photoUrl || '',
-    !!payload.shared
-  ]);
-  invalidateZubanCache_(payload.zuban);
-  return { id: id };
+  return withVerifiedIdentity_(payload, function (identity) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
+    var id = Utilities.getUuid();
+    sheet.appendRow([
+      id, new Date(), payload.zuban,
+      identity.email, identity.name,
+      payload.content || '', payload.photoUrl || '',
+      !!payload.shared
+    ]);
+    invalidateZubanCache_(payload.zuban);
+    return { id: id };
+  });
 }
 
 /**
@@ -661,43 +712,47 @@ function deleteQualityLog_(payload) {
 
 /** ツール配置ポジションの保存（③編集画面）。図番の既存行を全削除してから書き直す（上書き）。 */
 function saveToolPositions_(payload) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
-  deleteRowsByZuban_(sheet, payload.zuban);
-  var now = new Date();
-  (payload.positions || []).forEach(function (p) {
-    sheet.appendRow([
-      payload.zuban, p.column, p.order, p.tNumber, p.description,
-      payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
-      payload.toolStorage || '', payload.forwardPosition || '',
-      payload.userEmail, now
-    ]);
+  return withVerifiedIdentity_(payload, function (identity) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+    deleteRowsByZuban_(sheet, payload.zuban);
+    var now = new Date();
+    (payload.positions || []).forEach(function (p) {
+      sheet.appendRow([
+        payload.zuban, p.column, p.order, p.tNumber, p.description,
+        payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
+        payload.toolStorage || '', payload.forwardPosition || '',
+        identity.email, now
+      ]);
+    });
+    invalidateZubanCache_(payload.zuban);
+    return { ok: true };
   });
-  invalidateZubanCache_(payload.zuban);
-  return { ok: true };
 }
 
 /** 出荷仕様の保存（⑤画面の各セクション）。図番ごとに1行、上書き更新。 */
 function saveShippingSpec_(payload) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
-  var rows = sheet.getDataRange().getValues();
-  var header = rows[0];
-  var zubanCol = header.indexOf('図番');
-  var rowIndex = -1;
-  for (var i = 1; i < rows.length; i++) {
-    if (rows[i][zubanCol] === payload.zuban) { rowIndex = i; break; }
-  }
-  var existing = rowIndex >= 0 ? rowToObject_(header, rows[rowIndex]) : { '図番': payload.zuban };
-  var merged = Object.assign({}, existing, payload.fields || {});
-  merged['最終更新者メール'] = payload.userEmail;
-  merged['最終更新日時'] = new Date();
-  var newRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
-  if (rowIndex >= 0) {
-    sheet.getRange(rowIndex + 1, 1, 1, header.length).setValues([newRow]);
-  } else {
-    sheet.appendRow(newRow);
-  }
-  invalidateZubanCache_(payload.zuban);
-  return { ok: true };
+  return withVerifiedIdentity_(payload, function (identity) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+    var rows = sheet.getDataRange().getValues();
+    var header = rows[0];
+    var zubanCol = header.indexOf('図番');
+    var rowIndex = -1;
+    for (var i = 1; i < rows.length; i++) {
+      if (rows[i][zubanCol] === payload.zuban) { rowIndex = i; break; }
+    }
+    var existing = rowIndex >= 0 ? rowToObject_(header, rows[rowIndex]) : { '図番': payload.zuban };
+    var merged = Object.assign({}, existing, payload.fields || {});
+    merged['最終更新者メール'] = identity.email;
+    merged['最終更新日時'] = new Date();
+    var newRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
+    if (rowIndex >= 0) {
+      sheet.getRange(rowIndex + 1, 1, 1, header.length).setValues([newRow]);
+    } else {
+      sheet.appendRow(newRow);
+    }
+    invalidateZubanCache_(payload.zuban);
+    return { ok: true };
+  });
 }
 
 function deleteRowsByZuban_(sheet, zuban) {

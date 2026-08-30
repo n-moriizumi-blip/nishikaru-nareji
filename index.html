@@ -507,9 +507,10 @@
   }
 
   function handleCredentialResponse(response) {
-    // TODO: 本番ではidTokenをGAS側に送って検証すること（今はクライアント側でデコードして表示するだけ）。
+    // 表示用にクライアント側でもデコードするが、投稿系APIの身元確認にはidToken自体をサーバーに送り、
+    // GAS側でGoogleのtokeninfoエンドポイントを使って検証する（2026-08-30、サーバー側検証を実装）。
     var payload = decodeJwtPayload(response.credential);
-    currentUser = { email: payload.email, name: payload.name };
+    currentUser = { email: payload.email, name: payload.name, idToken: response.credential };
     document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
     fetchRole();
   }
@@ -1101,7 +1102,7 @@
       cycleTime: document.getElementById('cycleTimeInput').value,
       toolStorage: document.getElementById('toolStorageInput').value,
       forwardPosition: document.getElementById('forwardPositionInput').value,
-      userEmail: currentUser.email
+      idToken: currentUser.idToken
     };
 
     document.getElementById('toolsStatus').textContent = '保存しています…';
@@ -1281,7 +1282,7 @@
     var isEdit = !!editingMemoId;
     var payload = isEdit
       ? { action: 'updateToolMemo', postId: editingMemoId, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked }
-      : { action: 'postToolMemo', zuban: currentZubanData.zuban, userEmail: currentUser.email, userName: currentUser.name, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
+      : { action: 'postToolMemo', zuban: currentZubanData.zuban, idToken: currentUser.idToken, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -1440,7 +1441,7 @@
     document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しています…';
     fetch(GAS_API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, userEmail: currentUser.email })
+      body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, idToken: currentUser.idToken })
     }).then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + res.error; return Promise.reject(); }
@@ -1487,7 +1488,7 @@
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban,
           department: currentSection || (currentRole === 'kensa' ? '検査' : 'その他'),
-          userEmail: currentUser.email, userName: currentUser.name,
+          idToken: currentUser.idToken,
           rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
           shared: document.getElementById('qiShareCheck').checked
         };
