@@ -191,6 +191,16 @@ function invalidateZubanCache_(zuban) {
  * インデックスに書き込む（1製番に図番が複数見つかるケースはインデックス化しない。稀なケースであり、
  * 常にライブスキャンで正しく複数候補を出したいため）。
  */
+/**
+ * 「進捗状況照会」の品番(図番)列には、社内不良(KP)・客先クレーム(CC)関連の改善計画書が
+ * 紐づく作業行だけ、先頭に"KP "/"CC "という注記が付くことがある（実データで確認、2026-08-30。
+ * 例：「KP 210-404133-1」）。これは実際のDriveフォルダ名やI-Pro Source側の値には出てこない、
+ * 進捗状況照会シート内だけの注記のため、図番として扱う際は取り除く。
+ */
+function stripZubanPrefix_(value) {
+  return String(value || '').replace(/^(KP|CC)\s+/, '');
+}
+
 function resolveZubanFromSeiban_(seiban) {
   if (!seiban) return { error: 'seiban is required' };
 
@@ -207,7 +217,7 @@ function resolveZubanFromSeiban_(seiban) {
   if (rows.length === 0) return { found: false, seiban: seiban };
   var candidates = rows.map(function (row) {
     return {
-      zuban: row['品番(図番）'] || row['品番(図番)'],
+      zuban: stripZubanPrefix_(row['品番(図番）'] || row['品番(図番)']),
       hinmei: row['品名'],
       tokuisakiCode: row['得意先コード']
     };
@@ -864,13 +874,82 @@ function refreshOneZuban_(zuban) {
 
 /** 図番インデックスの毎日自動更新トリガーを登録する。GASエディタで1回だけ手動実行すること。 */
 function setupDailyIndexTrigger() {
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'refreshZubanIndex') ScriptApp.deleteTrigger(t);
-  });
+  deleteTriggersByHandler_('refreshZubanIndex');
   ScriptApp.newTrigger('refreshZubanIndex')
     .timeBased()
     .everyDays(1)
     .atHour(3)
     .create();
   Logger.log('毎日3時台にrefreshZubanIndexを実行するトリガーを登録しました');
+}
+
+/**
+ * 図番インデックスを事前に一括で埋める（2026-08-30追加、ユーザー提案）。
+ * 「進捗状況照会」に載っている図番（＝I-PROに実在する図番の全量）のうち、まだ図番インデックスに
+ * 無いものを順番に検索し、検査記録フォルダ・品質情報・改善計画書が実在するかを調べて記録する。
+ * これにより、初めてスキャンされる図番でも即座に結果を返せるようになる。
+ *
+ * GASの実行時間制限（6分）があるため、件数が多いと1回では終わらないことがある。
+ * その場合はPropertiesServiceに進捗（どこまで処理したか）を保存し、2分後に自分自身を
+ * 再実行するトリガーを自動登録するので、GASエディタで1回実行すれば、あとは放置で完了する。
+ * 完了すると実行ログに「事前作成が完了しました」と出る（実行トリガーの実行数からも進捗を確認できる）。
+ */
+function seedZubanIndex() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  var allZubans = listAllKnownZubans_();
+  var cursor = Number(props.getProperty('seedZubanIndexCursor') || '0');
+
+  var processed = 0;
+  var skipped = 0;
+  var i;
+  for (i = cursor; i < allZubans.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
+    var zuban = allZubans[i];
+    if (findZubanIndexRow_(zuban)) { skipped++; continue; } // 既にインデックス済みならスキップ
+    refreshOneZuban_(zuban);
+    processed++;
+  }
+
+  if (i < allZubans.length) {
+    props.setProperty('seedZubanIndexCursor', String(i));
+    deleteTriggersByHandler_('seedZubanIndex');
+    ScriptApp.newTrigger('seedZubanIndex').timeBased().after(2 * 60 * 1000).create();
+    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、' + i + '/' + allZubans.length + '。2分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('seedZubanIndexCursor');
+  deleteTriggersByHandler_('seedZubanIndex');
+  Logger.log('図番インデックスの事前作成が完了しました（今回新規' + processed + '件、既存スキップ' + skipped + '件、全' + allZubans.length + '件）');
+}
+
+function deleteTriggersByHandler_(handlerName) {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === handlerName) ScriptApp.deleteTrigger(t);
+  });
+}
+
+/** 「進捗状況照会」の全タブから「品番(図番)」列の値を重複なく集める（＝実在する図番の一覧）。 */
+function listAllKnownZubans_() {
+  var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  var seen = {};
+  var out = [];
+  ss.getSheets().forEach(function (sheet) {
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var col = header.indexOf('品番(図番)');
+    if (col === -1) col = header.indexOf('品番(図番）');
+    if (col === -1) return;
+    var values = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues();
+    values.forEach(function (row) {
+      var z = stripZubanPrefix_(row[0]);
+      if (z && !seen[z]) { seen[z] = true; out.push(z); }
+    });
+  });
+  return out;
 }
