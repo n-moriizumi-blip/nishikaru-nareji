@@ -258,7 +258,7 @@
       </div>
 
       <div id="shippingSpecWrap" style="display:none;">
-        <div class="section-label">出荷仕様</div>
+        <div class="section-label">共通情報</div>
         <div id="shippingSpecList" class="tool-view-spec"></div>
       </div>
 
@@ -346,7 +346,7 @@
       </div>
 
       <div id="specKensaSection" class="hidden">
-        <div class="section-label">出荷仕様｜検査項目（検査部署のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label">共通情報｜検査項目（検査部署のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>検査記録の添付</label>
           <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
@@ -375,11 +375,23 @@
             <button type="button" class="chip">無</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">出荷仕様（検査項目）を保存する</button>
+        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">共通情報（検査項目）を保存する</button>
+      </div>
+
+      <div id="specCommonSection" class="hidden">
+        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
+        <div class="field">
+          <label>キーエンス測定</label>
+          <div class="chip-row" data-group="keyence" data-field="キーエンス測定">
+            <button type="button" class="chip">有</button>
+            <button type="button" class="chip">無</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="specCommonSaveBtn">共通情報（共通項目）を保存する</button>
       </div>
 
       <div id="specSeisanSection" class="hidden">
-        <div class="section-label">出荷仕様｜生産管理項目（生産管理課のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label">共通情報｜生産管理項目（生産管理課のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>カット品</label>
           <div class="chip-row" data-group="cutSample" data-field="カット品">
@@ -405,7 +417,7 @@
           <label>ゲージの種類（自由入力）</label>
           <input type="text" id="gaugeDetailInput" placeholder="例：限界ピンゲージ φ8.0">
         </div>
-        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">出荷仕様（生産管理項目）を保存する</button>
+        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">共通情報（生産管理項目）を保存する</button>
       </div>
 
       <div id="specShukkaSection" class="hidden">
@@ -791,6 +803,7 @@
   // 過去トラの確認有無に関わらず②画面に常に表示する。
   var SHIPPING_SPEC_LABELS = [
     ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
+    ['キーエンス測定', 'キーエンス測定'],
     ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
     ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
   ];
@@ -1312,19 +1325,23 @@
   });
 
   // ==== ⑤ 品質情報記録 ====
-  var CHIP_DEFAULTS = {
-    inspRecord: '要', millSheet: '不要', tray: '50個入り', ngSample: '有',
-    cutSample: '不要', testPiece: '不要', gauge: '無'
-  };
   var pendingQiPhotoUrl = '';
 
+  // チップは「未選択」も正しい状態として扱う（保存前の既定値を勝手に選択済みにしない）。
+  // 選択中のチップをもう一度押すと未選択に戻る。
   function wireChipRow(row) {
     var chips = row.querySelectorAll('.chip');
     chips.forEach(function (chip) {
       chip.addEventListener('click', function () {
-        chips.forEach(function (c) { c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+        var alreadyPressed = chip.getAttribute('aria-pressed') === 'true';
+        chips.forEach(function (c) { c.setAttribute('aria-pressed', 'false'); });
+        var newValue = '';
+        if (!alreadyPressed) {
+          chip.setAttribute('aria-pressed', 'true');
+          newValue = chip.textContent;
+        }
         if (row.getAttribute('data-group') === 'gauge') {
-          document.getElementById('gaugeDetailField').classList.toggle('hidden', chip.textContent !== '有');
+          document.getElementById('gaugeDetailField').classList.toggle('hidden', newValue !== '有');
         }
       });
     });
@@ -1334,7 +1351,7 @@
   function setChipValue(groupKey, value) {
     var row = document.querySelector('.chip-row[data-group="' + groupKey + '"]');
     if (!row) return;
-    var v = value || CHIP_DEFAULTS[groupKey];
+    var v = value || '';
     row.querySelectorAll('.chip').forEach(function (c) {
       c.setAttribute('aria-pressed', c.textContent === v ? 'true' : 'false');
     });
@@ -1362,9 +1379,11 @@
     var showKensa = currentRole === 'kensa' || currentAllAccess;
     var showSeisan = currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
+    var showCommon = showKensa || showSeisan;
     var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentAllAccess;
 
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
+    document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
@@ -1374,6 +1393,9 @@
       setChipValue('millSheet', spec['ミルシート']);
       setChipValue('tray', spec['トレー梱包']);
       setChipValue('ngSample', spec['NG限度見本']);
+    }
+    if (showCommon) {
+      setChipValue('keyence', spec['キーエンス測定']);
     }
     if (showSeisan) {
       setChipValue('cutSample', spec['カット品']);
@@ -1471,13 +1493,16 @@
     saveShippingSpecFields({
       '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
       'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample')
-    }, '出荷仕様（検査項目）');
+    }, '共通情報（検査項目）');
+  });
+  document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({ 'キーエンス測定': getChipValue('keyence') }, '共通情報（共通項目）');
   });
   document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
       '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
-    }, '出荷仕様（生産管理項目）');
+    }, '共通情報（生産管理項目）');
   });
   document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({

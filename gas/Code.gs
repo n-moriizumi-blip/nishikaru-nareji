@@ -55,7 +55,7 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_SHIPPING_SPEC, [
     '図番',
-    '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本',
+    '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本', 'キーエンス測定',
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
     '梱包方法', 'その他必要事項',
     '最終更新者メール', '最終更新日時'
@@ -1209,6 +1209,22 @@ function addMigrationSourceColumn() {
   }
   sheet.getRange(1, lastCol + 1).setValue('移行元ファイルID');
   Logger.log('「移行元ファイルID」列を追加しました');
+}
+
+/** SHEET_SHIPPING_SPECに「キーエンス測定」列を追加する（既存シート用、初回のみ手動実行）。 */
+function addKeyenceColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('キーエンス測定') !== -1) {
+    Logger.log('既に追加済みです');
+    return;
+  }
+  var ngCol = header.indexOf('NG限度見本');
+  var insertAt = ngCol !== -1 ? ngCol + 2 : lastCol + 1; // NG限度見本の直後（1始まり列番号）
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('キーエンス測定');
+  Logger.log('「キーエンス測定」列を追加しました');
 }
 
 function ensureMigrationPreviewSheet_() {
