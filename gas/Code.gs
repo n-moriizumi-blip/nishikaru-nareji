@@ -1035,8 +1035,14 @@ function refreshZubanIndex() {
     if (Date.now() - startTime > maxRunMs) break;
     var zuban = rows[i][zubanCol];
     if (!zuban) continue;
-    refreshOneZuban_(zuban);
-    refreshed++;
+    try {
+      refreshOneZuban_(zuban);
+      refreshed++;
+    } catch (e) {
+      // Drive APIの一時的なエラー等で1件失敗しても、処理全体を止めず次に進む（2026-08-30）。
+      // 失敗した図番はここではスキップされるが、次回の全体再実行時に改めて対象になる。
+      Logger.log('図番「' + zuban + '」の更新中にエラー（スキップして続行）: ' + e);
+    }
   }
 
   if (i < rows.length) {
@@ -1129,20 +1135,36 @@ function seedZubanIndex() {
   var processed = 0;
   var skipped = 0;
   var remaining = 0;
+  var errored = 0;
   for (var i = 0; i < allZubans.length; i++) {
     var zuban = allZubans[i];
     var key = numericZubanKey_(zuban);
     if (already[key]) { skipped++; continue; }
     if (Date.now() - startTime > maxRunMs) { remaining++; continue; } // 時間切れ後は件数だけ数える
-    refreshOneZuban_(zuban);
-    already[key] = true;
-    processed++;
+    try {
+      refreshOneZuban_(zuban);
+      already[key] = true;
+      processed++;
+    } catch (e) {
+      // Drive APIの一時的なエラー（"Empty response"等）で処理全体が止まり、次の自動継続の
+      // 予約すらされなくなる不具合があったため（2026-08-30）、1件のエラーで全体を巻き込まない
+      // ようにする。already[key]は立てないので、次回の実行で自動的に再試行される。
+      errored++;
+      Logger.log('図番「' + zuban + '」の処理中にエラー（次回再試行します）: ' + e);
+    }
   }
 
   if (remaining > 0) {
     var t = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(60 * 1000).create();
     props.setProperty('seedZubanIndexContinuationTriggerId', t.getUniqueId());
-    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、残り約' + remaining + '件。1分後に自動で続きを実行します）');
+    Logger.log('実行時間の上限のため中断（今回' + processed + '件処理、エラー' + errored + '件、残り約' + remaining + '件。1分後に自動で続きを実行します）');
+    return;
+  }
+
+  if (errored > 0) {
+    var t2 = ScriptApp.newTrigger('seedZubanIndex').timeBased().after(60 * 1000).create();
+    props.setProperty('seedZubanIndexContinuationTriggerId', t2.getUniqueId());
+    Logger.log('今回新規' + processed + '件、エラー' + errored + '件（1分後に再試行します）、既存スキップ' + skipped + '件、全' + allZubans.length + '件');
     return;
   }
 
