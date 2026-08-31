@@ -15,12 +15,12 @@ var SHEET_SHIPPING_SPEC = '出荷仕様';
 var SHEET_ZUBAN_INDEX = '図番インデックス';
 var SHEET_SEIBAN_INDEX = '製番インデックス';
 
-// I-PRO同期データ。2026-08-14に列構成を確認済み：
-// 工場番号／製造番号／材料手配区分／得意先コード／品番(図番）／品名／担当者／…（60列、約1.4MB、全件）
-var IPRO_SOURCE_SPREADSHEET_ID = '1g-NnnSgGyS_5oIINuUfvNi7_o7iWPik6aL0HmoL5VO4';
 // 「進捗状況照会」共有スプレッドシート。製造番号・品番(図番)・品名・得意先コード・得意先名が
-// 同じ行に揃っており、I-Pro Sourceの約1/10のサイズ（約145KB）。ユーザー提案(2026-08-30)により、
-// こちらを優先的に検索し、見つからない場合のみI-Pro Sourceにフォールバックする。
+// 同じ行に揃っているI-PRO同期データ。以前は見つからない場合に大きい「I-Pro Source」（全件、
+// 約1.4MB・60列）へフォールバックしていたが、実質同じデータでフォールバック先で見つかることは
+// ほぼ無く、存在しない図番の検索のたびに数十秒かかる原因になっていたため2026-08-31に廃止し、
+// こちらのみを見る方式にした（ユーザー確認）。どちらも直近数か月の受注分のみの抽出であり、
+// それより古い図番は実在してもヒットしないことがある（仕様上の既知の制約）。
 var IPRO_PROGRESS_SPREADSHEET_ID = '1F9Iu5t62WDW5lg_eeEa6XW9ngCUJ2DmXTKjqd5oXrac';
 
 // 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
@@ -356,15 +356,17 @@ function findIproRowByColumn_(columnName, value) {
 
 /**
  * findIproRowByColumn_ の複数件版。1製番に図番が複数ある場合の検出に使う。
- * まず小さく速い「進捗状況照会」（製造番号・品番(図番)・品名・得意先が同じ行に揃っている）を探し、
- * 見つからない場合のみ大きい「I-Pro Source」（全件、約10倍のサイズ）にフォールバックする
- * （ユーザー提案、2026-08-30）。
+ * 「進捗状況照会」（製造番号・品番(図番)・品名・得意先が同じ行に揃っている）だけを見る。
+ * 以前は見つからない場合に大きい「I-Pro Source」（全件、約10倍のサイズ）へフォールバック
+ * していたが、進捗状況照会はI-Pro Sourceを集約したもので実質同じデータのため、フォールバック先で
+ * 見つかることはほぼ無いのに、存在しない図番の検索のたびに数十秒かかる原因になっていた。
+ * ユーザー指摘により2026-08-31にフォールバックを廃止（ユーザー確認：進捗状況照会とI-Pro Sourceは
+ * 基本同じデータ。なおどちらも直近数か月の受注分のみの抽出であり、それより古い図番は
+ * 実在してもヒットしないことがある＝仕様上の既知の制約）。
  */
 function findIproRowsByColumn_(columnName, value) {
   if (!value) return [];
-  var fromProgress = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, columnName, value);
-  if (fromProgress.length > 0) return fromProgress;
-  return findRowsInSpreadsheet_(IPRO_SOURCE_SPREADSHEET_ID, columnName, value);
+  return findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, columnName, value);
 }
 
 /**
