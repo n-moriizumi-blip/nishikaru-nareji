@@ -64,8 +64,12 @@
   .btn-primary { background: linear-gradient(180deg, #F0AC49, #D98B26); color: #241A0C; border-color: #D98B26; }
   .btn-primary:disabled { background: var(--surface-2); color: var(--ink-soft); border-color: var(--line); cursor: not-allowed; }
   .btn:disabled::after { content: "  🔒"; }
-  .btn-ghost { background: transparent; color: var(--ink-soft); border: 1px dashed var(--line); font-weight: 600; font-size: 0.88rem; min-height: 0; padding: 12px 14px; }
-  .btn-secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); font-size: 0.9rem; padding: 14px 16px; }
+  .btn-ghost { background: transparent; color: var(--ink-soft); border: 1px dashed var(--ink-soft); font-weight: 700; font-size: 0.88rem; min-height: 0; padding: 13px 14px; }
+  .btn-secondary {
+    background: linear-gradient(180deg, #4FB0A6, #348B82); color: #0D211E; border: 1px solid #2E7971;
+    font-size: 0.92rem; font-weight: 700; padding: 14px 16px;
+  }
+  .btn-secondary:disabled { background: var(--surface-2); color: var(--ink-soft); border-color: var(--line); cursor: not-allowed; }
 
   .manual-entry { display: none; flex-direction: column; gap: 10px; }
   .manual-entry.active { display: flex; }
@@ -288,7 +292,7 @@
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
-      <button class="btn btn-secondary" id="backToScanBtn">別の図番を読み取る</button>
+      <button class="btn btn-ghost" id="backToScanBtn">別の図番を読み取る</button>
     </section>
 
     <!-- SCREEN 4: 紙の取込確認 -->
@@ -309,7 +313,7 @@
       <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
       <div class="status-note" id="paperImportStatus"></div>
 
-      <button class="btn btn-secondary" id="paperImportBackBtn" style="margin-top:16px;">過去情報表示に戻る</button>
+      <button class="btn btn-ghost" id="paperImportBackBtn" style="margin-top:16px;">過去情報表示に戻る</button>
     </section>
 
     <!-- SCREEN 3: ツール配置 -->
@@ -380,7 +384,7 @@
       </div>
 
       <div class="status-note" id="toolsStatus"></div>
-      <button class="btn btn-secondary" id="toolsBackBtn">過去情報表示に戻る</button>
+      <button class="btn btn-ghost" id="toolsBackBtn">過去情報表示に戻る</button>
     </section>
 
     <!-- SCREEN 5: 品質情報記録 -->
@@ -510,7 +514,7 @@
       </div>
 
       <div class="status-note" id="qiStatus"></div>
-      <button class="btn btn-secondary" id="qiBackBtn">過去情報表示に戻る</button>
+      <button class="btn btn-ghost" id="qiBackBtn">過去情報表示に戻る</button>
     </section>
   </main>
 </div>
