@@ -60,7 +60,7 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_SHIPPING_SPEC, [
     '図番',
-    '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本', 'キーエンス測定',
+    '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本', 'キーエンス測定', 'キーエンスプログラム名',
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
     '梱包方法', 'その他必要事項',
     '最終更新者メール', '最終更新日時'
@@ -1437,6 +1437,22 @@ function addKeyenceColumn() {
   sheet.insertColumnAfter(insertAt - 1);
   sheet.getRange(1, insertAt).setValue('キーエンス測定');
   Logger.log('「キーエンス測定」列を追加しました');
+}
+
+/** SHEET_SHIPPING_SPECに「キーエンスプログラム名」列を追加する（既存シート用、初回のみ手動実行）。 */
+function addKeyenceProgramColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('キーエンスプログラム名') !== -1) {
+    Logger.log('既に追加済みです');
+    return;
+  }
+  var keyenceCol = header.indexOf('キーエンス測定');
+  var insertAt = keyenceCol !== -1 ? keyenceCol + 2 : lastCol + 1; // キーエンス測定の直後（1始まり列番号）
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('キーエンスプログラム名');
+  Logger.log('「キーエンスプログラム名」列を追加しました');
 }
 
 function ensureMigrationPreviewSheet_() {

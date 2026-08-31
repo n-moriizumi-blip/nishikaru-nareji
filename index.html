@@ -399,10 +399,13 @@
           </div>
         </div>
         <div class="field">
-          <label>トレー梱包（種類は仮。型番未確定）</label>
+          <label>トレー梱包</label>
           <div class="chip-row" data-group="tray" data-field="トレー梱包">
-            <button type="button" class="chip">50個入り</button>
-            <button type="button" class="chip">25個入り</button>
+            <button type="button" class="chip">G-050-3</button>
+            <button type="button" class="chip">5-912052-2(25個)</button>
+            <button type="button" class="chip">E-080-1</button>
+            <button type="button" class="chip">MT10-4</button>
+            <button type="button" class="chip">MT8-2</button>
           </div>
         </div>
         <div class="field">
@@ -418,6 +421,10 @@
             <button type="button" class="chip">有</button>
             <button type="button" class="chip">無</button>
           </div>
+        </div>
+        <div class="field hidden" id="keyenceProgramField">
+          <label>キーエンス測定のプログラム名（自由入力）</label>
+          <input type="text" id="keyenceProgramInput" placeholder="例：K1001">
         </div>
         <div class="field">
           <label>カット品</label>
@@ -839,7 +846,7 @@
   // 過去トラの確認有無に関わらず②画面に常に表示する。
   var SHIPPING_SPEC_LABELS = [
     ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
-    ['キーエンス測定', 'キーエンス測定'],
+    ['キーエンス測定', 'キーエンス測定'], ['キーエンスプログラム名', 'キーエンスのプログラム名'],
     ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
     ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
   ];
@@ -1508,6 +1515,9 @@
   // ==== ⑤ 品質情報記録 ====
   var pendingQiPhotoUrl = '';
 
+  // 「有」を選んだ時だけ自由入力欄を出すチップ（借用ゲージ／キーエンス測定）のグループキー→欄ID対応。
+  var CHIP_DETAIL_FIELDS = { gauge: 'gaugeDetailField', keyence: 'keyenceProgramField' };
+
   // チップは「未選択」も正しい状態として扱う（保存前の既定値を勝手に選択済みにしない）。
   // 選択中のチップをもう一度押すと未選択に戻る。
   function wireChipRow(row) {
@@ -1521,8 +1531,9 @@
           chip.setAttribute('aria-pressed', 'true');
           newValue = chip.textContent;
         }
-        if (row.getAttribute('data-group') === 'gauge') {
-          document.getElementById('gaugeDetailField').classList.toggle('hidden', newValue !== '有');
+        var detailFieldId = CHIP_DETAIL_FIELDS[row.getAttribute('data-group')];
+        if (detailFieldId) {
+          document.getElementById(detailFieldId).classList.toggle('hidden', newValue !== '有');
         }
       });
     });
@@ -1536,8 +1547,9 @@
     row.querySelectorAll('.chip').forEach(function (c) {
       c.setAttribute('aria-pressed', c.textContent === v ? 'true' : 'false');
     });
-    if (groupKey === 'gauge') {
-      document.getElementById('gaugeDetailField').classList.toggle('hidden', v !== '有');
+    var detailFieldId = CHIP_DETAIL_FIELDS[groupKey];
+    if (detailFieldId) {
+      document.getElementById(detailFieldId).classList.toggle('hidden', v !== '有');
     }
   }
 
@@ -1572,6 +1584,7 @@
       setChipValue('tray', spec['トレー梱包']);
       setChipValue('ngSample', spec['NG限度見本']);
       setChipValue('keyence', spec['キーエンス測定']);
+      document.getElementById('keyenceProgramInput').value = spec['キーエンスプログラム名'] || '';
       setChipValue('cutSample', spec['カット品']);
       setChipValue('testPiece', spec['テストピース']);
       setChipValue('gauge', spec['借用ゲージ有無']);
@@ -1667,7 +1680,7 @@
     saveShippingSpecFields({
       '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
       'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
-      'キーエンス測定': getChipValue('keyence'),
+      'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value,
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
       '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
     }, '共通情報');
