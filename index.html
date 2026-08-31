@@ -239,6 +239,7 @@
     <!-- SCREEN 2: 過去情報表示 -->
     <section class="screen" data-screen="history">
       <div class="zuban-header" id="historyZubanHeader"></div>
+      <p class="status-note hidden" id="zubanLoadingNote">読み込み中…</p>
 
       <div id="pastTroubleWrap" style="display:none;">
         <div class="alert-card">
@@ -729,23 +730,29 @@
     pushRecentZuban(zuban);
     setScreen('history');
 
+    // 前の図番の情報（ボタンの有効・無効状態も含む）が新しい図番の読み込み中に残ってしまい、
+    // 「確認しました」にチェックしていないのに操作できてしまう不具合があったため、
+    // 新しい図番の情報が届くまではボタン類を一旦すべて隠す。
+    currentZubanData = null;
+    document.getElementById('confirmCheck').checked = false;
+    updateActionGate();
+
     if (prefetchedData) {
       renderZubanInfo(prefetchedData);
       return;
     }
 
-    document.getElementById('historyZubanHeader').textContent = zuban + '（品名取得は未実装）';
+    document.getElementById('historyZubanHeader').textContent = zuban;
     document.getElementById('pastTroubleWrap').style.display = 'none';
     document.getElementById('freshWrap').style.display = 'none';
     document.getElementById('qualityLogSection').style.display = 'none';
-    document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">読み込み中…</p>';
-    document.getElementById('pastTroubleWrap').style.display = 'block';
+    document.getElementById('zubanLoadingNote').classList.remove('hidden');
 
     fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(zuban))
       .then(function (r) { return r.json(); })
       .then(renderZubanInfo)
       .catch(function (err) {
-        document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">取得に失敗しました: ' + err.message + '</p>';
+        document.getElementById('zubanLoadingNote').textContent = '取得に失敗しました: ' + err.message;
       });
   }
 
@@ -753,8 +760,10 @@
   var currentInspectionFolderUrl = null;
 
   function renderZubanInfo(data) {
+    document.getElementById('zubanLoadingNote').classList.add('hidden');
     if (data.error) {
-      document.getElementById('pastTroubleList').innerHTML = '<p class="status-note">エラー: ' + data.error + '</p>';
+      document.getElementById('zubanLoadingNote').textContent = 'エラー: ' + data.error;
+      document.getElementById('zubanLoadingNote').classList.remove('hidden');
       return;
     }
     currentZubanData = data;
@@ -856,10 +865,12 @@
     var goToolsBtn = document.getElementById('goToolsBtn');
     var goQiBtn = document.getElementById('goQiBtn');
     var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
+    var goPaperImportBtnEl = document.getElementById('goPaperImportBtn');
     if (!currentZubanData) {
       goToolsBtn.classList.add('hidden');
       goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
+      goPaperImportBtnEl.classList.add('hidden');
       return;
     }
     var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
@@ -868,9 +879,8 @@
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
 
-    var goPaperImportBtn = document.getElementById('goPaperImportBtn');
-    goPaperImportBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
-    goPaperImportBtn.disabled = !confirmed;
+    goPaperImportBtnEl.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
+    goPaperImportBtnEl.disabled = !confirmed;
 
     // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
     var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
