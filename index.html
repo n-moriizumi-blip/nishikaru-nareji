@@ -535,6 +535,9 @@
     document.querySelectorAll('.screen').forEach(function (el) {
       el.classList.toggle('active', el.dataset.screen === name);
     });
+    // 画面切り替えは同じページ内でのdisplay切り替えのため、前の画面でスクロールしていた位置が
+    // そのまま残ってしまう（新しい画面がいきなり下の方から表示される）。切り替えるたびに先頭に戻す。
+    window.scrollTo(0, 0);
   }
 
   // ==== ログイン（Google Identity Services） ====
@@ -944,7 +947,8 @@
     goToPaperImport();
   });
   document.getElementById('paperImportBackBtn').addEventListener('click', function () {
-    setScreen('scan');
+    if (currentZubanData) renderPastTroubleDisplay(currentZubanData);
+    setScreen('history');
   });
 
   function zubanLabel(data) {
