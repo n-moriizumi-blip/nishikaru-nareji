@@ -769,6 +769,7 @@
     document.getElementById('pastTroubleWrap').style.display = 'none';
     document.getElementById('freshWrap').style.display = 'none';
     document.getElementById('qualityLogSection').style.display = 'none';
+    document.getElementById('shippingSpecWrap').style.display = 'none';
     document.getElementById('zubanLoadingNote').classList.remove('hidden');
 
     fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(zuban))

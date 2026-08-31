@@ -167,12 +167,22 @@ function getZubanInfo_(zuban, knownMaster) {
   if (cached) return JSON.parse(cached);
 
   // knownMaster（{hinmei, tokuisaki}）が渡された場合はI-PROスキャンを省略する（scanZuban_から使用）。
+  // 未登録の図番（I-PROに存在しない等）でzubanInfoが異常に遅くなる事例が報告されたため、
+  // どの処理に時間がかかっているか特定できるよう時間計測ログを仕込む（5秒超の場合のみ記録、
+  // 通常時のログを埋もれさせないため）。2026-08-31。
+  var t0 = Date.now();
   var master = knownMaster || lookupZubanMaster_(zuban);
+  var t1 = Date.now();
   var pastTrouble = findPastTrouble_(zuban);
+  var t2 = Date.now();
   var qualityLog = readQualityLog_(zuban);
   var toolMemo = readToolMemo_(zuban);
   var toolPositions = readToolPositions_(zuban);
   var shippingSpec = readShippingSpec_(zuban);
+  var t3 = Date.now();
+  if (t3 - t0 > 5000) {
+    Logger.log('getZubanInfo_が遅延（図番:' + zuban + '）: 品名等取得=' + (t1 - t0) + 'ms, 過去トラ検索=' + (t2 - t1) + 'ms, その他読み取り=' + (t3 - t2) + 'ms, 合計=' + (t3 - t0) + 'ms');
+  }
 
   var result = {
     zuban: zuban,
@@ -323,9 +333,14 @@ function lookupZubanMaster_(zuban) {
  * ここでは、接頭辞付きの値でも見つけられるよう両方の形で探す（2026-08-30、実データで発覚・修正）。
  */
 function scanZubanMaster_(zuban) {
-  var row = findIproRowByColumn_('品番(図番）', zuban) || findIproRowByColumn_('品番(図番)', zuban) ||
-    findIproRowByColumn_('品番(図番）', 'KP ' + zuban) || findIproRowByColumn_('品番(図番)', 'KP ' + zuban) ||
-    findIproRowByColumn_('品番(図番）', 'CC ' + zuban) || findIproRowByColumn_('品番(図番)', 'CC ' + zuban);
+  // 表記ゆれ（全角/半角カッコの列名）・接頭辞（KP/CC）ありなしを、以前は6通り総当たりで
+  // 1つずつ別呼び出ししていたため、I-PROに存在しない図番だと6回ともI-Pro Source（大きい方）まで
+  // フォールバックしてしまい、1回のzubanInfoが2分以上かかる不具合があった（2026-08-31、実機ログで確認）。
+  // 列名・値の候補をまとめて渡し、シートの読み込み自体は1回で済むようにした。
+  var row = findIproRowByColumn_(
+    ['品番(図番）', '品番(図番)'],
+    [zuban, 'KP ' + zuban, 'CC ' + zuban]
+  );
   if (!row) return { hinmei: null, tokuisaki: null };
   return { hinmei: row['品名'] || null, tokuisaki: row['得意先コード'] || null };
 }
@@ -353,11 +368,20 @@ function findIproRowsByColumn_(columnName, value) {
 }
 
 /**
- * 指定スプレッドシート内で、指定列が指定値と一致する行をすべて返す（全タブ対象）。
+ * 指定スプレッドシート内で、指定列（表記ゆれ等の候補を配列で渡せる）が指定値（複数候補可）の
+ * いずれかと一致する行をすべて返す（全タブ対象）。columnName/valueは単一の文字列でも配列でもよい
+ * （単一値を渡す既存の呼び出し元とも互換）。
  * パフォーマンス上の注意：目的の列を持たないタブの全データを読み込まない（ヘッダー行だけ先に確認し、
  * 列が無ければ即スキップする）。これが無いと1回の呼び出しに30秒近くかかっていた（2026-08-29計測）。
+ * また列名・値の候補が複数ある場合も、シートの読み込み自体は1回で済むようにしている
+ * （以前は候補の組み合わせごとに毎回シートを開き直しており、I-PROに存在しない図番だと
+ * 数分かかる不具合の原因になっていた。2026-08-31修正）。
  */
-function findRowsInSpreadsheet_(spreadsheetId, columnName, value) {
+function findRowsInSpreadsheet_(spreadsheetId, columnNames, values) {
+  var columnNameList = [].concat(columnNames);
+  var valueSet = {};
+  [].concat(values).forEach(function (v) { valueSet[String(v)] = true; });
+
   var ss = SpreadsheetApp.openById(spreadsheetId);
   var sheets = ss.getSheets();
   var out = [];
@@ -367,12 +391,16 @@ function findRowsInSpreadsheet_(spreadsheetId, columnName, value) {
     var lastCol = sheet.getLastColumn();
     if (lastRow < 2 || lastCol < 1) continue;
     var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    var col = header.indexOf(columnName);
+    var col = -1;
+    for (var c = 0; c < columnNameList.length; c++) {
+      col = header.indexOf(columnNameList[c]);
+      if (col !== -1) break;
+    }
     if (col === -1) continue; // 目的の列が無いタブは全データを読み込まずスキップ
-    var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
-    for (var i = 1; i < values.length; i++) {
-      if (String(values[i][col]) === String(value)) {
-        out.push(rowToObject_(header, values[i]));
+    var rowsValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    for (var i = 1; i < rowsValues.length; i++) {
+      if (valueSet[String(rowsValues[i][col])]) {
+        out.push(rowToObject_(header, rowsValues[i]));
       }
     }
   }
