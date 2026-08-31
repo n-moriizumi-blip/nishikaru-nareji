@@ -288,7 +288,6 @@
 
       <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
         <button class="btn btn-primary hidden" id="goToolsBtn">ツール配置を見る・編集する</button>
-        <button class="btn btn-primary hidden" id="goPaperImportBtn">紙の取込確認（ツールレイアウト表）</button>
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
@@ -313,14 +312,17 @@
       <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
       <div class="status-note" id="paperImportStatus"></div>
 
-      <button class="btn btn-ghost" id="paperImportBackBtn" style="margin-top:16px;">過去情報表示に戻る</button>
+      <button class="btn btn-ghost" id="paperImportBackBtn" style="margin-top:16px;">ツール配置に戻る</button>
     </section>
 
     <!-- SCREEN 3: ツール配置 -->
     <section class="screen" data-screen="tools">
       <div class="tools-header">
         <span class="zuban-inline" id="toolsZubanHeader"></span>
-        <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary" id="goPaperImportBtn">ツールレイアウト表取込</button>
+          <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
+        </div>
       </div>
 
       <div class="tool-view-wrap" id="toolViewWrap">
@@ -892,12 +894,10 @@
     var goToolsBtn = document.getElementById('goToolsBtn');
     var goQiBtn = document.getElementById('goQiBtn');
     var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
-    var goPaperImportBtnEl = document.getElementById('goPaperImportBtn');
     if (!currentZubanData) {
       goToolsBtn.classList.add('hidden');
       goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
-      goPaperImportBtnEl.classList.add('hidden');
       return;
     }
     var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
@@ -905,9 +905,6 @@
 
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
-
-    goPaperImportBtnEl.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
-    goPaperImportBtnEl.disabled = !confirmed;
 
     // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
     var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
@@ -947,8 +944,7 @@
     goToPaperImport();
   });
   document.getElementById('paperImportBackBtn').addEventListener('click', function () {
-    if (currentZubanData) renderPastTroubleDisplay(currentZubanData);
-    setScreen('history');
+    goToTools();
   });
 
   function zubanLabel(data) {
