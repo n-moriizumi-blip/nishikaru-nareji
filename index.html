@@ -1670,22 +1670,38 @@
       .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   }
 
-  function saveShippingSpecFields(fields, statusPrefix) {
+  // statusPrefix用のqiStatusは画面下部にあり長い画面だとボタンから離れて見えないため、
+  // 押したボタン自体の文字を一時的に変えて、その場で結果が分かるようにする。
+  function saveShippingSpecFields(fields, statusPrefix, btnId) {
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
+    var btn = btnId ? document.getElementById(btnId) : null;
+    var originalBtnText = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
     document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しています…';
     fetch(GAS_API_URL, {
       method: 'POST',
       body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, idToken: currentUser.idToken })
     }).then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + res.error; return Promise.reject(); }
+        if (res.error) {
+          document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + res.error;
+          if (btn) { btn.disabled = false; btn.textContent = originalBtnText; }
+          return Promise.reject();
+        }
         return refreshZubanData();
       })
       .then(function () {
         document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しました';
         renderShippingSpecDisplay(currentZubanData.shippingSpec);
+        if (btn) {
+          btn.textContent = '保存しました ✓';
+          setTimeout(function () { btn.textContent = originalBtnText; btn.disabled = false; }, 1800);
+        }
       })
-      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+      .catch(function (err) {
+        if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err;
+        if (btn) { btn.disabled = false; btn.textContent = originalBtnText; }
+      });
   }
 
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
@@ -1695,13 +1711,13 @@
       'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value,
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
       '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
-    }, '共通情報');
+    }, '共通情報', 'specCommonSaveBtn');
   });
   document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       '梱包方法': document.getElementById('packMethodInput').value,
       'その他必要事項': document.getElementById('shipOtherInput').value
-    }, '出荷（梱包・その他）');
+    }, '出荷（梱包・その他）', 'specShukkaSaveBtn');
   });
 
   var resetQiPhotoBtn = wirePhotoUpload({
