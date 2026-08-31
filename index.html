@@ -137,6 +137,10 @@
   /* ==== ④ 紙の取込確認 ==== */
   .ocr-review-banner { background: var(--accent-soft); border: 2px solid var(--accent); border-radius: 12px; padding: 12px; flex: none; }
   .ocr-review-banner img { max-width: 100%; border-radius: 8px; margin: 8px 0; display: block; }
+  /* OCR確認中は変更履歴メモを内側スクロールに閉じ込めず、全文が見えるようページ全体を伸ばす */
+  #toolEditWrap.ocr-review-mode .memo-edit-wrap,
+  #toolEditWrap.ocr-review-mode .memo-zone { flex: none; overflow: visible; min-height: 0; }
+  #toolEditWrap.ocr-review-mode #toolMemoNew { overflow-y: hidden; }
 
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
@@ -1168,13 +1172,19 @@
       document.getElementById('cycleTimeInput').value = ocrData.cycleTime || '';
       document.getElementById('toolStorageInput').value = ocrData.toolStorage || '';
       document.getElementById('forwardPositionInput').value = ocrData.forwardPosition || '';
-      document.getElementById('toolMemoNew').value = ocrData.memo || '';
+      var memoEl = document.getElementById('toolMemoNew');
+      memoEl.value = ocrData.memo || '';
+      memoEl.style.height = 'auto';
+      memoEl.style.height = memoEl.scrollHeight + 'px';
 
       document.getElementById('ocrReviewPhoto').src = ocrPhotoDataUrl || '';
       document.getElementById('ocrReviewCheck').checked = false;
       banner.classList.remove('hidden');
+      document.getElementById('toolEditWrap').classList.add('ocr-review-mode');
       saveBtn.disabled = true;
     } else {
+      document.getElementById('toolMemoNew').style.height = '';
+      document.getElementById('toolEditWrap').classList.remove('ocr-review-mode');
       var grouped = groupToolPositions(currentZubanData.toolPositions);
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
