@@ -86,7 +86,6 @@
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 0.88rem; }
 
   .status-note { font-size: 0.78rem; color: var(--ink-soft); text-align: center; }
-  .coming-soon { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; }
 
   .recent-chip { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.85rem; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; cursor: pointer; }
 
@@ -134,6 +133,10 @@
   .tip-card img.tip-photo { max-width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
   .tip-card .tip-photos { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 6px; scroll-snap-type: x mandatory; }
   .tip-card .tip-photos img.tip-photo { flex: 0 0 88%; max-width: 88%; margin-bottom: 0; scroll-snap-align: start; }
+
+  /* ==== ④ 紙の取込確認 ==== */
+  .ocr-review-banner { background: var(--accent-soft); border: 2px solid var(--accent); border-radius: 12px; padding: 12px; flex: none; }
+  .ocr-review-banner img { max-width: 100%; border-radius: 8px; margin: 8px 0; display: block; }
 
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
@@ -264,11 +267,32 @@
 
       <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
         <button class="btn btn-primary hidden" id="goToolsBtn">ツール配置を見る・編集する</button>
+        <button class="btn btn-secondary hidden" id="goPaperImportBtn">紙の取込確認（ツールレイアウト表）</button>
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
-      <div class="coming-soon">紙の取込確認画面は近日追加予定です。</div>
       <button class="btn btn-secondary" id="backToScanBtn">別の図番を読み取る</button>
+    </section>
+
+    <!-- SCREEN 4: 紙の取込確認 -->
+    <section class="screen" data-screen="paperImport">
+      <div class="tools-header">
+        <span class="zuban-inline" id="paperImportZubanHeader"></span>
+      </div>
+      <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
+
+      <div class="field">
+        <button type="button" class="btn btn-secondary" id="paperPhotoBtn">📷 写真を選ぶ</button>
+        <input type="file" id="paperPhotoInput" accept="image/*" capture="environment" class="hidden">
+      </div>
+      <div id="paperPhotoPreviewWrap" class="hidden">
+        <img id="paperPhotoPreview" style="max-width:100%; border-radius:8px; margin-top:8px;">
+      </div>
+
+      <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
+      <div class="status-note" id="paperImportStatus"></div>
+
+      <button class="btn btn-secondary" id="paperImportBackBtn" style="margin-top:16px;">過去情報表示に戻る</button>
     </section>
 
     <!-- SCREEN 3: ツール配置 -->
@@ -289,6 +313,14 @@
       </div>
 
       <div id="toolEditWrap" class="hidden">
+        <div id="ocrReviewBanner" class="ocr-review-banner hidden">
+          <p><strong>⚠ AIによる読み取り結果です。原本の写真と1件ずつ照合してから登録してください。</strong></p>
+          <img id="ocrReviewPhoto" alt="原本の写真">
+          <label class="confirm-row">
+            <input type="checkbox" id="ocrReviewCheck">
+            <span>原本の写真と1件ずつ照合しました</span>
+          </label>
+        </div>
         <div class="memo-edit-wrap">
           <div class="memo-zone" id="memoEditList"></div>
           <div class="memo-new-form">
@@ -832,6 +864,10 @@
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
 
+    var goPaperImportBtn = document.getElementById('goPaperImportBtn');
+    goPaperImportBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
+    goPaperImportBtn.disabled = !confirmed;
+
     // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
     var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
     goQiBtn.classList.toggle('hidden', !showQi);
@@ -865,6 +901,13 @@
       alert('確認中です。少し待ってからもう一度お試しください');
     }
   });
+  document.getElementById('goPaperImportBtn').addEventListener('click', function () {
+    if (this.disabled) return;
+    goToPaperImport();
+  });
+  document.getElementById('paperImportBackBtn').addEventListener('click', function () {
+    setScreen('scan');
+  });
 
   function zubanLabel(data) {
     return data.zuban + (data.hinmei ? '　' + data.hinmei : '');
@@ -875,6 +918,101 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+
+  // ==== ④ 紙の取込確認（ツールレイアウト表のAI読み取り） ====
+  var pendingPaperPhotoBlob = null;
+  var pendingPaperPhotoDataUrl = '';
+
+  function goToPaperImport() {
+    if (!currentZubanData) return;
+    setScreen('paperImport');
+    document.getElementById('paperImportZubanHeader').textContent = zubanLabel(currentZubanData);
+    document.getElementById('paperImportStatus').textContent = '';
+    document.getElementById('paperPhotoPreviewWrap').classList.add('hidden');
+    document.getElementById('paperOcrBtn').classList.add('hidden');
+    document.getElementById('paperPhotoInput').value = '';
+    pendingPaperPhotoBlob = null;
+    pendingPaperPhotoDataUrl = '';
+  }
+
+  // OCR用は⑤等の写真添付（人が見るだけ）より圧縮を弱くし、手書きの細かい数字も読み取れるようにする。
+  function resizeImageForOcr_(file) {
+    var maxDimension = 2600;
+    var quality = 0.92;
+    return new Promise(function (resolve) {
+      if (!file.type || file.type.indexOf('image/') !== 0) { resolve(file); return; }
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale) || 1;
+        var h = Math.round(img.height * scale) || 1;
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) { resolve(blob || file); }, 'image/jpeg', quality);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
+  document.getElementById('paperPhotoBtn').addEventListener('click', function () {
+    document.getElementById('paperPhotoInput').click();
+  });
+  document.getElementById('paperPhotoInput').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('paperImportStatus').textContent = '画像を処理しています…';
+    resizeImageForOcr_(file).then(function (blob) {
+      pendingPaperPhotoBlob = blob;
+      return fileToBase64(blob);
+    }).then(function (base64) {
+      pendingPaperPhotoDataUrl = 'data:image/jpeg;base64,' + base64;
+      document.getElementById('paperPhotoPreview').src = pendingPaperPhotoDataUrl;
+      document.getElementById('paperPhotoPreviewWrap').classList.remove('hidden');
+      document.getElementById('paperOcrBtn').classList.remove('hidden');
+      document.getElementById('paperImportStatus').textContent = '';
+    });
+  });
+
+  document.getElementById('paperOcrBtn').addEventListener('click', function () {
+    if (!pendingPaperPhotoBlob) return;
+    document.getElementById('paperImportStatus').textContent = 'AIが読み取っています…（数十秒かかることがあります）';
+    document.getElementById('paperOcrBtn').disabled = true;
+    fileToBase64(pendingPaperPhotoBlob).then(function (base64) {
+      return fetch(GAS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'ocrToolLayout', imageBase64: base64, mimeType: 'image/jpeg' })
+      });
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        document.getElementById('paperOcrBtn').disabled = false;
+        if (res.error) { document.getElementById('paperImportStatus').textContent = '読み取りに失敗しました: ' + res.error; return; }
+
+        var ocrZuban = (res.data && res.data.zuban || '').replace(/[\s　]/g, '');
+        var currentZubanNorm = currentZubanData.zuban.replace(/[\s　]/g, '');
+        if (ocrZuban && ocrZuban.indexOf(currentZubanNorm) === -1 && currentZubanNorm.indexOf(ocrZuban) === -1) {
+          var proceed = confirm(
+            '写真から読み取った図番「' + res.data.zuban + '」が、今開いている図番「' + currentZubanData.zuban + '」と異なるようです。\n' +
+            '別の図番の紙を撮影した可能性があります。このまま続けますか？'
+          );
+          if (!proceed) { document.getElementById('paperImportStatus').textContent = '読み取り結果を破棄しました。図番を確認して撮り直してください。'; return; }
+        }
+
+        document.getElementById('paperImportStatus').textContent = '';
+        document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
+        document.getElementById('toolsStatus').textContent = '';
+        setScreen('tools');
+        enterToolEdit(res.data, pendingPaperPhotoDataUrl);
+      })
+      .catch(function (err) {
+        document.getElementById('paperOcrBtn').disabled = false;
+        document.getElementById('paperImportStatus').textContent = '読み取りに失敗しました: ' + err.message;
+      });
+  });
 
   // ==== ③ ツール配置 ====
   var toolEditMode = false;
@@ -1009,39 +1147,71 @@
     if (!toolEditMode) enterToolEdit(); else exitToolEdit();
   });
 
-  function enterToolEdit() {
+  // ocrData/ocrPhotoDataUrlが渡された場合（④紙の取込確認からの遷移）は、既存データの代わりに
+  // AIの読み取り結果でフォームを埋め、原本の写真と照合するまで保存できないようにする。
+  function enterToolEdit(ocrData, ocrPhotoDataUrl) {
     toolEditMode = true;
     document.getElementById('toolViewToggle').textContent = '閲覧に戻る';
     document.getElementById('toolViewWrap').classList.add('hidden');
     document.getElementById('toolEditWrap').classList.remove('hidden');
 
-    var grouped = groupToolPositions(currentZubanData.toolPositions);
-    ['front', 'back', 'cycle'].forEach(function (colKey) {
-      toolPositionsState[colKey] = grouped[colKey].map(function (p) {
-        return { tNumber: p['Tナンバー'] || '', description: p['工具説明'] || '' };
+    var banner = document.getElementById('ocrReviewBanner');
+    var saveBtn = document.getElementById('toolSaveBtn');
+    if (ocrData) {
+      ['front', 'back', 'cycle'].forEach(function (colKey) {
+        toolPositionsState[colKey] = (ocrData.positions || [])
+          .filter(function (p) { return p.column === colKey; })
+          .map(function (p) { return { tNumber: p.tNumber || '', description: p.description || '' }; });
       });
-    });
-    document.getElementById('frontChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '正面チャック径');
-    document.getElementById('backChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '背面チャック径');
-    document.getElementById('cycleTimeInput').value = firstPositionValue(currentZubanData.toolPositions, 'サイクルタイム');
-    document.getElementById('toolStorageInput').value = firstPositionValue(currentZubanData.toolPositions, '専用ツール保管');
-    document.getElementById('forwardPositionInput').value = firstPositionValue(currentZubanData.toolPositions, '前進端位置');
+      document.getElementById('frontChuckInput').value = ocrData.frontChuck || '';
+      document.getElementById('backChuckInput').value = ocrData.backChuck || '';
+      document.getElementById('cycleTimeInput').value = ocrData.cycleTime || '';
+      document.getElementById('toolStorageInput').value = ocrData.toolStorage || '';
+      document.getElementById('forwardPositionInput').value = ocrData.forwardPosition || '';
+      document.getElementById('toolMemoNew').value = ocrData.memo || '';
+
+      document.getElementById('ocrReviewPhoto').src = ocrPhotoDataUrl || '';
+      document.getElementById('ocrReviewCheck').checked = false;
+      banner.classList.remove('hidden');
+      saveBtn.disabled = true;
+    } else {
+      var grouped = groupToolPositions(currentZubanData.toolPositions);
+      ['front', 'back', 'cycle'].forEach(function (colKey) {
+        toolPositionsState[colKey] = grouped[colKey].map(function (p) {
+          return { tNumber: p['Tナンバー'] || '', description: p['工具説明'] || '' };
+        });
+      });
+      document.getElementById('frontChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '正面チャック径');
+      document.getElementById('backChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '背面チャック径');
+      document.getElementById('cycleTimeInput').value = firstPositionValue(currentZubanData.toolPositions, 'サイクルタイム');
+      document.getElementById('toolStorageInput').value = firstPositionValue(currentZubanData.toolPositions, '専用ツール保管');
+      document.getElementById('forwardPositionInput').value = firstPositionValue(currentZubanData.toolPositions, '前進端位置');
+      document.getElementById('toolMemoNew').value = '';
+
+      banner.classList.add('hidden');
+      saveBtn.disabled = false;
+    }
 
     renderEditColumn('front');
     renderEditColumn('back');
     renderEditColumn('cycle');
 
     renderMemoEditList();
-    document.getElementById('toolMemoNew').value = '';
     document.getElementById('memoShareCheck').checked = false;
     resetMemoPhotoBtn();
   }
+
+  document.getElementById('ocrReviewCheck').addEventListener('change', function () {
+    document.getElementById('toolSaveBtn').disabled = !this.checked;
+  });
 
   function exitToolEdit() {
     toolEditMode = false;
     document.getElementById('toolViewToggle').textContent = '編集する';
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
+    document.getElementById('ocrReviewBanner').classList.add('hidden');
+    document.getElementById('toolSaveBtn').disabled = false;
     renderToolView(currentZubanData);
   }
 

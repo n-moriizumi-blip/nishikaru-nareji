@@ -33,6 +33,11 @@ var OAUTH_CLIENT_ID = '800178947678-t49i9pr40ci70th6dgpuslfr4dldqjqh.apps.google
 // 動作確認用：全部署の画面にアクセスできるアカウント（本来の役割による出し分けとは別に、確認のため常時allAccess:trueを返す）。
 var ALL_ACCESS_EMAILS = ['n-moriizumi@nishikaru.co.jp'];
 
+// ④紙の取込確認（ツールレイアウト表のAI読み取り）で使うGeminiモデル。APIキー自体はコードに書かず
+// スクリプトのプロパティ「GEMINI_API_KEY」に保存する（このリポジトリはpublicのため、コードに
+// 書くとキーが漏洩する）。2026-08-31のパイロットテストで最も精度が高かったモデルを採用。
+var GEMINI_MODEL = 'gemini-3.1-pro-preview';
+
 /** タブとヘッダー行を作る。既存タブがあれば何もしない。GASエディタで1回だけ手動実行。 */
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -136,6 +141,7 @@ function doPost(e) {
     if (action === 'saveToolPositions') return jsonResponse_(saveToolPositions_(payload));
     if (action === 'saveShippingSpec') return jsonResponse_(saveShippingSpec_(payload));
     if (action === 'uploadPhoto') return jsonResponse_(uploadPhoto_(payload));
+    if (action === 'ocrToolLayout') return jsonResponse_(ocrToolLayout_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -990,6 +996,88 @@ function uploadPhoto_(payload) {
   var blob = Utilities.newBlob(bytes, mimeType, payload.filename || (Utilities.getUuid() + '.jpg'));
   var file = photoFolder.createFile(blob);
   return { url: file.getUrl() };
+}
+
+/**
+ * ④紙の取込確認：ツールレイアウト表（手書き含む）の写真をGemini APIに送り、
+ * ③ツール配置画面の編集データと同じ形（正面/背面/サイクルチャック径・工具リスト・変更履歴メモ等）で
+ * 読み取り結果を返す（2026-08-31、実データでのパイロットテストを経て導入）。
+ * この時点ではDB・図番インデックスへは一切書き込まない。返した内容は必ずアプリ側で人が
+ * 原本の写真と1件ずつ照合してから、既存のsaveToolPositions/postToolMemoで保存する。
+ * パイロットテストで判明した既知の限界：型番・数値は概ね高精度だが、まれに1桁程度の誤読が
+ * 起こりうる（例:"#6713"→"#67B"、"φ1.53"→"φ1.55"）。この確認ステップは省略しないこと。
+ */
+function ocrToolLayout_(payload) {
+  if (!payload.imageBase64) return { error: 'imageBase64 is required' };
+
+  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) return { error: 'GEMINI_API_KEYが設定されていません（GASエディタの「プロジェクトの設定」→「スクリプト プロパティ」で設定してください）' };
+
+  var prompt = 'これは工場のNCツールレイアウト表（手書き含む）の写真です。以下の項目をできるだけ正確に読み取り、' +
+    '指定したJSON形式のみで出力してください（説明文やコードフェンスは不要です）。読めない・自信がない場合は' +
+    '値に"?"を含めてください。数字・型番は特に注意して1文字ずつ確認してください。\n\n' +
+    '{\n' +
+    '  "zuban": "図番",\n' +
+    '  "hinmei": "品名",\n' +
+    '  "frontChuck": "正面チャック(GB)径",\n' +
+    '  "backChuck": "背面チャック径",\n' +
+    '  "cycleTime": "サイクルタイム",\n' +
+    '  "toolStorage": "専用ツール保管（有/無など）",\n' +
+    '  "forwardPosition": "前進端位置",\n' +
+    '  "positions": [ {"column": "front", "tNumber": "Tナンバー", "description": "工具の説明"} ],\n' +
+    '  "memo": "上部の変更履歴メモを可能な限りそのまま書き起こしたもの"\n' +
+    '}\n\n' +
+    'positionsのcolumnは、表の3列（正面チャック径の列はfront、背面チャック径の列はback、右端のサイクルタイムの列はcycle）に' +
+    '対応させ、上から並んでいる順番のまま出力してください。';
+
+  var resp;
+  try {
+    resp = UrlFetchApp.fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + apiKey,
+      {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: payload.mimeType || 'image/jpeg', data: payload.imageBase64 } }
+            ]
+          }]
+        }),
+        muteHttpExceptions: true
+      }
+    );
+  } catch (e) {
+    return { error: 'Gemini APIへの通信に失敗しました: ' + e };
+  }
+
+  var code = resp.getResponseCode();
+  if (code !== 200) {
+    return { error: 'Gemini APIエラー(' + code + '): ' + resp.getContentText().substring(0, 300) };
+  }
+
+  var json;
+  try {
+    json = JSON.parse(resp.getContentText());
+  } catch (e) {
+    return { error: 'Gemini応答の解析に失敗しました' };
+  }
+
+  var text = json.candidates && json.candidates[0] && json.candidates[0].content &&
+    json.candidates[0].content.parts && json.candidates[0].content.parts[0] &&
+    json.candidates[0].content.parts[0].text;
+  if (!text) return { error: 'Gemini応答が空でした（画像が不鮮明・読み取り不能の可能性）' };
+
+  var jsonText = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+  var parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (e) {
+    return { error: '読み取り結果の解析に失敗しました: ' + e };
+  }
+
+  return { ok: true, data: parsed };
 }
 
 /**
