@@ -94,7 +94,14 @@
   .firsttime-card { border: 1px dashed var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 22px 16px; text-align: center; }
   .firsttime-card .big { font-size: 1.8rem; margin-bottom: 6px; }
 
-  .section-label { font-size: 0.78rem; letter-spacing: 0.08em; color: var(--ink-soft); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 16px; }
+  .section-label {
+    font-size: 0.98rem; font-weight: 700; color: var(--ink); letter-spacing: 0.01em; display: block;
+    background: var(--surface-2); border-left: 4px solid var(--accent); border-radius: 4px;
+    padding: 10px 12px; margin: 26px 0 16px;
+  }
+  .section-label:first-child { margin-top: 0; }
+  .section-label.sub { font-size: 0.78rem; font-weight: 700; color: var(--accent); background: none; border-left: none;
+    border-bottom: 1px solid var(--line); border-radius: 0; padding: 0 0 6px; margin: 20px 0 12px; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px; font-size: 0.9rem; }
 
   .status-note { font-size: 0.82rem; color: var(--ink-soft); text-align: center; }
@@ -512,49 +519,75 @@
       </div>
 
       <div id="specShiageSection" class="hidden">
-        <div class="section-label">仕上専用（仕上げ担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label">仕上専用｜品質情報を記録する（仕上げ担当のみ・複数件記録できます）</div>
         <div class="field">
-          <label>メモ（自由入力）</label>
-          <textarea id="shiageMemoInput" placeholder="仕上げに関するメモを自由に記入"></textarea>
+          <label>内容</label>
+          <textarea id="shiageContentInput" placeholder="例：仕上げ時に気づいた点、対応内容など"></textarea>
         </div>
-        <button type="button" class="btn btn-secondary" id="specShiageSaveBtn">仕上専用を保存する</button>
+        <div class="field">
+          <label>写真（任意）</label>
+          <button type="button" class="photo-btn" id="shiagePhotoBtn"><span id="shiagePhotoIcon">📷</span><span id="shiagePhotoLabel">写真を選ぶ</span></button>
+          <input type="file" id="shiagePhotoInput" accept="image/*" multiple class="hidden">
+        </div>
+        <label class="confirm-row">
+          <input type="checkbox" id="shiageShareCheck">
+          <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
+        </label>
+        <button type="button" class="btn btn-primary" id="shiageSaveBtn">記録する</button>
+        <button type="button" class="btn btn-ghost hidden" id="shiageEditCancelBtn">編集をキャンセル</button>
       </div>
 
       <div id="specSenjouSection" class="hidden">
-        <div class="section-label">洗浄専用（洗浄担当のみ編集・図番ごとに1件、上書き）</div>
-        <div class="section-label" style="margin-top:6px;">真空洗浄機</div>
+        <div class="section-label">洗浄専用｜品質情報を記録する（洗浄担当のみ・複数件記録できます）</div>
+        <div class="section-label sub">真空洗浄機</div>
         <div class="field">
           <label>超音波</label>
-          <div class="chip-row" data-group="ultrasonic">
+          <div class="chip-row" data-group="senjouUltrasonic">
             <button type="button" class="chip">有</button>
             <button type="button" class="chip">無</button>
           </div>
         </div>
-        <div class="section-label" style="margin-top:6px;">バレル情報</div>
+        <div class="section-label sub">バレル情報</div>
         <div class="field">
           <label>メディア</label>
-          <input type="text" id="senjouMediaInput">
+          <input type="text" id="senjouMediaInput" list="senjouMediaList">
+          <datalist id="senjouMediaList"></datalist>
         </div>
         <div class="field">
           <label>周波数（Hz）</label>
-          <input type="text" id="senjouFreqInput">
+          <input type="text" id="senjouFreqInput" list="senjouFreqList">
+          <datalist id="senjouFreqList"></datalist>
         </div>
         <div class="field">
-          <label>時間（分）</label>
-          <input type="text" id="senjouTimeInput">
+          <label>時間</label>
+          <input type="time" id="senjouTimeInput">
         </div>
         <div class="field">
           <label>ワイヤー</label>
-          <div class="chip-row" data-group="wire">
+          <div class="chip-row" data-group="senjouWire">
             <button type="button" class="chip">有</button>
             <button type="button" class="chip">無</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specSenjouSaveBtn">洗浄専用を保存する</button>
+        <div class="field">
+          <label>内容</label>
+          <textarea id="senjouContentInput" placeholder="例：洗浄時に気づいた点、対応内容など"></textarea>
+        </div>
+        <div class="field">
+          <label>写真（任意）</label>
+          <button type="button" class="photo-btn" id="senjouPhotoBtn"><span id="senjouPhotoIcon">📷</span><span id="senjouPhotoLabel">写真を選ぶ</span></button>
+          <input type="file" id="senjouPhotoInput" accept="image/*" multiple class="hidden">
+        </div>
+        <label class="confirm-row">
+          <input type="checkbox" id="senjouShareCheck">
+          <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
+        </label>
+        <button type="button" class="btn btn-primary" id="senjouSaveBtn">記録する</button>
+        <button type="button" class="btn btn-ghost hidden" id="senjouEditCancelBtn">編集をキャンセル</button>
       </div>
 
       <div id="qiLogSection" class="hidden">
-        <div class="section-label" style="margin-top:6px;">品質情報を記録する</div>
+        <div class="section-label">品質保証専用｜品質情報を記録する（検査担当のみ・複数件記録できます）</div>
         <div class="field">
           <label>外観ランク（任意）</label>
           <div class="chip-row" data-group="rank">
@@ -941,9 +974,7 @@
     ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
     ['キーエンス測定', 'キーエンス測定'], ['キーエンスプログラム名', 'キーエンスのプログラム名'],
     ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
-    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項'],
-    ['仕上専用メモ', '仕上専用メモ'],
-    ['超音波', '超音波'], ['バレルメディア', 'バレルメディア'], ['バレル周波数', 'バレル周波数'], ['バレル時間', 'バレル時間'], ['バレルワイヤー', 'バレルワイヤー']
+    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
   ];
   function renderShippingSpecDisplay(spec) {
     var wrap = document.getElementById('shippingSpecWrap');
@@ -1782,7 +1813,7 @@
     var showShukka = currentRole === 'shukka' || currentAllAccess;
     var showShiage = currentRole === 'shiage' || currentAllAccess;
     var showSenjou = currentRole === 'senjou' || currentAllAccess;
-    var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentRole === 'shiage' || currentRole === 'senjou' || currentAllAccess;
+    var showQiLog = currentRole === 'kensa' || currentAllAccess;
 
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !showCommon);
@@ -1808,14 +1839,11 @@
       document.getElementById('shipOtherInput').value = spec['その他必要事項'] || '';
     }
     if (showShiage) {
-      document.getElementById('shiageMemoInput').value = spec['仕上専用メモ'] || '';
+      cancelEditShiageLog();
     }
     if (showSenjou) {
-      setChipValue('ultrasonic', spec['超音波']);
-      document.getElementById('senjouMediaInput').value = spec['バレルメディア'] || '';
-      document.getElementById('senjouFreqInput').value = spec['バレル周波数'] || '';
-      document.getElementById('senjouTimeInput').value = spec['バレル時間'] || '';
-      setChipValue('wire', spec['バレルワイヤー']);
+      cancelEditSenjouLog();
+      loadSenjouFieldSuggestions_();
     }
     if (showQiLog) {
       cancelEditQualityLog();
@@ -1834,6 +1862,8 @@
   var editingQiId = null;
 
   function startEditQualityLog(row) {
+    if (row['部署'] === '仕上げ') { startEditShiageLog(row); return; }
+    if (row['部署'] === '洗浄') { startEditSenjouLog(row); return; }
     goToQi();
     editingQiId = row['投稿ID'];
     document.getElementById('qiContentInput').value = row['内容'] || '';
@@ -1870,6 +1900,8 @@
       .then(function (res) {
         if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
         if (editingQiId === row['投稿ID']) cancelEditQualityLog();
+        if (editingShiageId === row['投稿ID']) cancelEditShiageLog();
+        if (editingSenjouId === row['投稿ID']) cancelEditSenjouLog();
         return refreshZubanData();
       })
       .then(function () {
@@ -1930,19 +1962,188 @@
       'その他必要事項': document.getElementById('shipOtherInput').value
     }, '出荷（梱包・その他）', 'specShukkaSaveBtn');
   });
-  document.getElementById('specShiageSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '仕上専用メモ': document.getElementById('shiageMemoInput').value
-    }, '仕上専用', 'specShiageSaveBtn');
+  // ==== 仕上専用｜品質情報を記録する（品証の品質情報ログと同じ仕組み、部署='仕上げ'） ====
+  var pendingShiagePhotoUrl = '';
+  var editingShiageId = null;
+
+  var resetShiagePhotoBtn = wirePhotoUpload({
+    btnId: 'shiagePhotoBtn', iconId: 'shiagePhotoIcon', labelId: 'shiagePhotoLabel', inputId: 'shiagePhotoInput',
+    onUploaded: function (url) { pendingShiagePhotoUrl = url; }
   });
-  document.getElementById('specSenjouSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '超音波': getChipValue('ultrasonic'),
-      'バレルメディア': document.getElementById('senjouMediaInput').value,
-      'バレル周波数': document.getElementById('senjouFreqInput').value,
-      'バレル時間': document.getElementById('senjouTimeInput').value,
-      'バレルワイヤー': getChipValue('wire')
-    }, '洗浄専用', 'specSenjouSaveBtn');
+
+  function startEditShiageLog(row) {
+    goToQi();
+    editingShiageId = row['投稿ID'];
+    document.getElementById('shiageContentInput').value = row['内容'] || '';
+    document.getElementById('shiageShareCheck').checked = row['共有フラグ'] === true;
+    pendingShiagePhotoUrl = row['写真URL'] || '';
+    if (pendingShiagePhotoUrl) {
+      document.getElementById('shiagePhotoIcon').textContent = '✅';
+      document.getElementById('shiagePhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('shiagePhotoBtn').classList.add('has-photo');
+    } else {
+      resetShiagePhotoBtn();
+    }
+    document.getElementById('shiageSaveBtn').textContent = 'この内容で更新する';
+    document.getElementById('shiageEditCancelBtn').classList.remove('hidden');
+  }
+
+  function cancelEditShiageLog() {
+    editingShiageId = null;
+    document.getElementById('shiageContentInput').value = '';
+    document.getElementById('shiageShareCheck').checked = false;
+    resetShiagePhotoBtn();
+    document.getElementById('shiageSaveBtn').textContent = '記録する';
+    document.getElementById('shiageEditCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('shiageEditCancelBtn').addEventListener('click', cancelEditShiageLog);
+
+  document.getElementById('shiageSaveBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    var content = document.getElementById('shiageContentInput').value.trim();
+    if (!content) { alert('内容を入力してください'); return; }
+    var isEdit = !!editingShiageId;
+    var payload = isEdit
+      ? { action: 'updateQualityLog', postId: editingShiageId, content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked }
+      : {
+          action: 'postQualityLog', zuban: currentZubanData.zuban, department: '仕上げ', idToken: currentUser.idToken,
+          content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked
+        };
+    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        if (isEdit) cancelEditShiageLog();
+        else {
+          document.getElementById('shiageContentInput').value = '';
+          document.getElementById('shiageShareCheck').checked = false;
+          resetShiagePhotoBtn();
+        }
+        return refreshZubanData();
+      })
+      .then(function () {
+        document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました';
+        renderQualityLogSection(currentZubanData);
+      })
+      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+  });
+
+  // ==== 洗浄専用｜品質情報を記録する（部署='洗浄'、真空洗浄機・バレル情報の項目つき） ====
+  var pendingSenjouPhotoUrl = '';
+  var editingSenjouId = null;
+  var senjouFieldSuggestionsLoaded = false;
+
+  function loadSenjouFieldSuggestions_() {
+    if (senjouFieldSuggestionsLoaded) return;
+    senjouFieldSuggestionsLoaded = true;
+    fetch(GAS_API_URL + '?action=senjouFieldSuggestions')
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) return;
+        var map = { 'バレルメディア': 'senjouMediaList', 'バレル周波数': 'senjouFreqList' };
+        Object.keys(map).forEach(function (key) {
+          document.getElementById(map[key]).innerHTML = (res[key] || []).map(function (v) {
+            return '<option value="' + escapeAttr(v) + '">';
+          }).join('');
+        });
+      })
+      .catch(function () { senjouFieldSuggestionsLoaded = false; });
+  }
+
+  // 時間欄はHH:MMの時刻ピッカー(type=time)で選ばせ、保存時は分数の「N分」表記に変換する。
+  function timeValueToMinutesLabel_(timeVal) {
+    if (!timeVal) return '';
+    var parts = timeVal.split(':');
+    var hh = parseInt(parts[0], 10) || 0, mm = parseInt(parts[1], 10) || 0;
+    return String(hh * 60 + mm) + '分';
+  }
+  function minutesLabelToTimeValue_(label) {
+    var m = /^(\d+)/.exec(String(label || ''));
+    if (!m) return '';
+    var total = parseInt(m[1], 10);
+    var hh = Math.floor(total / 60), mm = total % 60;
+    return (hh < 10 ? '0' + hh : hh) + ':' + (mm < 10 ? '0' + mm : mm);
+  }
+
+  var resetSenjouPhotoBtn = wirePhotoUpload({
+    btnId: 'senjouPhotoBtn', iconId: 'senjouPhotoIcon', labelId: 'senjouPhotoLabel', inputId: 'senjouPhotoInput',
+    onUploaded: function (url) { pendingSenjouPhotoUrl = url; }
+  });
+
+  function startEditSenjouLog(row) {
+    goToQi();
+    editingSenjouId = row['投稿ID'];
+    document.getElementById('senjouContentInput').value = row['内容'] || '';
+    document.getElementById('senjouShareCheck').checked = row['共有フラグ'] === true;
+    setChipValue('senjouUltrasonic', row['超音波'] || '');
+    document.getElementById('senjouMediaInput').value = row['バレルメディア'] || '';
+    document.getElementById('senjouFreqInput').value = row['バレル周波数'] || '';
+    document.getElementById('senjouTimeInput').value = minutesLabelToTimeValue_(row['バレル時間']);
+    setChipValue('senjouWire', row['バレルワイヤー'] || '');
+    pendingSenjouPhotoUrl = row['写真URL'] || '';
+    if (pendingSenjouPhotoUrl) {
+      document.getElementById('senjouPhotoIcon').textContent = '✅';
+      document.getElementById('senjouPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('senjouPhotoBtn').classList.add('has-photo');
+    } else {
+      resetSenjouPhotoBtn();
+    }
+    document.getElementById('senjouSaveBtn').textContent = 'この内容で更新する';
+    document.getElementById('senjouEditCancelBtn').classList.remove('hidden');
+  }
+
+  function cancelEditSenjouLog() {
+    editingSenjouId = null;
+    document.getElementById('senjouContentInput').value = '';
+    document.getElementById('senjouShareCheck').checked = false;
+    setChipValue('senjouUltrasonic', '');
+    document.getElementById('senjouMediaInput').value = '';
+    document.getElementById('senjouFreqInput').value = '';
+    document.getElementById('senjouTimeInput').value = '';
+    setChipValue('senjouWire', '');
+    resetSenjouPhotoBtn();
+    document.getElementById('senjouSaveBtn').textContent = '記録する';
+    document.getElementById('senjouEditCancelBtn').classList.add('hidden');
+  }
+  document.getElementById('senjouEditCancelBtn').addEventListener('click', cancelEditSenjouLog);
+
+  document.getElementById('senjouSaveBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    var content = document.getElementById('senjouContentInput').value.trim();
+    if (!content) { alert('内容を入力してください'); return; }
+    var isEdit = !!editingSenjouId;
+    var ultrasonic = getChipValue('senjouUltrasonic');
+    var barrelMedia = document.getElementById('senjouMediaInput').value;
+    var barrelFreq = document.getElementById('senjouFreqInput').value;
+    var barrelTime = timeValueToMinutesLabel_(document.getElementById('senjouTimeInput').value);
+    var barrelWire = getChipValue('senjouWire');
+    var payload = isEdit
+      ? {
+          action: 'updateQualityLog', postId: editingSenjouId, content: content, photoUrl: pendingSenjouPhotoUrl,
+          shared: document.getElementById('senjouShareCheck').checked,
+          ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
+        }
+      : {
+          action: 'postQualityLog', zuban: currentZubanData.zuban, department: '洗浄', idToken: currentUser.idToken,
+          content: content, photoUrl: pendingSenjouPhotoUrl, shared: document.getElementById('senjouShareCheck').checked,
+          ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
+        };
+    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        senjouFieldSuggestionsLoaded = false;
+        cancelEditSenjouLog();
+        return refreshZubanData();
+      })
+      .then(function () {
+        document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました';
+        renderQualityLogSection(currentZubanData);
+        loadSenjouFieldSuggestions_();
+      })
+      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
   });
 
   var resetQiPhotoBtn = wirePhotoUpload({
@@ -1959,7 +2160,7 @@
       ? { action: 'updateQualityLog', postId: editingQiId, rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban,
-          department: currentSection || (currentRole === 'kensa' ? '検査' : 'その他'),
+          department: '検査',
           idToken: currentUser.idToken,
           rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
           shared: document.getElementById('qiShareCheck').checked

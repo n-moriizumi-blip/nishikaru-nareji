@@ -44,7 +44,8 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_QUALITY_LOG, [
     '投稿ID', 'タイムスタンプ', '図番', '部署', '投稿者メール', '投稿者名',
-    '外観ランク', '内容', '写真URL', '共有フラグ'
+    '外観ランク', '内容', '写真URL', '共有フラグ',
+    '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー'
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_MEMO, [
@@ -120,6 +121,9 @@ function doGet(e) {
     }
     if (action === 'toolFieldSuggestions') {
       return jsonResponse_(getToolFieldSuggestions_());
+    }
+    if (action === 'senjouFieldSuggestions') {
+      return jsonResponse_(getSenjouFieldSuggestions_());
     }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
@@ -702,9 +706,11 @@ function postQualityLog_(payload) {
       id, new Date(), payload.zuban, payload.department,
       identity.email, identity.name,
       payload.rank || '', payload.content || '', payload.photoUrl || '',
-      !!payload.shared
+      !!payload.shared,
+      payload.ultrasonic || '', payload.barrelMedia || '', payload.barrelFreq || '', payload.barrelTime || '', payload.barrelWire || ''
     ]);
     invalidateZubanCache_(payload.zuban);
+    if (payload.department === '洗浄') { try { CacheService.getScriptCache().remove('senjouFieldSuggestions'); } catch (e) {} }
     return { id: id };
   });
 }
@@ -813,10 +819,12 @@ function deleteToolMemo_(payload) {
   return deletePostById_(SHEET_TOOL_MEMO, payload.postId);
 }
 
-/** 品質情報記録の更新／削除（⑤画面）。 */
+/** 品質情報記録の更新／削除（⑤画面）。超音波以降は洗浄専用のみ使う項目（他部署の投稿では常に空文字）。 */
 function updateQualityLog_(payload) {
   return updatePostById_(SHEET_QUALITY_LOG, payload.postId, {
-    '内容': payload.content || '', '外観ランク': payload.rank || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
+    '内容': payload.content || '', '外観ランク': payload.rank || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared,
+    '超音波': payload.ultrasonic || '', 'バレルメディア': payload.barrelMedia || '', 'バレル周波数': payload.barrelFreq || '',
+    'バレル時間': payload.barrelTime || '', 'バレルワイヤー': payload.barrelWire || ''
   });
 }
 function deleteQualityLog_(payload) {
@@ -895,6 +903,38 @@ function getToolFieldSuggestions_() {
     });
   } else {
     Object.keys(TOOL_FIELD_SEED_).forEach(function (name) { result[name] = TOOL_FIELD_SEED_[name].slice(); });
+  }
+
+  cache.put(cacheKey, JSON.stringify(result), 300);
+  return result;
+}
+
+/**
+ * 洗浄専用（品質情報記録ログ）の「バレルメディア・バレル周波数」の入力補完候補を返す。
+ * あらかじめ分かっている種は無いため、これまでの入力履歴（重複除去）のみ。
+ */
+function getSenjouFieldSuggestions_() {
+  var cacheKey = 'senjouFieldSuggestions';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var result = { 'バレルメディア': [], 'バレル周波数': [] };
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow >= 2) {
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    Object.keys(result).forEach(function (name) {
+      var col = header.indexOf(name);
+      if (col === -1) return;
+      var seen = {}, list = [];
+      rows.forEach(function (r) {
+        var v = String(r[col] || '').trim();
+        if (v && !seen[v]) { seen[v] = true; list.push(v); }
+      });
+      result[name] = list;
+    });
   }
 
   cache.put(cacheKey, JSON.stringify(result), 300);
@@ -1598,12 +1638,23 @@ function migrateToolPositionFields() {
   });
 }
 
-/** SHEET_SHIPPING_SPECに仕上専用・洗浄専用の列を追加する（既存シート用、初回のみ手動実行）。 */
+/**
+ * 【2026-09-01訂正】品質情報記録の仕上専用・洗浄専用を、SHEET_SHIPPING_SPEC（図番ごと1件・上書き）ではなく
+ * SHEET_QUALITY_LOG（品証と同じ、複数件記録できるログ）に変更したため、この関数はもう使わない。
+ * 既に実行済みでSHEET_SHIPPING_SPECに追加された6列（仕上専用メモ・超音波・バレル*）は空のまま残っているが、
+ * コード側はもう参照しないため実害はない（手動で削除しても構わない）。
+ * 新しい洗浄専用の列はSHEET_QUALITY_LOG側に追加する必要があり、そちらはaddSenjouLogColumns()を実行すること。
+ */
 function addShiageSenjouColumns() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+  Logger.log('この関数は廃止されました。addSenjouLogColumns()を実行してください。');
+}
+
+/** SHEET_QUALITY_LOGに洗浄専用（真空洗浄機・バレル情報）の列を追加する（既存シート用、初回のみ手動実行）。 */
+function addSenjouLogColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
   var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var afterName = 'その他必要事項';
-  ['仕上専用メモ', '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー'].forEach(function (name) {
+  var afterName = '共有フラグ';
+  ['超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー'].forEach(function (name) {
     header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     if (header.indexOf(name) !== -1) { Logger.log('「' + name + '」は追加済みです'); afterName = name; return; }
     var afterCol = header.indexOf(afterName);
