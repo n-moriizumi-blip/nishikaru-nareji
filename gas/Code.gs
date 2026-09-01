@@ -53,7 +53,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
-    '図番', '列区分', '順番', 'Tナンバー', '工具説明',
+    '図番', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', '最終更新者メール', '最終更新日時'
   ]);
@@ -116,6 +116,9 @@ function doGet(e) {
     }
     if (action === 'inspectionFolder') {
       return jsonResponse_(getInspectionFolderUrl_(e.parameter.zuban));
+    }
+    if (action === 'toolFieldSuggestions') {
+      return jsonResponse_(getToolFieldSuggestions_());
     }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
@@ -834,7 +837,8 @@ function saveToolPositions_(payload) {
       sheet.getRange(startRow, 4, positions.length, 1).setNumberFormat('@');
       var rows = positions.map(function (p) {
         return [
-          payload.zuban, p.column, p.order, String(p.tNumber || ''), p.description,
+          payload.zuban, p.column, p.order, String(p.tNumber || ''),
+          p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
           payload.toolStorage || '', payload.forwardPosition || '',
           identity.email, now
@@ -843,8 +847,57 @@ function saveToolPositions_(payload) {
       sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
     }
     invalidateZubanCache_(payload.zuban);
+    try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
     return { ok: true };
   });
+}
+
+/** 加工種類・メーカーは、まだ入力履歴が少ない導入初期でも使えるよう、既知の値をあらかじめ種として持たせておく。 */
+var TOOL_FIELD_SEED_ = {
+  '加工種類': [
+    '前挽き(外径)', '後挽き(外径)', '剣先(外径/複形)', '端面引き', '前挽き(内径/中ぐり)',
+    '後挽き(内径)', '剣先(内径)', '外径溝入れ', '内径溝入れ', '端面溝入れ', '突切り', '外径ねじ切り', '内径ねじ切り'
+  ],
+  'メーカー': ['京セラ', 'サンドビック', '住友', 'タンガロイ', '三菱', 'NTK']
+};
+
+/**
+ * ツール配置編集画面の「加工種類・メーカー・品番」の入力補完候補を返す。
+ * あらかじめ分かっている種（TOOL_FIELD_SEED_）に、実際にこれまで入力された値（重複除去）を足し合わせる。
+ * マスタデータが無くても、使うほど候補が育っていく（品番は種が無いため入力履歴のみ）。
+ */
+function getToolFieldSuggestions_() {
+  var cacheKey = 'toolFieldSuggestions';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var result = { '加工種類': [], 'メーカー': [], '品番': [] };
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow >= 2) {
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var cols = {};
+    ['加工種類', 'メーカー', '品番'].forEach(function (name) { cols[name] = header.indexOf(name); });
+    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    Object.keys(cols).forEach(function (name) {
+      var col = cols[name];
+      if (col === -1) return;
+      var seen = {};
+      (TOOL_FIELD_SEED_[name] || []).forEach(function (v) { seen[v] = true; });
+      var list = Object.keys(seen);
+      rows.forEach(function (r) {
+        var v = String(r[col] || '').trim();
+        if (v && !seen[v]) { seen[v] = true; list.push(v); }
+      });
+      result[name] = list;
+    });
+  } else {
+    Object.keys(TOOL_FIELD_SEED_).forEach(function (name) { result[name] = TOOL_FIELD_SEED_[name].slice(); });
+  }
+
+  cache.put(cacheKey, JSON.stringify(result), 300);
+  return result;
 }
 
 /** 出荷仕様の保存（⑤画面の各セクション）。図番ごとに1行、上書き更新。 */
@@ -1070,11 +1123,14 @@ function ocrToolLayout_(payload) {
     '  "cycleTime": "サイクルタイム",\n' +
     '  "toolStorage": "専用ツール保管（有/無など）",\n' +
     '  "forwardPosition": "前進端位置",\n' +
-    '  "positions": [ {"column": "front", "tNumber": "Tナンバー", "description": "工具の説明"} ],\n' +
+    '  "positions": [ {"column": "front", "tNumber": "Tナンバー", "category": "加工種類（例:前挽き(外径)、後挽き(内径)、突切り等）", ' +
+    '"detail": "詳細情報（型番・寸法等、加工種類に当てはまらない補足）", "shift": "シフト（工具のオフセット量・ズレ量）", ' +
+    '"maker": "工具メーカー名", "partNumber": "工具の品番"} ],\n' +
     '  "memo": "上部の変更履歴メモを可能な限りそのまま書き起こしたもの"\n' +
     '}\n\n' +
     'positionsのcolumnは、表の3列（正面チャック径の列はfront、背面チャック径の列はback、右端のサイクルタイムの列はcycle）に' +
-    '対応させ、上から並んでいる順番のまま出力してください。';
+    '対応させ、上から並んでいる順番のまま出力してください。category/detail/shift/maker/partNumberは、紙面にその情報が' +
+    '明記されている場合のみ埋め、書かれていない・読み取れない項目は空文字にしてください（無理に推測しない）。';
 
   var parts = [{ text: prompt }];
   imageList.forEach(function (base64) {
@@ -1499,6 +1555,40 @@ function addKeyenceProgramColumn() {
   sheet.insertColumnAfter(insertAt - 1);
   sheet.getRange(1, insertAt).setValue('キーエンスプログラム名');
   Logger.log('「キーエンスプログラム名」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSを「Tナンバー・工具説明」の2項目から
+ * 「Tナンバー・加工種類・詳細情報・シフト・メーカー・品番」の6項目へ拡張する（既存シート用、初回のみ手動実行）。
+ * 既存の「工具説明」列は中身を消さずに見出しだけ「詳細情報」へ変更し、新設4列は空欄から始める。
+ */
+function migrateToolPositionFields() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  var oldDescCol = header.indexOf('工具説明');
+  if (oldDescCol !== -1 && header.indexOf('詳細情報') === -1) {
+    sheet.getRange(1, oldDescCol + 1).setValue('詳細情報');
+    Logger.log('「工具説明」を「詳細情報」に改名しました');
+    header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  }
+
+  [
+    ['加工種類', 'Tナンバー'],
+    ['シフト', '詳細情報'],
+    ['メーカー', 'シフト'],
+    ['品番', 'メーカー']
+  ].forEach(function (pair) {
+    var name = pair[0], afterName = pair[1];
+    if (header.indexOf(name) !== -1) { Logger.log('「' + name + '」は追加済みです'); return; }
+    var afterCol = header.indexOf(afterName);
+    var insertAt = afterCol !== -1 ? afterCol + 2 : sheet.getLastColumn() + 1;
+    sheet.insertColumnAfter(insertAt - 1);
+    sheet.getRange(1, insertAt).setValue(name);
+    Logger.log('「' + name + '」列を追加しました');
+    header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  });
 }
 
 function ensureMigrationPreviewSheet_() {

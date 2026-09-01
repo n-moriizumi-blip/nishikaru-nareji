@@ -188,6 +188,7 @@
   .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
   .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); display: block; }
   .tool-view-row .d { font-size: 0.85rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
+  .tool-view-row .m { font-size: 0.72rem; color: var(--ink-soft); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
   .tool-view-spec { flex: none; display: flex; gap: 10px; flex-wrap: wrap; }
   .tool-view-spec .spec-item { flex: 1 1 160px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
   .tool-view-spec .spec-item b { color: var(--ink); font-weight: 700; }
@@ -198,17 +199,27 @@
     width: 48px; flex: none; min-width: 0; font-family: var(--font-mono); font-size: 0.78rem;
     text-align: center; padding: 6px 2px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
   }
-  .tool-edit-row { display: flex; align-items: center; gap: 5px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px; margin-bottom: 6px; }
-  .tool-edit-row .order-btns { display: flex; flex-direction: column; gap: 3px; flex: none; }
+  .tool-edit-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px; margin-bottom: 6px; }
+  .tool-edit-row .row-controls { display: flex; align-items: center; justify-content: space-between; }
+  .tool-edit-row .order-btns { display: flex; flex-direction: row; gap: 3px; flex: none; }
   .tool-edit-row .order-btns button {
     width: 22px; height: 17px; font-size: 0.62rem; line-height: 1; padding: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-soft); border-radius: 3px; cursor: pointer;
   }
-  .tool-edit-row .tnum {
-    width: 46px; flex: none; min-width: 0; font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700;
-    text-align: center; padding: 8px 2px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--accent);
+  .tool-edit-row .row-line { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+  .tool-edit-row .row-line input {
+    min-width: 0; font-family: inherit; font-size: 0.82rem; padding: 8px 7px;
+    border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
-  .tool-edit-row .rdesc {
-    flex: 1 1 0%; width: 0; min-width: 0; font-family: inherit; font-size: 0.84rem; padding: 8px 8px;
+  .tool-edit-row .tnum {
+    flex: 1 1 44px; font-family: var(--font-mono); font-weight: 700; text-align: center;
+    background: var(--surface-2); color: var(--accent);
+  }
+  .tool-edit-row .rcategory { flex: 3 1 90px; }
+  .tool-edit-row .rshift { flex: 1 1 56px; }
+  .tool-edit-row .rmaker { flex: 1 1 80px; }
+  .tool-edit-row .rpartnum { flex: 1 1 80px; }
+  .tool-edit-row .rdetail {
+    width: 100%; min-width: 0; font-family: inherit; font-size: 0.84rem; padding: 8px 8px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
   .tool-edit-row .row-remove {
@@ -368,6 +379,9 @@
           </div>
         </div>
 
+        <datalist id="toolCategoryList"></datalist>
+        <datalist id="toolMakerList"></datalist>
+        <datalist id="toolPartNumberList"></datalist>
         <div class="tool-edit-grid" id="toolEditGrid">
           <div class="tool-edit-col" id="editColFront">
             <div class="col-head-edit"><span class="label">正面チャック径</span><input type="text" id="frontChuckInput"></div>
@@ -1121,6 +1135,27 @@
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
     renderToolView(currentZubanData);
+    loadToolFieldSuggestions_();
+  }
+
+  // 加工種類・メーカー・品番の入力補完候補（datalist）。1セッション1回取得すれば十分なため、取得済みなら再取得しない。
+  var toolFieldSuggestionsLoaded = false;
+  function loadToolFieldSuggestions_() {
+    if (toolFieldSuggestionsLoaded) return;
+    toolFieldSuggestionsLoaded = true;
+    fetch(GAS_API_URL + '?action=toolFieldSuggestions')
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) return;
+        var map = { '加工種類': 'toolCategoryList', 'メーカー': 'toolMakerList', '品番': 'toolPartNumberList' };
+        Object.keys(map).forEach(function (key) {
+          var list = document.getElementById(map[key]);
+          list.innerHTML = (res[key] || []).map(function (v) {
+            return '<option value="' + escapeAttr(v) + '">';
+          }).join('');
+        });
+      })
+      .catch(function () { toolFieldSuggestionsLoaded = false; });
   }
 
   document.getElementById('toolsBackBtn').addEventListener('click', function () {
@@ -1218,7 +1253,16 @@
       grouped[colKey].forEach(function (p) {
         var row = document.createElement('div');
         row.className = 'tool-view-row';
-        row.innerHTML = '<span class="t">' + escapeHtml(p['Tナンバー'] || '') + '</span><span class="d">' + escapeHtml(p['工具説明'] || '') + '</span>';
+        var tLabel = [p['Tナンバー'], p['加工種類']].filter(Boolean).map(function (s) { return escapeHtml(String(s)); }).join('　');
+        var html = '<span class="t">' + tLabel + '</span>';
+        if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
+        var meta = [
+          p['シフト'] ? 'シフト: ' + p['シフト'] : '',
+          p['メーカー'] ? 'メーカー: ' + p['メーカー'] : '',
+          p['品番'] ? '品番: ' + p['品番'] : ''
+        ].filter(Boolean).join('　');
+        if (meta) html += '<span class="m">' + escapeHtml(meta) + '</span>';
+        row.innerHTML = html;
         colEl.appendChild(row);
       });
     });
@@ -1242,6 +1286,7 @@
     document.getElementById('toolViewToggle').textContent = '閲覧に戻る';
     document.getElementById('toolViewWrap').classList.add('hidden');
     document.getElementById('toolEditWrap').classList.remove('hidden');
+    loadToolFieldSuggestions_();
 
     var banner = document.getElementById('ocrReviewBanner');
     var saveBtn = document.getElementById('toolSaveBtn');
@@ -1249,7 +1294,12 @@
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = (ocrData.positions || [])
           .filter(function (p) { return p.column === colKey; })
-          .map(function (p) { return { tNumber: p.tNumber || '', description: p.description || '' }; });
+          .map(function (p) {
+            return {
+              tNumber: p.tNumber || '', category: p.category || '', detail: p.detail || '',
+              shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || ''
+            };
+          });
       });
       document.getElementById('frontChuckInput').value = ocrData.frontChuck || '';
       document.getElementById('backChuckInput').value = ocrData.backChuck || '';
@@ -1279,7 +1329,10 @@
       var grouped = groupToolPositions(currentZubanData.toolPositions);
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
-          return { tNumber: p['Tナンバー'] || '', description: p['工具説明'] || '' };
+          return {
+            tNumber: p['Tナンバー'] || '', category: p['加工種類'] || '', detail: p['詳細情報'] || '',
+            shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || ''
+          };
         });
       });
       document.getElementById('frontChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '正面チャック径');
@@ -1323,10 +1376,20 @@
       var div = document.createElement('div');
       div.className = 'tool-edit-row';
       div.innerHTML =
-        '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
-        '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番">' +
-        '<input type="text" class="rdesc" value="' + escapeAttr(row.description) + '" placeholder="工具の説明">' +
-        '<button type="button" class="row-remove">✕</button>';
+        '<div class="row-controls">' +
+          '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
+          '<button type="button" class="row-remove">✕</button>' +
+        '</div>' +
+        '<div class="row-line">' +
+          '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番">' +
+          '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList">' +
+          '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト">' +
+        '</div>' +
+        '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報">' +
+        '<div class="row-line">' +
+          '<input type="text" class="rmaker" value="' + escapeAttr(row.maker) + '" placeholder="メーカー" list="toolMakerList">' +
+          '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList">' +
+        '</div>';
       div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
       div.querySelector('[data-act="down"]').addEventListener('click', function () { moveRow(colKey, idx, 1); });
       div.querySelector('.row-remove').addEventListener('click', function () { removeRow(colKey, idx); });
@@ -1338,7 +1401,14 @@
     var container = document.getElementById('editRows' + capitalize(colKey));
     var arr = [];
     container.querySelectorAll('.tool-edit-row').forEach(function (row) {
-      arr.push({ tNumber: row.querySelector('.tnum').value, description: row.querySelector('.rdesc').value });
+      arr.push({
+        tNumber: row.querySelector('.tnum').value,
+        category: row.querySelector('.rcategory').value,
+        detail: row.querySelector('.rdetail').value,
+        shift: row.querySelector('.rshift').value,
+        maker: row.querySelector('.rmaker').value,
+        partNumber: row.querySelector('.rpartnum').value
+      });
     });
     toolPositionsState[colKey] = arr;
   }
@@ -1347,7 +1417,7 @@
     btn.addEventListener('click', function () {
       var colKey = btn.getAttribute('data-col');
       syncColumnFromDom(colKey);
-      toolPositionsState[colKey].push({ tNumber: '', description: '' });
+      toolPositionsState[colKey].push({ tNumber: '', category: '', detail: '', shift: '', maker: '', partNumber: '' });
       renderEditColumn(colKey);
     });
   });
@@ -1376,8 +1446,11 @@
     var positions = [];
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       toolPositionsState[colKey].forEach(function (row, idx) {
-        if (!row.tNumber && !row.description) return;
-        positions.push({ column: colKey, order: idx + 1, tNumber: row.tNumber, description: row.description });
+        if (!row.tNumber && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber) return;
+        positions.push({
+          column: colKey, order: idx + 1, tNumber: row.tNumber, category: row.category,
+          detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber
+        });
       });
     });
 
