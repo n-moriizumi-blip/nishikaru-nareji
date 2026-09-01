@@ -1038,12 +1038,19 @@ function uploadPhoto_(payload) {
  * 起こりうる（例:"#6713"→"#67B"、"φ1.53"→"φ1.55"）。この確認ステップは省略しないこと。
  */
 function ocrToolLayout_(payload) {
-  if (!payload.imageBase64) return { error: 'imageBase64 is required' };
+  var imageList = payload.imageBase64List || (payload.imageBase64 ? [payload.imageBase64] : []);
+  if (!imageList.length) return { error: 'imageBase64List is required' };
 
   var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!apiKey) return { error: 'GEMINI_API_KEYが設定されていません（GASエディタの「プロジェクトの設定」→「スクリプト プロパティ」で設定してください）' };
 
-  var prompt = 'これは工場のNCツールレイアウト表（手書き含む）の写真です。以下の項目をできるだけ正確に読み取り、' +
+  var multiNote = imageList.length > 1
+    ? '写真は同じツールレイアウト表の表裏・複数ページの可能性があります。全ての写真の内容を1件の結果に統合し、' +
+      'positionsが写真間で重複しないようにしてください（同じTナンバーが別の写真に写っている場合は1件にまとめてください）。\n\n'
+    : '';
+
+  var prompt = multiNote +
+    'これは工場のNCツールレイアウト表（手書き含む）の写真です。以下の項目をできるだけ正確に読み取り、' +
     '指定したJSON形式のみで出力してください（説明文やコードフェンスは不要です）。読めない・自信がない場合は' +
     '値に"?"を含めてください。数字・型番は特に注意して1文字ずつ確認してください。\n\n' +
     '{\n' +
@@ -1060,6 +1067,11 @@ function ocrToolLayout_(payload) {
     'positionsのcolumnは、表の3列（正面チャック径の列はfront、背面チャック径の列はback、右端のサイクルタイムの列はcycle）に' +
     '対応させ、上から並んでいる順番のまま出力してください。';
 
+  var parts = [{ text: prompt }];
+  imageList.forEach(function (base64) {
+    parts.push({ inline_data: { mime_type: payload.mimeType || 'image/jpeg', data: base64 } });
+  });
+
   var resp;
   try {
     resp = UrlFetchApp.fetch(
@@ -1068,12 +1080,7 @@ function ocrToolLayout_(payload) {
         method: 'post',
         contentType: 'application/json',
         payload: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: payload.mimeType || 'image/jpeg', data: payload.imageBase64 } }
-            ]
-          }]
+          contents: [{ parts: parts }]
         }),
         muteHttpExceptions: true
       }

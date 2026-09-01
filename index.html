@@ -148,10 +148,19 @@
   .tip-card img.tip-photo { max-width: 100%; border-radius: 4px; margin-bottom: 8px; display: block; border: 1px solid var(--line); }
   .tip-card .tip-photos { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 8px; scroll-snap-type: x mandatory; }
   .tip-card .tip-photos img.tip-photo { flex: 0 0 88%; max-width: 88%; margin-bottom: 0; scroll-snap-align: start; }
+  .paper-photo-list { display: flex; gap: 10px; overflow-x: auto; margin-top: 10px; }
+  .paper-photo-thumb { position: relative; flex: 0 0 auto; }
+  .paper-photo-thumb img { width: 110px; height: 110px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); display: block; }
+  .paper-photo-thumb button {
+    position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--alert); color: #fff; border: none; font-size: 13px; line-height: 24px;
+    text-align: center; cursor: pointer; padding: 0; font-weight: 700;
+  }
 
   /* ==== ④ 紙の取込確認 ==== */
   .ocr-review-banner { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 4px; padding: 14px; flex: none; }
-  .ocr-review-banner img { max-width: 100%; border-radius: 4px; margin: 10px 0; display: block; border: 1px solid var(--line); }
+  .ocr-review-banner .ocr-review-photos { display: flex; gap: 8px; overflow-x: auto; margin: 10px 0; scroll-snap-type: x mandatory; }
+  .ocr-review-banner .ocr-review-photos img { flex: 0 0 88%; max-width: 88%; border-radius: 4px; display: block; border: 1px solid var(--line); scroll-snap-align: start; }
   /* OCR確認中は変更履歴メモを内側スクロールに閉じ込めず、全文が見えるようページ全体を伸ばす */
   #toolEditWrap.ocr-review-mode .memo-edit-wrap,
   #toolEditWrap.ocr-review-mode .memo-zone { flex: none; overflow: visible; min-height: 0; }
@@ -299,17 +308,15 @@
       <div class="tools-header">
         <span class="zuban-inline" id="paperImportZubanHeader"></span>
       </div>
-      <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
+      <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください（表裏や複数ページある場合は複数枚まとめて撮影・選択できます）。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
 
       <div class="field" style="display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" class="btn btn-secondary" id="paperPhotoCameraBtn">📷 写真を撮る</button>
         <button type="button" class="btn btn-secondary" id="paperPhotoLibraryBtn">🖼 アルバムから選ぶ</button>
         <input type="file" id="paperPhotoCameraInput" accept="image/*" capture="environment" class="hidden">
-        <input type="file" id="paperPhotoInput" accept="image/*" class="hidden">
+        <input type="file" id="paperPhotoInput" accept="image/*" multiple class="hidden">
       </div>
-      <div id="paperPhotoPreviewWrap" class="hidden">
-        <img id="paperPhotoPreview" style="max-width:100%; border-radius:8px; margin-top:8px;">
-      </div>
+      <div id="paperPhotoPreviewWrap" class="hidden paper-photo-list"></div>
 
       <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
       <div class="status-note" id="paperImportStatus"></div>
@@ -340,7 +347,7 @@
       <div id="toolEditWrap" class="hidden">
         <div id="ocrReviewBanner" class="ocr-review-banner hidden">
           <p><strong>⚠ AIによる読み取り結果です。原本の写真と1件ずつ照合してから登録してください。</strong></p>
-          <img id="ocrReviewPhoto" alt="原本の写真">
+          <div id="ocrReviewPhotos" class="ocr-review-photos"></div>
           <label class="confirm-row">
             <input type="checkbox" id="ocrReviewCheck">
             <span>原本の写真と1件ずつ照合しました</span>
@@ -351,7 +358,7 @@
           <div class="memo-new-form">
             <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
             <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真を選ぶ</span></button>
-            <input type="file" id="memoPhotoInput" accept="image/*" class="hidden">
+            <input type="file" id="memoPhotoInput" accept="image/*" multiple class="hidden">
             <label class="confirm-row">
               <input type="checkbox" id="memoShareCheck">
               <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
@@ -507,7 +514,7 @@
         <div class="field">
           <label>写真（任意）</label>
           <button type="button" class="photo-btn" id="qiPhotoBtn"><span id="qiPhotoIcon">📷</span><span id="qiPhotoLabel">写真を選ぶ</span></button>
-          <input type="file" id="qiPhotoInput" accept="image/*" class="hidden">
+          <input type="file" id="qiPhotoInput" accept="image/*" multiple class="hidden">
         </div>
         <label class="confirm-row">
           <input type="checkbox" id="qiShareCheck">
@@ -960,20 +967,45 @@
   }
 
   // ==== ④ 紙の取込確認（ツールレイアウト表のAI読み取り） ====
-  var pendingPaperPhotoBlob = null;
-  var pendingPaperPhotoDataUrl = '';
+  var pendingPaperPhotoBlobs = [];
+  var pendingPaperPhotoDataUrls = [];
 
   function goToPaperImport() {
     if (!currentZubanData) return;
     setScreen('paperImport');
     document.getElementById('paperImportZubanHeader').textContent = zubanLabel(currentZubanData);
     document.getElementById('paperImportStatus').textContent = '';
-    document.getElementById('paperPhotoPreviewWrap').classList.add('hidden');
     document.getElementById('paperOcrBtn').classList.add('hidden');
     document.getElementById('paperPhotoInput').value = '';
     document.getElementById('paperPhotoCameraInput').value = '';
-    pendingPaperPhotoBlob = null;
-    pendingPaperPhotoDataUrl = '';
+    pendingPaperPhotoBlobs = [];
+    pendingPaperPhotoDataUrls = [];
+    renderPaperPhotoPreview_();
+  }
+
+  function renderPaperPhotoPreview_() {
+    var wrap = document.getElementById('paperPhotoPreviewWrap');
+    wrap.innerHTML = '';
+    if (!pendingPaperPhotoDataUrls.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    pendingPaperPhotoDataUrls.forEach(function (url, idx) {
+      var thumb = document.createElement('div');
+      thumb.className = 'paper-photo-thumb';
+      var img = document.createElement('img');
+      img.src = url;
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', function () {
+        pendingPaperPhotoBlobs.splice(idx, 1);
+        pendingPaperPhotoDataUrls.splice(idx, 1);
+        renderPaperPhotoPreview_();
+        document.getElementById('paperOcrBtn').classList.toggle('hidden', !pendingPaperPhotoDataUrls.length);
+      });
+      thumb.appendChild(img);
+      thumb.appendChild(removeBtn);
+      wrap.appendChild(thumb);
+    });
   }
 
   // OCR用は⑤等の写真添付（人が見るだけ）より圧縮を弱くし、手書きの細かい数字も読み取れるようにする。
@@ -1007,31 +1039,37 @@
     document.getElementById('paperPhotoInput').click();
   });
   function handlePaperPhotoSelected_(e) {
-    var file = e.target.files[0];
-    if (!file) return;
+    var files = Array.prototype.slice.call(e.target.files || []);
+    if (!files.length) return;
     document.getElementById('paperImportStatus').textContent = '画像を処理しています…';
-    resizeImageForOcr_(file).then(function (blob) {
-      pendingPaperPhotoBlob = blob;
-      return fileToBase64(blob);
-    }).then(function (base64) {
-      pendingPaperPhotoDataUrl = 'data:image/jpeg;base64,' + base64;
-      document.getElementById('paperPhotoPreview').src = pendingPaperPhotoDataUrl;
-      document.getElementById('paperPhotoPreviewWrap').classList.remove('hidden');
+    Promise.all(files.map(function (file) {
+      return resizeImageForOcr_(file).then(function (blob) {
+        return fileToBase64(blob).then(function (base64) {
+          return { blob: blob, dataUrl: 'data:image/jpeg;base64,' + base64 };
+        });
+      });
+    })).then(function (results) {
+      results.forEach(function (r) {
+        pendingPaperPhotoBlobs.push(r.blob);
+        pendingPaperPhotoDataUrls.push(r.dataUrl);
+      });
+      renderPaperPhotoPreview_();
       document.getElementById('paperOcrBtn').classList.remove('hidden');
       document.getElementById('paperImportStatus').textContent = '';
+      e.target.value = '';
     });
   }
   document.getElementById('paperPhotoCameraInput').addEventListener('change', handlePaperPhotoSelected_);
   document.getElementById('paperPhotoInput').addEventListener('change', handlePaperPhotoSelected_);
 
   document.getElementById('paperOcrBtn').addEventListener('click', function () {
-    if (!pendingPaperPhotoBlob) return;
+    if (!pendingPaperPhotoBlobs.length) return;
     document.getElementById('paperImportStatus').textContent = 'AIが読み取っています…（数十秒かかることがあります）';
     document.getElementById('paperOcrBtn').disabled = true;
-    fileToBase64(pendingPaperPhotoBlob).then(function (base64) {
+    Promise.all(pendingPaperPhotoBlobs.map(fileToBase64)).then(function (base64List) {
       return fetch(GAS_API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'ocrToolLayout', imageBase64: base64, mimeType: 'image/jpeg' })
+        body: JSON.stringify({ action: 'ocrToolLayout', imageBase64List: base64List, mimeType: 'image/jpeg' })
       });
     }).then(function (r) { return r.json(); })
       .then(function (res) {
@@ -1052,7 +1090,7 @@
         document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
         document.getElementById('toolsStatus').textContent = '';
         setScreen('tools');
-        enterToolEdit(res.data, pendingPaperPhotoDataUrl);
+        enterToolEdit(res.data, pendingPaperPhotoDataUrls);
       })
       .catch(function (err) {
         document.getElementById('paperOcrBtn').disabled = false;
@@ -1193,9 +1231,9 @@
     if (!toolEditMode) enterToolEdit(); else exitToolEdit();
   });
 
-  // ocrData/ocrPhotoDataUrlが渡された場合（④紙の取込確認からの遷移）は、既存データの代わりに
+  // ocrData/ocrPhotoDataUrlsが渡された場合（④紙の取込確認からの遷移）は、既存データの代わりに
   // AIの読み取り結果でフォームを埋め、原本の写真と照合するまで保存できないようにする。
-  function enterToolEdit(ocrData, ocrPhotoDataUrl) {
+  function enterToolEdit(ocrData, ocrPhotoDataUrls) {
     toolEditMode = true;
     document.getElementById('toolViewToggle').textContent = '閲覧に戻る';
     document.getElementById('toolViewWrap').classList.add('hidden');
@@ -1219,7 +1257,14 @@
       memoEl.style.height = 'auto';
       memoEl.style.height = memoEl.scrollHeight + 'px';
 
-      document.getElementById('ocrReviewPhoto').src = ocrPhotoDataUrl || '';
+      var photosWrap = document.getElementById('ocrReviewPhotos');
+      photosWrap.innerHTML = '';
+      (ocrPhotoDataUrls || []).forEach(function (url) {
+        var img = document.createElement('img');
+        img.src = url;
+        img.alt = '原本の写真';
+        photosWrap.appendChild(img);
+      });
       document.getElementById('ocrReviewCheck').checked = false;
       banner.classList.remove('hidden');
       document.getElementById('toolEditWrap').classList.add('ocr-review-mode');
@@ -1476,30 +1521,42 @@
     var label = document.getElementById(opts.labelId);
     btn.addEventListener('click', function () { input.click(); });
     input.addEventListener('change', function (e) {
-      var file = e.target.files[0];
-      if (!file || !currentZubanData) return;
-      label.textContent = '画像を処理しています…';
-      resizeImageForUpload_(file).then(function (uploadBlob) {
-        label.textContent = 'アップロード中…';
-        return fileToBase64(uploadBlob).then(function (base64) {
-          var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
-          return fetch(GAS_API_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'uploadPhoto', zuban: currentZubanData.zuban,
-              filename: filename, mimeType: uploadBlob.type || 'image/jpeg', dataBase64: base64
-            })
-          });
+      var files = Array.prototype.slice.call(e.target.files || []);
+      if (!files.length || !currentZubanData) return;
+      var urls = [];
+      var chain = Promise.resolve();
+      files.forEach(function (file, idx) {
+        chain = chain.then(function () {
+          label.textContent = files.length > 1
+            ? 'アップロード中…（' + (idx + 1) + '/' + files.length + '）'
+            : 'アップロード中…';
+          return resizeImageForUpload_(file).then(function (uploadBlob) {
+            return fileToBase64(uploadBlob).then(function (base64) {
+              var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+              return fetch(GAS_API_URL, {
+                method: 'POST',
+                body: JSON.stringify({
+                  action: 'uploadPhoto', zuban: currentZubanData.zuban,
+                  filename: filename, mimeType: uploadBlob.type || 'image/jpeg', dataBase64: base64
+                })
+              });
+            });
+          }).then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (res.error) throw new Error(res.error);
+              urls.push(res.url);
+            });
         });
-      }).then(function (r) { return r.json(); })
-        .then(function (res) {
-          if (res.error) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + res.error); return; }
-          icon.textContent = '✅';
-          label.textContent = '写真を添付しました';
-          btn.classList.add('has-photo');
-          opts.onUploaded(res.url);
-        })
-        .catch(function (err) { label.textContent = '写真を選ぶ'; alert('写真のアップロードに失敗しました: ' + err.message); });
+      });
+      chain.then(function () {
+        icon.textContent = '✅';
+        label.textContent = urls.length > 1 ? urls.length + '枚 添付しました' : '写真を添付しました';
+        btn.classList.add('has-photo');
+        opts.onUploaded(urls.join('\n'));
+      }).catch(function (err) {
+        label.textContent = '写真を選ぶ';
+        alert('写真のアップロードに失敗しました: ' + err.message);
+      });
     });
     return function reset() {
       icon.textContent = '📷';
