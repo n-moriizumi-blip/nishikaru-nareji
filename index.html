@@ -711,6 +711,12 @@
         currentRole = data.role || 'other';
         currentSection = data.section || '';
         currentAllAccess = !!data.allAccess;
+        // 動作確認用：allAccessアカウントに限り、URLに?debugRole=shiage等を付けると
+        // その役割になりきって画面の出し分けを確認できる（他アカウントへのログインが不要）。
+        if (currentAllAccess) {
+          var debugRole = new URLSearchParams(location.search).get('debugRole');
+          if (debugRole) { currentRole = debugRole; currentAllAccess = false; }
+        }
         updateActionGate();
       })
       .catch(function () { currentRole = 'other'; updateActionGate(); });
