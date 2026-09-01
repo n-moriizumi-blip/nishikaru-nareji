@@ -824,15 +824,24 @@ function saveToolPositions_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
     deleteRowsByZuban_(sheet, payload.zuban);
-    var now = new Date();
-    (payload.positions || []).forEach(function (p) {
-      sheet.appendRow([
-        payload.zuban, p.column, p.order, p.tNumber, p.description,
-        payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
-        payload.toolStorage || '', payload.forwardPosition || '',
-        identity.email, now
-      ]);
-    });
+    var positions = payload.positions || [];
+    if (positions.length) {
+      var now = new Date();
+      var startRow = sheet.getLastRow() + 1;
+      // Tナンバーが数字のみだとSheets側で自動的に数値型に変換され、頭0("007"等)が失われたり
+      // 再読込時に文字列を前提にした画面表示が壊れたりする（図番の頭0落ち不具合と同種の原因）ため、
+      // 書き込み前にテキスト形式に固定する。
+      sheet.getRange(startRow, 4, positions.length, 1).setNumberFormat('@');
+      var rows = positions.map(function (p) {
+        return [
+          payload.zuban, p.column, p.order, String(p.tNumber || ''), p.description,
+          payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
+          payload.toolStorage || '', payload.forwardPosition || '',
+          identity.email, now
+        ];
+      });
+      sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+    }
     invalidateZubanCache_(payload.zuban);
     return { ok: true };
   });
