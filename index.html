@@ -186,7 +186,9 @@
     padding: 10px 7px; text-align: center; font-family: var(--font-mono); line-height: 1.4;
   }
   .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
-  .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); display: block; }
+  .tool-view-row .t-line { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+  .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink-soft); flex: none; white-space: nowrap; }
   .tool-view-row .d { font-size: 0.85rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
   .tool-view-row .m { font-size: 0.72rem; color: var(--ink-soft); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
   .tool-view-spec { flex: none; display: flex; gap: 10px; flex-wrap: wrap; }
@@ -1254,10 +1256,10 @@
         var row = document.createElement('div');
         row.className = 'tool-view-row';
         var tLabel = [p['Tナンバー'], p['加工種類']].filter(Boolean).map(function (s) { return escapeHtml(String(s)); }).join('　');
-        var html = '<span class="t">' + tLabel + '</span>';
+        var html = '<div class="t-line"><span class="t">' + tLabel + '</span>' +
+          (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var meta = [
-          p['シフト'] ? 'シフト: ' + p['シフト'] : '',
           p['メーカー'] ? 'メーカー: ' + p['メーカー'] : '',
           p['品番'] ? '品番: ' + p['品番'] : ''
         ].filter(Boolean).join('　');
