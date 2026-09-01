@@ -54,7 +54,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
-    '図番', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
+    '図番', '機械名', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', '最終更新者メール', '最終更新日時'
   ]);
@@ -862,7 +862,8 @@ function deleteQualityLog_(payload) {
 function saveToolPositions_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
-    deleteRowsByZuban_(sheet, payload.zuban);
+    var machineName = payload.machineName || '';
+    deleteRowsByZuban_(sheet, payload.zuban, { field: '機械名', value: machineName });
     var positions = payload.positions || [];
     if (positions.length) {
       var now = new Date();
@@ -870,10 +871,10 @@ function saveToolPositions_(payload) {
       // Tナンバーが数字のみだとSheets側で自動的に数値型に変換され、頭0("007"等)が失われたり
       // 再読込時に文字列を前提にした画面表示が壊れたりする（図番の頭0落ち不具合と同種の原因）ため、
       // 書き込み前にテキスト形式に固定する。
-      sheet.getRange(startRow, 4, positions.length, 1).setNumberFormat('@');
+      sheet.getRange(startRow, 5, positions.length, 1).setNumberFormat('@');
       var rows = positions.map(function (p) {
         return [
-          payload.zuban, p.column, p.order, String(p.tNumber || ''),
+          payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''),
           p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
           payload.toolStorage || '', payload.forwardPosition || '',
@@ -888,17 +889,21 @@ function saveToolPositions_(payload) {
   });
 }
 
-/** 加工種類・メーカーは、まだ入力履歴が少ない導入初期でも使えるよう、既知の値をあらかじめ種として持たせておく。 */
+/** 加工種類・メーカー・機械名は、まだ入力履歴が少ない導入初期でも使えるよう、既知の値をあらかじめ種として持たせておく。 */
 var TOOL_FIELD_SEED_ = {
   '加工種類': [
     '前挽き(外径)', '後挽き(外径)', '剣先(外径/複形)', '端面引き', '前挽き(内径/中ぐり)',
     '後挽き(内径)', '剣先(内径)', '外径溝入れ', '内径溝入れ', '端面溝入れ', '突切り', '外径ねじ切り', '内径ねじ切り'
   ],
-  'メーカー': ['京セラ', 'サンドビック', '住友', 'タンガロイ', '三菱', 'NTK']
+  'メーカー': ['京セラ', 'サンドビック', '住友', 'タンガロイ', '三菱', 'NTK'],
+  '機械名': [
+    'A20', 'A32', 'B12', 'C32', 'E20', 'F20', 'F25', 'GL', 'L16', 'L20', 'L25',
+    'M12', 'M16', 'M20', 'M32', 'NR', 'RL20'
+  ]
 };
 
 /**
- * ツール配置編集画面の「加工種類・メーカー・品番」の入力補完候補を返す。
+ * ツール配置編集画面の「加工種類・メーカー・品番・機械名」の入力補完候補を返す。
  * あらかじめ分かっている種（TOOL_FIELD_SEED_）に、実際にこれまで入力された値（重複除去）を足し合わせる。
  * マスタデータが無くても、使うほど候補が育っていく（品番は種が無いため入力履歴のみ）。
  */
@@ -909,12 +914,12 @@ function getToolFieldSuggestions_() {
   if (cached) return JSON.parse(cached);
 
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
-  var result = { '加工種類': [], 'メーカー': [], '品番': [] };
+  var result = { '加工種類': [], 'メーカー': [], '品番': [], '機械名': [] };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
   if (lastRow >= 2) {
     var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var cols = {};
-    ['加工種類', 'メーカー', '品番'].forEach(function (name) { cols[name] = header.indexOf(name); });
+    ['加工種類', 'メーカー', '品番', '機械名'].forEach(function (name) { cols[name] = header.indexOf(name); });
     var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
     Object.keys(cols).forEach(function (name) {
       var col = cols[name];
@@ -994,12 +999,16 @@ function saveShippingSpec_(payload) {
   });
 }
 
-function deleteRowsByZuban_(sheet, zuban) {
+/** extraMatch（{field, value}）を渡すと、図番に加えその列の値も一致する行だけを対象にする（機械名でのレイアウト分けに使用）。 */
+function deleteRowsByZuban_(sheet, zuban, extraMatch) {
   var rows = sheet.getDataRange().getValues();
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
+  var extraCol = extraMatch ? header.indexOf(extraMatch.field) : -1;
   for (var i = rows.length - 1; i >= 1; i--) {
-    if (rows[i][zubanCol] === zuban) sheet.deleteRow(i + 1);
+    if (rows[i][zubanCol] !== zuban) continue;
+    if (extraMatch && extraCol !== -1 && String(rows[i][extraCol] || '') !== extraMatch.value) continue;
+    sheet.deleteRow(i + 1);
   }
 }
 
@@ -1663,6 +1672,23 @@ function migrateToolPositionFields() {
     Logger.log('「' + name + '」列を追加しました');
     header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   });
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「機械名」列を追加する（既存シート用、初回のみ手動実行）。
+ * 同じ図番でも加工する機械（NC旋盤）が違うとツールレイアウトが2〜3種類あることがあるため、
+ * 図番だけでなく機械名も含めて1つのレイアウトとして扱えるようにする（2026-09-01）。
+ * 既存行の機械名は空欄のまま（旧データがどの機械のものか記録が無いため）。
+ */
+function addToolMachineColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('機械名') !== -1) { Logger.log('「機械名」は追加済みです'); return; }
+  var zubanCol = header.indexOf('図番');
+  var insertAt = zubanCol !== -1 ? zubanCol + 2 : sheet.getLastColumn() + 1;
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('機械名');
+  Logger.log('「機械名」列を追加しました');
 }
 
 /**

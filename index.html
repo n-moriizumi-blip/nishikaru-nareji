@@ -346,6 +346,11 @@
       </div>
       <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください（表裏や複数ページある場合は複数枚まとめて撮影・選択できます）。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
 
+      <div class="field">
+        <label>機械名（この紙のレイアウトはどの機械のものか）</label>
+        <input type="text" id="paperMachineInput" list="machineNameList">
+      </div>
+
       <div class="field" style="display:flex; gap:8px; flex-wrap:wrap;">
         <button type="button" class="btn btn-secondary" id="paperPhotoCameraBtn">📷 写真を撮る</button>
         <button type="button" class="btn btn-secondary" id="paperPhotoLibraryBtn">🖼 アルバムから選ぶ</button>
@@ -368,6 +373,16 @@
           <button type="button" class="btn btn-secondary" id="goPaperImportBtn">ツールレイアウト表取込</button>
           <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
         </div>
+      </div>
+
+      <div id="machinePickerWrap" class="hidden">
+        <div class="section-label sub">機械（NC旋盤）で切り替える</div>
+        <div class="dept-btn-row" id="machineBtnRow"></div>
+        <div id="machineAddRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:14px;">
+          <input type="text" id="newMachineInput" list="machineNameList" placeholder="機械名（例：A20）" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
+          <button type="button" class="btn btn-secondary" id="newMachineConfirmBtn">作成</button>
+        </div>
+        <datalist id="machineNameList"></datalist>
       </div>
 
       <div class="tool-view-wrap" id="toolViewWrap">
@@ -1160,6 +1175,7 @@
     setScreen('paperImport');
     document.getElementById('paperImportZubanHeader').textContent = zubanLabel(currentZubanData);
     document.getElementById('paperImportStatus').textContent = '';
+    document.getElementById('paperMachineInput').value = selectedMachine || '';
     document.getElementById('paperOcrBtn').classList.add('hidden');
     document.getElementById('paperPhotoInput').value = '';
     document.getElementById('paperPhotoCameraInput').value = '';
@@ -1249,6 +1265,8 @@
 
   document.getElementById('paperOcrBtn').addEventListener('click', function () {
     if (!pendingPaperPhotoBlobs.length) return;
+    var paperMachineName = document.getElementById('paperMachineInput').value.trim();
+    if (!paperMachineName) { alert('この紙がどの機械（NC旋盤）のものか、機械名を入力してください'); return; }
     document.getElementById('paperImportStatus').textContent = 'AIが読み取っています…（数十秒かかることがあります）';
     document.getElementById('paperOcrBtn').disabled = true;
     Promise.all(pendingPaperPhotoBlobs.map(fileToBase64)).then(function (base64List) {
@@ -1275,6 +1293,10 @@
         document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
         document.getElementById('toolsStatus').textContent = '';
         setScreen('tools');
+        availableMachines = computeAvailableMachines_(currentZubanData);
+        selectedMachine = paperMachineName;
+        if (availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
+        renderMachinePicker_();
         enterToolEdit(res.data, pendingPaperPhotoDataUrls);
       })
       .catch(function (err) {
@@ -1292,6 +1314,66 @@
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function escapeAttr(s) { return escapeHtml(String(s || '')); }
 
+  // ==== 機械名（NC旋盤）ごとのツールレイアウト切り替え ====
+  // 同じ図番でも加工する機械が違うとツールレイアウトが2〜3種類あることがあるため、
+  // 図番＋機械名の組み合わせで別々のレイアウトとして扱う（2026-09-01）。
+  var selectedMachine = null;
+  var availableMachines = [];
+
+  function computeAvailableMachines_(data) {
+    var seen = {}, list = [];
+    (data.toolPositions || []).forEach(function (p) {
+      var m = String(p['機械名'] || '').trim();
+      if (m && !seen[m]) { seen[m] = true; list.push(m); }
+    });
+    return list;
+  }
+
+  function renderMachinePicker_() {
+    document.getElementById('machinePickerWrap').classList.remove('hidden');
+    var row = document.getElementById('machineBtnRow');
+    row.innerHTML = '';
+    availableMachines.forEach(function (m) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dept-btn';
+      btn.textContent = m;
+      btn.setAttribute('aria-pressed', m === selectedMachine ? 'true' : 'false');
+      btn.addEventListener('click', function () {
+        if (toolEditMode && !confirm('編集中の内容は保存されません。機械を切り替えますか？')) return;
+        selectedMachine = m;
+        toolEditMode = false;
+        document.getElementById('toolViewToggle').textContent = '編集する';
+        document.getElementById('toolViewWrap').classList.remove('hidden');
+        document.getElementById('toolEditWrap').classList.add('hidden');
+        renderMachinePicker_();
+        renderToolView(currentZubanData);
+      });
+      row.appendChild(btn);
+    });
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'dept-btn';
+    addBtn.textContent = '＋ 追加';
+    addBtn.addEventListener('click', function () {
+      document.getElementById('machineAddRow').classList.remove('hidden');
+      document.getElementById('newMachineInput').value = '';
+      document.getElementById('newMachineInput').focus();
+    });
+    row.appendChild(addBtn);
+  }
+
+  document.getElementById('newMachineConfirmBtn').addEventListener('click', function () {
+    var name = document.getElementById('newMachineInput').value.trim();
+    if (!name) { alert('機械名を入力してください'); return; }
+    if (availableMachines.indexOf(name) === -1) availableMachines.push(name);
+    selectedMachine = name;
+    document.getElementById('machineAddRow').classList.add('hidden');
+    renderMachinePicker_();
+    renderToolView(currentZubanData);
+    enterToolEdit();
+  });
+
   function goToTools() {
     if (!currentZubanData) return;
     setScreen('tools');
@@ -1301,11 +1383,17 @@
     document.getElementById('toolViewToggle').textContent = '編集する';
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
+    document.getElementById('machineAddRow').classList.add('hidden');
+    availableMachines = computeAvailableMachines_(currentZubanData);
+    if (!selectedMachine || availableMachines.indexOf(selectedMachine) === -1) {
+      selectedMachine = availableMachines[0] || null;
+    }
+    renderMachinePicker_();
     renderToolView(currentZubanData);
     loadToolFieldSuggestions_();
   }
 
-  // 加工種類・メーカー・品番の入力補完候補（datalist）。1セッション1回取得すれば十分なため、取得済みなら再取得しない。
+  // 加工種類・メーカー・品番・機械名の入力補完候補（datalist）。1セッション1回取得すれば十分なため、取得済みなら再取得しない。
   var toolFieldSuggestionsLoaded = false;
   function loadToolFieldSuggestions_() {
     if (toolFieldSuggestionsLoaded) return;
@@ -1314,7 +1402,7 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) return;
-        var map = { '加工種類': 'toolCategoryList', 'メーカー': 'toolMakerList', '品番': 'toolPartNumberList' };
+        var map = { '加工種類': 'toolCategoryList', 'メーカー': 'toolMakerList', '品番': 'toolPartNumberList', '機械名': 'machineNameList' };
         Object.keys(map).forEach(function (key) {
           var list = document.getElementById(map[key]);
           list.innerHTML = (res[key] || []).map(function (v) {
@@ -1422,10 +1510,11 @@
       memos.forEach(function (m) { memoZone.appendChild(buildTipCard(m)); });
     }
 
-    var grouped = groupToolPositions(data.toolPositions);
+    var myPositions = (data.toolPositions || []).filter(function (p) { return String(p['機械名'] || '') === (selectedMachine || ''); });
+    var grouped = groupToolPositions(myPositions);
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       var headEl = document.getElementById('toolView' + capitalize(colKey) + 'Head');
-      var chuckVal = firstPositionValue(data.toolPositions, COL_LABELS[colKey]);
+      var chuckVal = firstPositionValue(myPositions, COL_LABELS[colKey]);
       headEl.textContent = COL_LABELS[colKey] + (chuckVal ? '　' + chuckVal : '');
 
       var colEl = document.getElementById('toolView' + capitalize(colKey));
@@ -1449,8 +1538,8 @@
 
     var specWrap = document.getElementById('toolViewSpec');
     specWrap.innerHTML = '';
-    var storage = firstPositionValue(data.toolPositions, '専用ツール保管');
-    var forwardPos = firstPositionValue(data.toolPositions, '前進端位置');
+    var storage = firstPositionValue(myPositions, '専用ツール保管');
+    var forwardPos = firstPositionValue(myPositions, '前進端位置');
     if (storage) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">専用ツール保管　<b>' + escapeHtml(storage) + '</b></div>');
     if (forwardPos) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">前進端位置　<b>' + escapeHtml(forwardPos) + '</b></div>');
   }
@@ -1506,7 +1595,8 @@
     } else {
       document.getElementById('toolMemoNew').style.height = '';
       document.getElementById('toolEditWrap').classList.remove('ocr-review-mode');
-      var grouped = groupToolPositions(currentZubanData.toolPositions);
+      var myPositions = (currentZubanData.toolPositions || []).filter(function (p) { return String(p['機械名'] || '') === (selectedMachine || ''); });
+      var grouped = groupToolPositions(myPositions);
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
           return {
@@ -1515,11 +1605,11 @@
           };
         });
       });
-      document.getElementById('frontChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '正面チャック径');
-      document.getElementById('backChuckInput').value = firstPositionValue(currentZubanData.toolPositions, '背面チャック径');
-      document.getElementById('cycleTimeInput').value = firstPositionValue(currentZubanData.toolPositions, 'サイクルタイム');
-      document.getElementById('toolStorageInput').value = firstPositionValue(currentZubanData.toolPositions, '専用ツール保管');
-      document.getElementById('forwardPositionInput').value = firstPositionValue(currentZubanData.toolPositions, '前進端位置');
+      document.getElementById('frontChuckInput').value = firstPositionValue(myPositions, '正面チャック径');
+      document.getElementById('backChuckInput').value = firstPositionValue(myPositions, '背面チャック径');
+      document.getElementById('cycleTimeInput').value = firstPositionValue(myPositions, 'サイクルタイム');
+      document.getElementById('toolStorageInput').value = firstPositionValue(myPositions, '専用ツール保管');
+      document.getElementById('forwardPositionInput').value = firstPositionValue(myPositions, '前進端位置');
       document.getElementById('toolMemoNew').value = '';
 
       banner.classList.add('hidden');
@@ -1546,6 +1636,9 @@
     document.getElementById('toolEditWrap').classList.add('hidden');
     document.getElementById('ocrReviewBanner').classList.add('hidden');
     document.getElementById('toolSaveBtn').disabled = false;
+    availableMachines = computeAvailableMachines_(currentZubanData);
+    if (selectedMachine && availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
+    renderMachinePicker_();
     renderToolView(currentZubanData);
   }
 
@@ -1623,6 +1716,7 @@
 
   document.getElementById('toolSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
+    if (!selectedMachine) { alert('機械名を選ぶか、新しく追加してから保存してください'); return; }
     syncColumnFromDom('front');
     syncColumnFromDom('back');
     syncColumnFromDom('cycle');
@@ -1641,6 +1735,7 @@
     var payload = {
       action: 'saveToolPositions',
       zuban: currentZubanData.zuban,
+      machineName: selectedMachine,
       positions: positions,
       frontChuck: document.getElementById('frontChuckInput').value,
       backChuck: document.getElementById('backChuckInput').value,
