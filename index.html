@@ -1076,10 +1076,15 @@
   // 過去トラの確認有無に関わらず②画面に常に表示する。
   // 検査記録の添付・ミルシート（検査専用）、梱包方法・その他必要事項（出荷専用）は部署ボタン
   // （renderDeptView_）側でのみ表示し、ここでは対象外（2026-09-01、部署ごとの閲覧に変更）。
+  // 3つ目の要素（onlyValue）を指定した項目は、その値のとき（＝「有」「要」等）だけ表示する
+  // （「無」「不要」は情報として意味が薄いため出さない、2026-09-02変更）。
   var SHIPPING_SPEC_LABELS = [
-    ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
+    ['トレー梱包', 'トレー梱包'],
+    ['NG限度見本', 'NG・限度見本', '有'],
     ['キーエンスプログラム名', 'キーエンス測定プログラム名'],
-    ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類']
+    ['カット品', 'カット品', '要'],
+    ['テストピース', 'テストピース', '要'],
+    ['借用ゲージ種類', 'ゲージの種類']
   ];
   function renderShippingSpecDisplay(spec) {
     var wrap = document.getElementById('shippingSpecWrap');
@@ -1090,6 +1095,7 @@
     SHIPPING_SPEC_LABELS.forEach(function (pair) {
       var val = spec[pair[0]];
       if (!val) return;
+      if (pair[2] && val !== pair[2]) return;
       any = true;
       list.insertAdjacentHTML('beforeend', '<div class="spec-item">' + escapeHtml(pair[1]) + '　<b>' + escapeHtml(String(val)) + '</b></div>');
     });
