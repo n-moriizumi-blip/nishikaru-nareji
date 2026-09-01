@@ -301,8 +301,10 @@
       </div>
       <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
 
-      <div class="field">
-        <button type="button" class="btn btn-secondary" id="paperPhotoBtn">📷 写真を選ぶ</button>
+      <div class="field" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" id="paperPhotoCameraBtn">📷 写真を撮る</button>
+        <button type="button" class="btn btn-secondary" id="paperPhotoLibraryBtn">🖼 アルバムから選ぶ</button>
+        <input type="file" id="paperPhotoCameraInput" accept="image/*" capture="environment" class="hidden">
         <input type="file" id="paperPhotoInput" accept="image/*" class="hidden">
       </div>
       <div id="paperPhotoPreviewWrap" class="hidden">
@@ -969,6 +971,7 @@
     document.getElementById('paperPhotoPreviewWrap').classList.add('hidden');
     document.getElementById('paperOcrBtn').classList.add('hidden');
     document.getElementById('paperPhotoInput').value = '';
+    document.getElementById('paperPhotoCameraInput').value = '';
     pendingPaperPhotoBlob = null;
     pendingPaperPhotoDataUrl = '';
   }
@@ -997,10 +1000,13 @@
     });
   }
 
-  document.getElementById('paperPhotoBtn').addEventListener('click', function () {
+  document.getElementById('paperPhotoCameraBtn').addEventListener('click', function () {
+    document.getElementById('paperPhotoCameraInput').click();
+  });
+  document.getElementById('paperPhotoLibraryBtn').addEventListener('click', function () {
     document.getElementById('paperPhotoInput').click();
   });
-  document.getElementById('paperPhotoInput').addEventListener('change', function (e) {
+  function handlePaperPhotoSelected_(e) {
     var file = e.target.files[0];
     if (!file) return;
     document.getElementById('paperImportStatus').textContent = '画像を処理しています…';
@@ -1014,7 +1020,9 @@
       document.getElementById('paperOcrBtn').classList.remove('hidden');
       document.getElementById('paperImportStatus').textContent = '';
     });
-  });
+  }
+  document.getElementById('paperPhotoCameraInput').addEventListener('change', handlePaperPhotoSelected_);
+  document.getElementById('paperPhotoInput').addEventListener('change', handlePaperPhotoSelected_);
 
   document.getElementById('paperOcrBtn').addEventListener('click', function () {
     if (!pendingPaperPhotoBlob) return;
