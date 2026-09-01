@@ -700,6 +700,7 @@
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / senjou / shiage / other
+  var ROLE_DEPT_NAME = { kensa: '検査', shiage: '仕上げ', senjou: '洗浄' }; // 品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
@@ -919,7 +920,7 @@
   function renderPastTroubleDisplay(data) {
     var hasTrouble = (data.pastTrouble || []).length > 0;
     document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
-    document.getElementById('freshWrap').style.display = (!hasTrouble && (data.qualityLog || []).length === 0) ? 'block' : 'none';
+    document.getElementById('freshWrap').style.display = (!hasTrouble && myDeptQualityLog_(data).length === 0) ? 'block' : 'none';
 
     if (hasTrouble) {
       var list = document.getElementById('pastTroubleList');
@@ -953,14 +954,25 @@
     }
   }
 
-  // 自部署の品質情報（⑤で「共有する」を選ばなかった投稿）。②画面に一覧表示し、編集・削除もここから行う。
+  // 自部署の品質情報（⑤で「共有する」を選ばなかった投稿）の絞り込み。
+  // 品証・仕上げ・洗浄のログは同じシートを部署タグで共用しているため、閲覧側も自分の部署の分だけに絞る
+  // （allAccessは全部署分を見られる。それ以外の役割は該当する部署が無いため何も表示しない）。
+  function myDeptQualityLog_(data) {
+    var deptName = ROLE_DEPT_NAME[currentRole];
+    return (data.qualityLog || []).filter(function (row) {
+      return currentAllAccess || (deptName && row['部署'] === deptName);
+    });
+  }
+
+  // ②画面に一覧表示し、編集・削除もここから行う。
   function renderQualityLogSection(data) {
     var qlSection = document.getElementById('qualityLogSection');
     var qlList = document.getElementById('qualityLogList');
     qlList.innerHTML = '';
-    if ((data.qualityLog || []).length > 0) {
+    var rows = myDeptQualityLog_(data);
+    if (rows.length > 0) {
       qlSection.style.display = 'block';
-      data.qualityLog.forEach(function (row) {
+      rows.forEach(function (row) {
         qlList.appendChild(buildTipCard(row, { editable: true, onEdit: startEditQualityLog, onDelete: deleteQualityLogEntry }));
       });
     } else {
