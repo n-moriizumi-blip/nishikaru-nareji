@@ -63,6 +63,7 @@ function setupSheets() {
     '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本', 'キーエンス測定', 'キーエンスプログラム名',
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
     '梱包方法', 'その他必要事項',
+    '仕上専用メモ', '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー',
     '最終更新者メール', '最終更新日時'
   ]);
 
@@ -983,6 +984,12 @@ function resolveRole_(section, process) {
   if (section.indexOf('製造課') !== -1 && (process.indexOf('一次加工') !== -1 || process.indexOf('二次加工') !== -1)) {
     return 'seizou';
   }
+  if (section.indexOf('製造課') !== -1 && process.indexOf('洗浄') !== -1) {
+    return 'senjou';
+  }
+  if (section.indexOf('製造課') !== -1 && process.indexOf('仕上げ') !== -1) {
+    return 'shiage';
+  }
   if (section.indexOf('生産管理課') !== -1 && process.indexOf('出荷') !== -1) {
     return 'shukka';
   }
@@ -1588,6 +1595,23 @@ function migrateToolPositionFields() {
     sheet.getRange(1, insertAt).setValue(name);
     Logger.log('「' + name + '」列を追加しました');
     header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  });
+}
+
+/** SHEET_SHIPPING_SPECに仕上専用・洗浄専用の列を追加する（既存シート用、初回のみ手動実行）。 */
+function addShiageSenjouColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var afterName = 'その他必要事項';
+  ['仕上専用メモ', '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー'].forEach(function (name) {
+    header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (header.indexOf(name) !== -1) { Logger.log('「' + name + '」は追加済みです'); afterName = name; return; }
+    var afterCol = header.indexOf(afterName);
+    var insertAt = afterCol !== -1 ? afterCol + 2 : sheet.getLastColumn() + 1;
+    sheet.insertColumnAfter(insertAt - 1);
+    sheet.getRange(1, insertAt).setValue(name);
+    Logger.log('「' + name + '」列を追加しました');
+    afterName = name;
   });
 }
 

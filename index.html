@@ -511,6 +511,48 @@
         <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
       </div>
 
+      <div id="specShiageSection" class="hidden">
+        <div class="section-label">仕上専用（仕上げ担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="field">
+          <label>メモ（自由入力）</label>
+          <textarea id="shiageMemoInput" placeholder="仕上げに関するメモを自由に記入"></textarea>
+        </div>
+        <button type="button" class="btn btn-secondary" id="specShiageSaveBtn">仕上専用を保存する</button>
+      </div>
+
+      <div id="specSenjouSection" class="hidden">
+        <div class="section-label">洗浄専用（洗浄担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label" style="margin-top:6px;">真空洗浄機</div>
+        <div class="field">
+          <label>超音波</label>
+          <div class="chip-row" data-group="ultrasonic">
+            <button type="button" class="chip">有</button>
+            <button type="button" class="chip">無</button>
+          </div>
+        </div>
+        <div class="section-label" style="margin-top:6px;">バレル情報</div>
+        <div class="field">
+          <label>メディア</label>
+          <input type="text" id="senjouMediaInput">
+        </div>
+        <div class="field">
+          <label>周波数（Hz）</label>
+          <input type="text" id="senjouFreqInput">
+        </div>
+        <div class="field">
+          <label>時間（分）</label>
+          <input type="text" id="senjouTimeInput">
+        </div>
+        <div class="field">
+          <label>ワイヤー</label>
+          <div class="chip-row" data-group="wire">
+            <button type="button" class="chip">有</button>
+            <button type="button" class="chip">無</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary" id="specSenjouSaveBtn">洗浄専用を保存する</button>
+      </div>
+
       <div id="qiLogSection" class="hidden">
         <div class="section-label" style="margin-top:6px;">品質情報を記録する</div>
         <div class="field">
@@ -624,7 +666,7 @@
   });
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
-  var currentRole = null; // seizou / kensa / seisan / shukka / other
+  var currentRole = null; // seizou / kensa / seisan / shukka / senjou / shiage / other
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
@@ -899,7 +941,9 @@
     ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
     ['キーエンス測定', 'キーエンス測定'], ['キーエンスプログラム名', 'キーエンスのプログラム名'],
     ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
-    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
+    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項'],
+    ['仕上専用メモ', '仕上専用メモ'],
+    ['超音波', '超音波'], ['バレルメディア', 'バレルメディア'], ['バレル周波数', 'バレル周波数'], ['バレル時間', 'バレル時間'], ['バレルワイヤー', 'バレルワイヤー']
   ];
   function renderShippingSpecDisplay(spec) {
     var wrap = document.getElementById('shippingSpecWrap');
@@ -1736,11 +1780,15 @@
     var spec = currentZubanData.shippingSpec || {};
     var showCommon = currentRole === 'kensa' || currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
-    var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentAllAccess;
+    var showShiage = currentRole === 'shiage' || currentAllAccess;
+    var showSenjou = currentRole === 'senjou' || currentAllAccess;
+    var showQiLog = currentRole === 'kensa' || currentRole === 'other' || currentRole === 'shiage' || currentRole === 'senjou' || currentAllAccess;
 
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !showCommon);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
+    document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
+    document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
 
     if (showCommon) {
@@ -1758,6 +1806,16 @@
     if (showShukka) {
       document.getElementById('packMethodInput').value = spec['梱包方法'] || '';
       document.getElementById('shipOtherInput').value = spec['その他必要事項'] || '';
+    }
+    if (showShiage) {
+      document.getElementById('shiageMemoInput').value = spec['仕上専用メモ'] || '';
+    }
+    if (showSenjou) {
+      setChipValue('ultrasonic', spec['超音波']);
+      document.getElementById('senjouMediaInput').value = spec['バレルメディア'] || '';
+      document.getElementById('senjouFreqInput').value = spec['バレル周波数'] || '';
+      document.getElementById('senjouTimeInput').value = spec['バレル時間'] || '';
+      setChipValue('wire', spec['バレルワイヤー']);
     }
     if (showQiLog) {
       cancelEditQualityLog();
@@ -1871,6 +1929,20 @@
       '梱包方法': document.getElementById('packMethodInput').value,
       'その他必要事項': document.getElementById('shipOtherInput').value
     }, '出荷（梱包・その他）', 'specShukkaSaveBtn');
+  });
+  document.getElementById('specShiageSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      '仕上専用メモ': document.getElementById('shiageMemoInput').value
+    }, '仕上専用', 'specShiageSaveBtn');
+  });
+  document.getElementById('specSenjouSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      '超音波': getChipValue('ultrasonic'),
+      'バレルメディア': document.getElementById('senjouMediaInput').value,
+      'バレル周波数': document.getElementById('senjouFreqInput').value,
+      'バレル時間': document.getElementById('senjouTimeInput').value,
+      'バレルワイヤー': getChipValue('wire')
+    }, '洗浄専用', 'specSenjouSaveBtn');
   });
 
   var resetQiPhotoBtn = wirePhotoUpload({
