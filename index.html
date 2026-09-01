@@ -1381,18 +1381,22 @@
           '<button type="button" class="row-remove">✕</button>' +
         '</div>' +
         '<div class="row-line">' +
-          '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番">' +
-          '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList">' +
-          '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト">' +
+          '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番" name="toolTNumber">' +
+          '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList" name="toolCategory">' +
+          '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
         '</div>' +
-        '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報">' +
+        '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報" name="toolDetail">' +
         '<div class="row-line">' +
-          '<input type="text" class="rmaker" value="' + escapeAttr(row.maker) + '" placeholder="メーカー" list="toolMakerList">' +
-          '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList">' +
+          '<input type="text" class="rmaker" value="' + escapeAttr(row.maker) + '" placeholder="メーカー" list="toolMakerList" name="toolMaker">' +
+          '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList" name="toolPartNumber">' +
         '</div>';
       div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
       div.querySelector('[data-act="down"]').addEventListener('click', function () { moveRow(colKey, idx, 1); });
       div.querySelector('.row-remove').addEventListener('click', function () { removeRow(colKey, idx); });
+      div.querySelector('.tnum').addEventListener('blur', function () {
+        var v = this.value.trim();
+        if (v && !/^t/i.test(v)) this.value = 'T' + v;
+      });
       container.appendChild(div);
     });
   }
