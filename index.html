@@ -30,10 +30,6 @@
   }
   header.appbar .title { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; }
   #userBox { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); }
-  #debugPreviewBanner {
-    background: var(--alert-soft); color: var(--alert-ink); font-weight: 700; font-size: 0.82rem;
-    text-align: center; padding: 8px 12px; border-bottom: 1px solid var(--alert);
-  }
   #signinBtn { display: none; }
   main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
   .screen { display: none; flex-direction: column; gap: 18px; }
@@ -254,7 +250,6 @@
       <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
     </div>
   </header>
-  <div id="debugPreviewBanner" class="hidden"></div>
 
   <main>
     <!-- SCREEN 1: 図番読み取り -->
@@ -708,7 +703,6 @@
   var ROLE_DEPT_NAME = { kensa: '検査', shiage: '仕上げ', senjou: '洗浄' }; // 品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
-  var debugPreviewMode = false; // ?debugRoleで他役割になりきって閲覧中（保存・編集は無効化する）
   function fetchRole() {
     if (!currentUser) return;
     fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(currentUser.email))
@@ -719,17 +713,9 @@
         currentAllAccess = !!data.allAccess;
         // 動作確認用：allAccessアカウントに限り、URLに?debugRole=shiage等を付けると
         // その役割になりきって画面の出し分けを確認できる（他アカウントへのログインが不要）。
-        // 誤って本物のデータを保存・編集・削除してしまわないよう、この間は閲覧専用にする。
         if (currentAllAccess) {
           var debugRole = new URLSearchParams(location.search).get('debugRole');
-          if (debugRole) {
-            currentRole = debugRole;
-            currentAllAccess = false;
-            debugPreviewMode = true;
-            document.getElementById('debugPreviewBanner').textContent =
-              '🔍 動作確認モード：「' + debugRole + '」として表示中（閲覧のみ・保存や編集はできません）';
-            document.getElementById('debugPreviewBanner').classList.remove('hidden');
-          }
+          if (debugRole) { currentRole = debugRole; currentAllAccess = false; }
         }
         updateActionGate();
       })
@@ -1326,7 +1312,7 @@
     var deptTag = m['部署'] ? '<span class="tag">' + escapeHtml(String(m['部署'])) + '</span>' : '';
     var rankTag = m['外観ランク'] ? '<span class="tag">ランク' + escapeHtml(String(m['外観ランク'])) + '</span>' : '';
     var photoHtml = buildPhotoHtml_(m['写真URL']);
-    var actionsHtml = (opts.editable && !debugPreviewMode)
+    var actionsHtml = (opts.editable)
       ? '<span class="meta-actions"><button type="button" data-act="edit">編集</button><button type="button" data-act="delete">削除</button></span>'
       : '';
     div.innerHTML =
@@ -1334,7 +1320,7 @@
       photoHtml +
       '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
       '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span>' + actionsHtml + '</div>';
-    if (opts.editable && !debugPreviewMode) {
+    if (opts.editable) {
       div.querySelector('[data-act="edit"]').addEventListener('click', function () { opts.onEdit(m); });
       div.querySelector('[data-act="delete"]').addEventListener('click', function () { opts.onDelete(m); });
     }
@@ -1552,7 +1538,6 @@
 
   document.getElementById('toolSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は保存できません（閲覧のみ）'); return; }
     syncColumnFromDom('front');
     syncColumnFromDom('back');
     syncColumnFromDom('cycle');
@@ -1764,7 +1749,6 @@
 
   document.getElementById('memoAddBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は記録できません（閲覧のみ）'); return; }
     var content = document.getElementById('toolMemoNew').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingMemoId;
@@ -1951,7 +1935,6 @@
   // 押したボタン自体の文字を一時的に変えて、その場で結果が分かるようにする。
   function saveShippingSpecFields(fields, statusPrefix, btnId) {
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は保存できません（閲覧のみ）'); return; }
     var btn = btnId ? document.getElementById(btnId) : null;
     var originalBtnText = btn ? btn.textContent : null;
     if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
@@ -2035,7 +2018,6 @@
 
   document.getElementById('shiageSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は記録できません（閲覧のみ）'); return; }
     var content = document.getElementById('shiageContentInput').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingShiageId;
@@ -2146,7 +2128,6 @@
 
   document.getElementById('senjouSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は記録できません（閲覧のみ）'); return; }
     var content = document.getElementById('senjouContentInput').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingSenjouId;
@@ -2190,7 +2171,6 @@
 
   document.getElementById('qiSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
-    if (debugPreviewMode) { alert('動作確認モード中は記録できません（閲覧のみ）'); return; }
     var content = document.getElementById('qiContentInput').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingQiId;
