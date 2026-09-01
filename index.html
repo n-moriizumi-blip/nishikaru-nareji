@@ -573,6 +573,10 @@
     });
     google.accounts.id.renderButton(document.getElementById('g_id_signin'), { theme: 'filled_black', size: 'small' });
     google.accounts.id.prompt(); // 自動ログインを試みる（One Tap）
+
+    // GoogleのIDトークンは発行から約1時間で失効するため、開いたままの画面でも
+    // 保存時に「ログイン情報が無効です」とならないよう、定期的に裏側で静かに再取得する。
+    setInterval(function () { google.accounts.id.prompt(); }, 45 * 60 * 1000);
   }
 
   // JWTのペイロード部はbase64url形式かつUTF-8。atob()だけだとLatin1として解釈され、
