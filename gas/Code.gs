@@ -762,12 +762,36 @@ function trashDriveFileByUrl_(url) {
   }
 }
 
-function updatePostById_(sheetName, postId, fields) {
+/**
+ * 共有フラグONの投稿（過去トラ・共有情報に表示される、他部署も見る投稿）は、投稿した本人のみ
+ * 編集・削除できる（2026-09-01、ユーザー判断で変更。「誰でも編集・削除できる」だったのを共有投稿に限り制限）。
+ * 共有されていない投稿（自部署内のみで見る投稿）は、従来通り誰でも編集・削除できる（変更なし）。
+ * 問題なければnullを返す。
+ */
+function checkSharedOwnership_(sheet, header, rowNum, payload) {
+  var sharedCol = header.indexOf('共有フラグ');
+  var posterCol = header.indexOf('投稿者メール');
+  if (sharedCol === -1 || posterCol === -1) return null;
+  var isShared = sheet.getRange(rowNum, sharedCol + 1).getValue() === true;
+  if (!isShared) return null;
+  var identity = verifyIdToken_(payload.idToken);
+  if (identity.error) return identity;
+  var posterEmail = String(sheet.getRange(rowNum, posterCol + 1).getValue() || '').toLowerCase();
+  if (identity.email.toLowerCase() !== posterEmail) {
+    return { error: '共有された投稿の編集・削除は、投稿した本人のみ行えます' };
+  }
+  return null;
+}
+
+function updatePostById_(sheetName, payload, fields) {
+  var postId = payload.postId;
   if (!postId) return { error: 'postId is required' };
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
   if (rowNum === -1) return { error: '投稿が見つかりません' };
+  var ownershipError = checkSharedOwnership_(sheet, header, rowNum, payload);
+  if (ownershipError) return ownershipError;
   var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
 
   // 写真が新しいものに差し替えられた場合、Drive上の古い写真ファイルが孤立して残らないようゴミ箱へ移動する。
@@ -789,12 +813,15 @@ function updatePostById_(sheetName, postId, fields) {
   return { ok: true };
 }
 
-function deletePostById_(sheetName, postId) {
+function deletePostById_(sheetName, payload) {
+  var postId = payload.postId;
   if (!postId) return { error: 'postId is required' };
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var rowNum = findRowIndexById_(sheet, header.indexOf('投稿ID'), postId);
   if (rowNum === -1) return { error: '投稿が見つかりません' };
+  var ownershipError = checkSharedOwnership_(sheet, header, rowNum, payload);
+  if (ownershipError) return ownershipError;
   var zuban = sheet.getRange(rowNum, header.indexOf('図番') + 1).getValue();
 
   // 投稿削除時、写真が添付されていればDrive上のファイルもゴミ箱へ移動する（孤立ファイル防止）。
@@ -811,24 +838,24 @@ function deletePostById_(sheetName, postId) {
 
 /** ツール配置メモの更新／削除（③編集画面）。 */
 function updateToolMemo_(payload) {
-  return updatePostById_(SHEET_TOOL_MEMO, payload.postId, {
+  return updatePostById_(SHEET_TOOL_MEMO, payload, {
     '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
   });
 }
 function deleteToolMemo_(payload) {
-  return deletePostById_(SHEET_TOOL_MEMO, payload.postId);
+  return deletePostById_(SHEET_TOOL_MEMO, payload);
 }
 
 /** 品質情報記録の更新／削除（⑤画面）。超音波以降は洗浄専用のみ使う項目（他部署の投稿では常に空文字）。 */
 function updateQualityLog_(payload) {
-  return updatePostById_(SHEET_QUALITY_LOG, payload.postId, {
+  return updatePostById_(SHEET_QUALITY_LOG, payload, {
     '内容': payload.content || '', '外観ランク': payload.rank || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared,
     '超音波': payload.ultrasonic || '', 'バレルメディア': payload.barrelMedia || '', 'バレル周波数': payload.barrelFreq || '',
     'バレル時間': payload.barrelTime || '', 'バレルワイヤー': payload.barrelWire || ''
   });
 }
 function deleteQualityLog_(payload) {
-  return deletePostById_(SHEET_QUALITY_LOG, payload.postId);
+  return deletePostById_(SHEET_QUALITY_LOG, payload);
 }
 
 /** ツール配置ポジションの保存（③編集画面）。図番の既存行を全削除してから書き直す（上書き）。 */

@@ -133,6 +133,12 @@
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer;
   }
   .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #241A0C; }
+  .dept-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .dept-btn {
+    font-family: inherit; font-size: 0.86rem; font-weight: 700; padding: 10px 16px;
+    border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-soft); cursor: pointer;
+  }
+  .dept-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #241A0C; }
   textarea {
     font-family: inherit; font-size: 0.94rem; padding: 14px; border-radius: 4px;
     border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: none; min-height: 100px; line-height: 1.65;
@@ -146,6 +152,7 @@
   .tip-card .tags { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
   .tip-card .tag { font-size: 0.72rem; font-family: var(--font-mono); background: var(--surface-2); color: var(--ink-soft); padding: 4px 10px; border-radius: 4px; font-weight: 700; border: 1px solid var(--line); }
   .tip-card p { font-size: 0.9rem; margin: 0 0 8px; line-height: 1.65; }
+  .tip-card p.tip-sub { font-size: 0.76rem; color: var(--ink-soft); margin-top: -4px; }
   .tip-card .meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; color: var(--ink-soft); border-top: 1px solid var(--line); padding-top: 8px; }
   .tip-card .meta-actions { display: flex; gap: 14px; }
   .tip-card .meta-actions button {
@@ -288,7 +295,7 @@
 
       <div id="pastTroubleWrap" style="display:none;">
         <div class="alert-card">
-          <div class="alert-head">⚠ 過去トラがあります</div>
+          <div class="alert-head">⚠ 過去トラ・共有情報</div>
           <div id="pastTroubleList"></div>
           <label class="confirm-row" id="confirmRow">
             <input type="checkbox" id="confirmCheck">
@@ -305,9 +312,17 @@
         </div>
       </div>
 
-      <div id="qualityLogSection" style="display:none;">
-        <div class="section-label">自部署の品質情報</div>
-        <div id="qualityLogList"></div>
+      <div id="deptViewSection" style="display:none;">
+        <div class="section-label">部署別の情報を見る</div>
+        <div class="dept-btn-row" id="deptBtnRow">
+          <button type="button" class="dept-btn" data-dept="検査">検査</button>
+          <button type="button" class="dept-btn" data-dept="仕上げ">仕上げ</button>
+          <button type="button" class="dept-btn" data-dept="洗浄">洗浄</button>
+          <button type="button" class="dept-btn" data-dept="出荷">出荷</button>
+        </div>
+        <p class="status-note" id="deptViewNote">他部署の情報は閲覧のみできます（編集・削除は自部署の投稿のみ）</p>
+        <div id="deptSpecList" class="tool-view-spec"></div>
+        <div id="deptLogList"></div>
       </div>
 
       <div id="shippingSpecWrap" style="display:none;">
@@ -432,8 +447,8 @@
         <div class="mini-field"><label>日付（自動）</label><input type="text" id="qiDateDisplay" disabled></div>
       </div>
 
-      <div id="specCommonSection" class="hidden">
-        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
+      <div id="specKensaSection" class="hidden">
+        <div class="section-label">検査専用｜検査記録の添付・ミルシート（検査担当のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>検査記録の添付</label>
           <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
@@ -448,6 +463,11 @@
             <button type="button" class="chip">不要</button>
           </div>
         </div>
+        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">検査専用を保存する</button>
+      </div>
+
+      <div id="specCommonSection" class="hidden">
+        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>トレー梱包</label>
           <div class="chip-row" data-group="tray" data-field="トレー梱包">
@@ -700,7 +720,7 @@
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / senjou / shiage / other
-  var ROLE_DEPT_NAME = { kensa: '検査', shiage: '仕上げ', senjou: '洗浄' }; // 品質情報記録ログの「部署」列との対応
+  var ROLE_DEPT_NAME = { kensa: '検査', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }; // 部署ボタン・品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
@@ -873,6 +893,7 @@
     // 「確認しました」にチェックしていないのに操作できてしまう不具合があったため、
     // 新しい図番の情報が届くまではボタン類を一旦すべて隠す。
     currentZubanData = null;
+    selectedDeptView = null;
     document.getElementById('confirmCheck').checked = false;
     updateActionGate();
 
@@ -884,7 +905,7 @@
     document.getElementById('historyZubanHeader').textContent = zuban;
     document.getElementById('pastTroubleWrap').style.display = 'none';
     document.getElementById('freshWrap').style.display = 'none';
-    document.getElementById('qualityLogSection').style.display = 'none';
+    document.getElementById('deptViewSection').style.display = 'none';
     document.getElementById('shippingSpecWrap').style.display = 'none';
     document.getElementById('zubanLoadingNote').classList.remove('hidden');
 
@@ -960,9 +981,9 @@
     }
   }
 
-  // 自部署の品質情報（⑤で「共有する」を選ばなかった投稿）の絞り込み。
-  // 品証・仕上げ・洗浄のログは同じシートを部署タグで共用しているため、閲覧側も自分の部署の分だけに絞る
-  // （allAccessは全部署分を見られる。それ以外の役割は該当する部署が無いため何も表示しない）。
+  // 自部署の品質情報（「あなたが初挑戦です」判定用）。品証・仕上げ・洗浄のログは同じシートを
+  // 部署タグで共用しているため、自分の部署の分だけに絞る（allAccessは全部署分、それ以外の役割で
+  // 該当する部署が無ければ空扱い）。
   function myDeptQualityLog_(data) {
     var deptName = ROLE_DEPT_NAME[currentRole];
     return (data.qualityLog || []).filter(function (row) {
@@ -970,29 +991,69 @@
     });
   }
 
+  // 部署別の情報を見る（②画面）。検査・仕上げ・洗浄・出荷のボタンを押すと、その部署の情報だけを
+  // その場に表示する。自部署（allAccessなら選んでいる部署）以外は完全閲覧のみで編集・削除ボタンを出さない。
+  var DEPT_SPEC_FIELDS = {
+    '検査': [['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート']],
+    '出荷': [['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']]
+  };
+  var selectedDeptView = null;
+
+  document.querySelectorAll('#deptBtnRow .dept-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      selectedDeptView = btn.getAttribute('data-dept');
+      renderQualityLogSection(currentZubanData);
+    });
+  });
+
   // ②画面に一覧表示し、編集・削除もここから行う。
   function renderQualityLogSection(data) {
-    var qlSection = document.getElementById('qualityLogSection');
-    var qlList = document.getElementById('qualityLogList');
-    qlList.innerHTML = '';
-    var rows = myDeptQualityLog_(data);
-    if (rows.length > 0) {
-      qlSection.style.display = 'block';
-      rows.forEach(function (row) {
-        qlList.appendChild(buildTipCard(row, { editable: true, onEdit: startEditQualityLog, onDelete: deleteQualityLogEntry }));
-      });
+    document.getElementById('deptViewSection').style.display = 'block';
+    if (!selectedDeptView) {
+      selectedDeptView = { kensa: '検査', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }[currentRole] || null;
+    }
+    document.querySelectorAll('#deptBtnRow .dept-btn').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.getAttribute('data-dept') === selectedDeptView ? 'true' : 'false');
+    });
+
+    var specList = document.getElementById('deptSpecList');
+    var logList = document.getElementById('deptLogList');
+    specList.innerHTML = '';
+    logList.innerHTML = '';
+    if (!selectedDeptView) {
+      logList.innerHTML = '<p class="status-note">上のボタンで部署を選んでください</p>';
+      return;
+    }
+    var isOwnDept = currentAllAccess || ROLE_DEPT_NAME[currentRole] === selectedDeptView;
+    document.getElementById('deptViewNote').style.display = isOwnDept ? 'none' : 'block';
+
+    var spec = data.shippingSpec || {};
+    var anySpec = false;
+    (DEPT_SPEC_FIELDS[selectedDeptView] || []).forEach(function (pair) {
+      var val = spec[pair[0]];
+      if (!val) return;
+      anySpec = true;
+      specList.insertAdjacentHTML('beforeend', '<div class="spec-item">' + escapeHtml(pair[1]) + '　<b>' + escapeHtml(String(val)) + '</b></div>');
+    });
+
+    var rows = (data.qualityLog || []).filter(function (row) { return row['部署'] === selectedDeptView; });
+    if (rows.length === 0) {
+      if (!anySpec) logList.innerHTML = '<p class="status-note">まだ記録がありません</p>';
     } else {
-      qlSection.style.display = 'none';
+      rows.forEach(function (row) {
+        logList.appendChild(buildTipCard(row, { editable: isOwnDept, onEdit: startEditQualityLog, onDelete: deleteQualityLogEntry }));
+      });
     }
   }
 
-  // 出荷仕様（検査項目・生産管理項目・出荷の梱包情報）は図番ごとに1件の固定仕様情報のため、
+  // 共通情報（検査・生産管理共通項目）は図番ごとに1件の固定仕様情報のため、
   // 過去トラの確認有無に関わらず②画面に常に表示する。
+  // 検査記録の添付・ミルシート（検査専用）、梱包方法・その他必要事項（出荷専用）は部署ボタン
+  // （renderDeptView_）側でのみ表示し、ここでは対象外（2026-09-01、部署ごとの閲覧に変更）。
   var SHIPPING_SPEC_LABELS = [
-    ['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート'], ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
+    ['トレー梱包', 'トレー梱包'], ['NG限度見本', 'NG・限度見本'],
     ['キーエンス測定', 'キーエンス測定'], ['キーエンスプログラム名', 'キーエンスのプログラム名'],
-    ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類'],
-    ['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']
+    ['カット品', 'カット品'], ['テストピース', 'テストピース'], ['借用ゲージ有無', '借用ゲージ等'], ['借用ゲージ種類', 'ゲージの種類']
   ];
   function renderShippingSpecDisplay(spec) {
     var wrap = document.getElementById('shippingSpecWrap');
@@ -1312,15 +1373,28 @@
     var deptTag = m['部署'] ? '<span class="tag">' + escapeHtml(String(m['部署'])) + '</span>' : '';
     var rankTag = m['外観ランク'] ? '<span class="tag">ランク' + escapeHtml(String(m['外観ランク'])) + '</span>' : '';
     var photoHtml = buildPhotoHtml_(m['写真URL']);
-    var actionsHtml = (opts.editable)
+    // 共有済み（過去トラ・共有情報に載る）投稿は、投稿した本人かallAccessだけが編集・削除できる
+    // （2026-09-01、ユーザー判断で変更。共有されていない投稿は従来通り誰でも編集・削除可）。
+    var isShared = m['共有フラグ'] === true;
+    var canEdit = opts.editable && (!isShared || currentAllAccess || (currentUser && m['投稿者メール'] === currentUser.email));
+    var actionsHtml = canEdit
       ? '<span class="meta-actions"><button type="button" data-act="edit">編集</button><button type="button" data-act="delete">削除</button></span>'
       : '';
+    var barrelInfo = [
+      m['超音波'] ? '超音波: ' + m['超音波'] : '',
+      m['バレルメディア'] ? 'メディア: ' + m['バレルメディア'] : '',
+      m['バレル周波数'] ? '周波数: ' + m['バレル周波数'] : '',
+      m['バレル時間'] ? '時間: ' + m['バレル時間'] : '',
+      m['バレルワイヤー'] ? 'ワイヤー: ' + m['バレルワイヤー'] : ''
+    ].filter(Boolean).join('　');
+    var barrelHtml = barrelInfo ? '<p class="tip-sub">' + escapeHtml(barrelInfo) + '</p>' : '';
     div.innerHTML =
       '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + deptTag + rankTag + sharedTag + '</div>' +
       photoHtml +
       '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
+      barrelHtml +
       '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span>' + actionsHtml + '</div>';
-    if (opts.editable) {
+    if (canEdit) {
       div.querySelector('[data-act="edit"]').addEventListener('click', function () { opts.onEdit(m); });
       div.querySelector('[data-act="delete"]').addEventListener('click', function () { opts.onDelete(m); });
     }
@@ -1623,7 +1697,7 @@
 
   function deleteMemo(m) {
     if (!confirm('この記録を削除しますか？')) return;
-    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'] }) })
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'], idToken: currentUser ? currentUser.idToken : '' }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
@@ -1644,7 +1718,7 @@
 
   function deleteMemoFromHistory(m) {
     if (!confirm('この記録を削除しますか？')) return;
-    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'] }) })
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteToolMemo', postId: m['投稿ID'], idToken: currentUser ? currentUser.idToken : '' }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
@@ -1753,7 +1827,7 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingMemoId;
     var payload = isEdit
-      ? { action: 'updateToolMemo', postId: editingMemoId, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked }
+      ? { action: 'updateToolMemo', postId: editingMemoId, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, idToken: currentUser.idToken }
       : { action: 'postToolMemo', zuban: currentZubanData.zuban, idToken: currentUser.idToken, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
@@ -1827,12 +1901,14 @@
     document.getElementById('qiStatus').textContent = '';
 
     var spec = currentZubanData.shippingSpec || {};
+    var showKensa = currentRole === 'kensa' || currentAllAccess;
     var showCommon = currentRole === 'kensa' || currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
     var showShiage = currentRole === 'shiage' || currentAllAccess;
     var showSenjou = currentRole === 'senjou' || currentAllAccess;
     var showQiLog = currentRole === 'kensa' || currentAllAccess;
 
+    document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !showCommon);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
@@ -1840,9 +1916,11 @@
     document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
 
-    if (showCommon) {
+    if (showKensa) {
       setChipValue('inspRecord', spec['検査記録の添付']);
       setChipValue('millSheet', spec['ミルシート']);
+    }
+    if (showCommon) {
       setChipValue('tray', spec['トレー梱包']);
       setChipValue('ngSample', spec['NG限度見本']);
       setChipValue('keyence', spec['キーエンス測定']);
@@ -1913,7 +1991,7 @@
 
   function deleteQualityLogEntry(row) {
     if (!confirm('この記録を削除しますか？')) return;
-    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteQualityLog', postId: row['投稿ID'] }) })
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteQualityLog', postId: row['投稿ID'], idToken: currentUser ? currentUser.idToken : '' }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
@@ -1923,7 +2001,7 @@
         return refreshZubanData();
       })
       .then(function () {
-        // 削除した投稿は「自部署の品質情報」（②）と「過去トラ」（共有された投稿、②）の
+        // 削除した投稿は「部署別の情報」（②）と「過去トラ・共有情報」（共有された投稿、②）の
         // どちらに表示されていたか呼び出し元だけでは判別しないため、両方を再描画する。
         renderQualityLogSection(currentZubanData);
         renderPastTroubleDisplay(currentZubanData);
@@ -1965,9 +2043,13 @@
       });
   }
 
+  document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
+      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet')
+    }, '検査専用', 'specKensaSaveBtn');
+  });
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
-      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
       'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
       'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value,
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
@@ -2022,7 +2104,7 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingShiageId;
     var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingShiageId, content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked }
+      ? { action: 'updateQualityLog', postId: editingShiageId, content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban, department: '仕上げ', idToken: currentUser.idToken,
           content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked
@@ -2139,7 +2221,7 @@
     var payload = isEdit
       ? {
           action: 'updateQualityLog', postId: editingSenjouId, content: content, photoUrl: pendingSenjouPhotoUrl,
-          shared: document.getElementById('senjouShareCheck').checked,
+          shared: document.getElementById('senjouShareCheck').checked, idToken: currentUser.idToken,
           ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
         }
       : {
@@ -2175,7 +2257,7 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingQiId;
     var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingQiId, rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked }
+      ? { action: 'updateQualityLog', postId: editingQiId, rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban,
           department: '検査',
