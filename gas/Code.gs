@@ -836,10 +836,11 @@ function deletePostById_(sheetName, payload) {
   return { ok: true };
 }
 
-/** ツール配置メモの更新／削除（③編集画面）。 */
+/** ツール配置メモの更新／削除（③編集画面）。編集すると日付（タイムスタンプ）も編集時点に更新される（2026-09-02、ユーザー判断）。 */
 function updateToolMemo_(payload) {
   return updatePostById_(SHEET_TOOL_MEMO, payload, {
-    'タイトル': payload.title || '', '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
+    'タイトル': payload.title || '', '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared,
+    'タイムスタンプ': new Date()
   });
 }
 function deleteToolMemo_(payload) {
