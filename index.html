@@ -149,7 +149,8 @@
   }
   .photo-btn.has-photo { color: var(--ok); border-color: var(--ok); border-style: solid; }
   .tip-card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px 15px; }
-  .tip-card .tags { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .tip-card .tags { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
+  .tip-card .tags .tip-title { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
   .tip-card .tag { font-size: 0.72rem; font-family: var(--font-mono); background: var(--surface-2); color: var(--ink-soft); padding: 4px 10px; border-radius: 4px; font-weight: 700; border: 1px solid var(--line); }
   .tip-card p { font-size: 0.9rem; margin: 0 0 8px; line-height: 1.65; }
   .tip-card p.tip-sub { font-size: 0.76rem; color: var(--ink-soft); margin-top: -4px; }
@@ -188,7 +189,8 @@
   .memo-edit-wrap { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; gap: 10px; }
   .memo-edit-wrap .memo-zone { flex: 1 1 auto; min-height: 40px; }
   .memo-new-form { flex: none; display: flex; flex-direction: column; gap: 9px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 13px; }
-  .memo-new-form textarea { min-height: 68px; font-size: 0.9rem; }
+  .memo-new-form textarea { min-height: 150px; font-size: 0.9rem; }
+  .memo-new-form input[type="text"] { font-family: inherit; font-size: 0.9rem; padding: 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
   .tool-view-grid, .tool-edit-grid {
     flex: 0 0 auto; max-width: 100%; overflow-y: visible; overflow-x: hidden;
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1px; align-content: start;
@@ -407,6 +409,7 @@
         <div class="memo-edit-wrap">
           <div class="memo-zone" id="memoEditList"></div>
           <div class="memo-new-form">
+            <input type="text" id="toolMemoTitleNew" placeholder="タイトル（任意）">
             <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
             <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真を選ぶ</span></button>
             <input type="file" id="memoPhotoInput" accept="image/*" multiple class="hidden">
@@ -1521,8 +1524,9 @@
       m['バレルワイヤー'] ? 'ワイヤー: ' + m['バレルワイヤー'] : ''
     ].filter(Boolean).join('　');
     var barrelHtml = barrelInfo ? '<p class="tip-sub">' + escapeHtml(barrelInfo) + '</p>' : '';
+    var titleHtml = m['タイトル'] ? '<strong class="tip-title">' + escapeHtml(m['タイトル']) + '</strong>' : '';
     div.innerHTML =
-      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + deptTag + rankTag + sharedTag + '</div>' +
+      '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + titleHtml + deptTag + rankTag + sharedTag + '</div>' +
       photoHtml +
       '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
       barrelHtml +
@@ -1644,6 +1648,7 @@
       document.getElementById('cycleTimeInput').value = firstPositionValue(myPositions, 'サイクルタイム');
       document.getElementById('toolStorageInput').value = firstPositionValue(myPositions, '専用ツール保管');
       document.getElementById('forwardPositionInput').value = firstPositionValue(myPositions, '前進端位置');
+      document.getElementById('toolMemoTitleNew').value = '';
       document.getElementById('toolMemoNew').value = '';
 
       banner.classList.add('hidden');
@@ -1809,6 +1814,7 @@
 
   function startEditMemo(m) {
     editingMemoId = m['投稿ID'];
+    document.getElementById('toolMemoTitleNew').value = m['タイトル'] || '';
     document.getElementById('toolMemoNew').value = m['内容'] || '';
     document.getElementById('memoShareCheck').checked = m['共有フラグ'] === true;
     pendingMemoPhotoUrl = m['写真URL'] || '';
@@ -1826,6 +1832,7 @@
 
   function cancelEditMemo() {
     editingMemoId = null;
+    document.getElementById('toolMemoTitleNew').value = '';
     document.getElementById('toolMemoNew').value = '';
     document.getElementById('memoShareCheck').checked = false;
     resetMemoPhotoBtn();
@@ -1963,17 +1970,19 @@
 
   document.getElementById('memoAddBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    var title = document.getElementById('toolMemoTitleNew').value.trim();
     var content = document.getElementById('toolMemoNew').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingMemoId;
     var payload = isEdit
-      ? { action: 'updateToolMemo', postId: editingMemoId, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, idToken: currentUser.idToken }
-      : { action: 'postToolMemo', zuban: currentZubanData.zuban, idToken: currentUser.idToken, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
+      ? { action: 'updateToolMemo', postId: editingMemoId, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, idToken: currentUser.idToken }
+      : { action: 'postToolMemo', zuban: currentZubanData.zuban, idToken: currentUser.idToken, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { alert((isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error); return Promise.reject(); }
         if (isEdit) cancelEditMemo(); else {
+          document.getElementById('toolMemoTitleNew').value = '';
           document.getElementById('toolMemoNew').value = '';
           document.getElementById('memoShareCheck').checked = false;
           resetMemoPhotoBtn();

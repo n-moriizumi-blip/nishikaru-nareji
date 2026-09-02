@@ -50,7 +50,7 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_TOOL_MEMO, [
     '投稿ID', 'タイムスタンプ', '図番', '投稿者メール', '投稿者名',
-    '内容', '写真URL', '共有フラグ'
+    'タイトル', '内容', '写真URL', '共有フラグ'
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
@@ -723,7 +723,7 @@ function postToolMemo_(payload) {
     sheet.appendRow([
       id, new Date(), payload.zuban,
       identity.email, identity.name,
-      payload.content || '', payload.photoUrl || '',
+      payload.title || '', payload.content || '', payload.photoUrl || '',
       !!payload.shared
     ]);
     invalidateZubanCache_(payload.zuban);
@@ -839,7 +839,7 @@ function deletePostById_(sheetName, payload) {
 /** ツール配置メモの更新／削除（③編集画面）。 */
 function updateToolMemo_(payload) {
   return updatePostById_(SHEET_TOOL_MEMO, payload, {
-    '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
+    'タイトル': payload.title || '', '内容': payload.content || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared
   });
 }
 function deleteToolMemo_(payload) {
@@ -1689,6 +1689,18 @@ function addToolMachineColumn() {
   sheet.insertColumnAfter(insertAt - 1);
   sheet.getRange(1, insertAt).setValue('機械名');
   Logger.log('「機械名」列を追加しました');
+}
+
+/** SHEET_TOOL_MEMOに「タイトル」列を追加する（既存シート用、初回のみ手動実行）。 */
+function addToolMemoTitleColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('タイトル') !== -1) { Logger.log('「タイトル」は追加済みです'); return; }
+  var nameCol = header.indexOf('投稿者名');
+  var insertAt = nameCol !== -1 ? nameCol + 2 : sheet.getLastColumn() + 1;
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('タイトル');
+  Logger.log('「タイトル」列を追加しました');
 }
 
 /**
