@@ -448,7 +448,7 @@
           <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
         </div>
 
-        <button type="button" class="btn btn-primary" id="toolSaveBtn" style="margin-top:10px;">この内容で保存する</button>
+        <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
       </div>
 
       <div class="status-note" id="toolsStatus"></div>
@@ -574,7 +574,7 @@
           <input type="checkbox" id="shiageShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-primary" id="shiageSaveBtn">記録する</button>
+        <button type="button" class="btn btn-secondary" id="shiageSaveBtn">仕上専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="shiageEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -623,7 +623,7 @@
           <input type="checkbox" id="senjouShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-primary" id="senjouSaveBtn">記録する</button>
+        <button type="button" class="btn btn-secondary" id="senjouSaveBtn">洗浄専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="senjouEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -652,7 +652,7 @@
           <input type="checkbox" id="qiShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-primary" id="qiSaveBtn">記録する</button>
+        <button type="button" class="btn btn-secondary" id="qiSaveBtn">品証専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="qiEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -2176,7 +2176,7 @@
     document.getElementById('qiContentInput').value = '';
     document.getElementById('qiShareCheck').checked = false;
     resetQiPhotoBtn();
-    document.getElementById('qiSaveBtn').textContent = '記録する';
+    document.getElementById('qiSaveBtn').textContent = '品証専用を記録する';
     document.getElementById('qiEditCancelBtn').classList.add('hidden');
   }
 
@@ -2286,7 +2286,7 @@
     document.getElementById('shiageContentInput').value = '';
     document.getElementById('shiageShareCheck').checked = false;
     resetShiagePhotoBtn();
-    document.getElementById('shiageSaveBtn').textContent = '記録する';
+    document.getElementById('shiageSaveBtn').textContent = '仕上専用を記録する';
     document.getElementById('shiageEditCancelBtn').classList.add('hidden');
   }
   document.getElementById('shiageEditCancelBtn').addEventListener('click', cancelEditShiageLog);
@@ -2396,7 +2396,7 @@
     document.getElementById('senjouTimeInput').value = '';
     setChipValue('senjouWire', '');
     resetSenjouPhotoBtn();
-    document.getElementById('senjouSaveBtn').textContent = '記録する';
+    document.getElementById('senjouSaveBtn').textContent = '洗浄専用を記録する';
     document.getElementById('senjouEditCancelBtn').classList.add('hidden');
   }
   document.getElementById('senjouEditCancelBtn').addEventListener('click', cancelEditSenjouLog);
