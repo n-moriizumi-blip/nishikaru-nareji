@@ -125,6 +125,9 @@ function doGet(e) {
     if (action === 'senjouFieldSuggestions') {
       return jsonResponse_(getSenjouFieldSuggestions_());
     }
+    if (action === 'searchZuban') {
+      return jsonResponse_(searchZubanCandidates_(e.parameter.query));
+    }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -315,6 +318,52 @@ function scanZuban_(seiban) {
   info.found = true;
   info.multiple = false;
   return info;
+}
+
+/**
+ * 手入力された図番を、進む前に照合する（2026-09-02新設）。
+ * それまで手入力は一切照合せず入力値をそのまま図番として扱っていたため、誤入力（誤字・脱字）が
+ * あっても気づかないまま空の新規図番として進んでしまう問題があった（ユーザー指摘）。
+ * ①図番インデックス（これまでこのアプリで扱った図番の蓄積）を完全一致・部分一致の両方で検索し、
+ * ②完全一致が無ければI-PROへライブ照会（インデックスに無いだけで実在する図番を拾うため）する。
+ * 数字だけの図番は頭0の有無に関わらず同じ図番として扱う（numericZubanKey_、既存の頭0落ち対策と同じ考え方）。
+ */
+function searchZubanCandidates_(query) {
+  if (!query) return { error: 'query is required' };
+  var queryKey = numericZubanKey_(query);
+  var queryLower = String(query).toLowerCase();
+
+  var exact = null;
+  var partial = [];
+  var seenPartial = {};
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  if (sheet && sheet.getLastRow() >= 2) {
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var zubanCol = header.indexOf('図番');
+    var hinmeiCol = header.indexOf('品名');
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var z = String(rows[i][zubanCol] || '');
+      if (!z) continue;
+      if (!exact && numericZubanKey_(z) === queryKey) {
+        exact = { zuban: z, hinmei: rows[i][hinmeiCol] || '' };
+        continue;
+      }
+      if (!seenPartial[z] && z.toLowerCase().indexOf(queryLower) !== -1) {
+        seenPartial[z] = true;
+        partial.push({ zuban: z, hinmei: rows[i][hinmeiCol] || '' });
+        if (partial.length >= 10) break;
+      }
+    }
+  }
+
+  if (!exact) {
+    // インデックスに無いだけで実在する図番のこともあるため、I-PROへ完全一致でライブ照会する。
+    var master = scanZubanMaster_(query);
+    if (master.hinmei) exact = { zuban: query, hinmei: master.hinmei };
+  }
+
+  return { exact: exact, candidates: partial };
 }
 
 /**

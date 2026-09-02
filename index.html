@@ -283,7 +283,7 @@
         <button class="btn btn-secondary" id="manualGoBtn">この図番で進む</button>
       </div>
       <div class="candidate-select hidden" id="candidateSelect">
-        <div class="section-label">この製番に対応する図番が複数見つかりました。選んでください</div>
+        <div class="section-label" id="candidateSelectLabel">この製番に対応する図番が複数見つかりました。選んでください</div>
         <div id="candidateList"></div>
       </div>
       <div id="recentList"></div>
@@ -893,7 +893,11 @@
       });
   }
 
-  function showCandidateSelect(candidates) {
+  // labelTextを省略するとQR用の既定文言のまま。extraItemを渡すと候補一覧の末尾に
+  // 「入力した値のまま新規登録する」等の追加選択肢を1件加える（手入力の候補提示で使用）。
+  function showCandidateSelect(candidates, labelText, extraItem) {
+    document.getElementById('candidateSelectLabel').textContent =
+      labelText || 'この製番に対応する図番が複数見つかりました。選んでください';
     var list = document.getElementById('candidateList');
     list.innerHTML = '';
     candidates.forEach(function (c) {
@@ -907,6 +911,16 @@
       });
       list.appendChild(div);
     });
+    if (extraItem) {
+      var extraDiv = document.createElement('div');
+      extraDiv.className = 'candidate-item';
+      extraDiv.innerHTML = '<span class="candidate-zuban">' + escapeHtml(extraItem.label) + '</span>';
+      extraDiv.addEventListener('click', function () {
+        hideCandidateSelect();
+        goToZuban(extraItem.zuban);
+      });
+      list.appendChild(extraDiv);
+    }
     document.getElementById('candidateSelect').classList.remove('hidden');
   }
 
@@ -915,12 +929,40 @@
   }
 
   // ==== 手入力 ====
+  // 誤入力した図番でそのまま新規の空データが作られてしまわないよう、進む前に図番インデックス／
+  // I-PROと照合する（完全一致ならそのまま進む、部分一致があれば候補を出す、何も無ければ確認する）。
   document.getElementById('manualToggleBtn').addEventListener('click', function () {
     document.getElementById('manualEntry').classList.toggle('active');
   });
   document.getElementById('manualGoBtn').addEventListener('click', function () {
     var v = document.getElementById('manualZubanInput').value.trim();
-    if (v) goToZuban(v);
+    if (!v) return;
+    hideCandidateSelect();
+    document.getElementById('scanStatus').textContent = '図番を確認しています…';
+    fetch(GAS_API_URL + '?action=searchZuban&query=' + encodeURIComponent(v))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        document.getElementById('scanStatus').textContent = '';
+        if (res.error) { document.getElementById('scanStatus').textContent = '確認に失敗しました: ' + res.error; return; }
+        if (res.exact) {
+          goToZuban(res.exact.zuban);
+          return;
+        }
+        if (res.candidates && res.candidates.length > 0) {
+          showCandidateSelect(
+            res.candidates,
+            '図番「' + v + '」は見つかりませんでした。似ている図番があります。選ぶか、そのまま新規登録してください',
+            { zuban: v, label: '「' + v + '」のまま新規登録する' }
+          );
+          return;
+        }
+        if (confirm('図番「' + v + '」は見つかりませんでした。新しい図番として登録しますか？')) {
+          goToZuban(v);
+        }
+      })
+      .catch(function (err) {
+        document.getElementById('scanStatus').textContent = '確認に失敗しました: ' + err.message;
+      });
   });
 
   document.getElementById('backToScanBtn').addEventListener('click', function () {
