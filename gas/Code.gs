@@ -1,5 +1,5 @@
 /**
- * 西軽精機ナレッジ（仮） バックエンド
+ * 西軽精機ナレッジ バックエンド
  * DBスプレッドシート: 1wmPkFZ-EdtUQchWlVGspeclP3yHbO9YyViAM5AraQj0
  *
  * デプロイ後の確認手順は加工ナレッジ/CLAUDE.mdの「デプロイ・動作確認の手順」に準拠。
