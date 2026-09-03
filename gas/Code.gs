@@ -1190,6 +1190,46 @@ function diagnoseZubanFolderSearch_() {
   var qcodes = [];
   for (var j = 0; j < zuban.length; j++) qcodes.push(zuban.charCodeAt(j));
   Logger.log('codes=' + qcodes.join(','));
+
+  // ここまでの結果が両方0件だった場合の追加調査（2026-09-03追加）：
+  // corpora:'allDrives'自体が、共有ドライブでも自分のマイドライブでもない
+  // 「個別に自分と共有されたフォルダ」を検索対象から漏らしている可能性を切り分ける。
+  Logger.log('=== corpora:user（マイドライブ＋自分と共有された項目）での完全一致 ===');
+  try {
+    var userScoped = Drive.Files.list({
+      q: "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+      corpora: 'user',
+      fields: 'files(id, name, owners(emailAddress), shared, driveId)'
+    });
+    var uf = userScoped.files || [];
+    Logger.log('件数: ' + uf.length);
+    uf.forEach(function (f) {
+      Logger.log('  id=' + f.id + ' name=[' + f.name + '] shared=' + f.shared +
+        ' owner=' + (f.owners && f.owners[0] ? f.owners[0].emailAddress : '?') + ' driveId=' + f.driveId);
+    });
+  } catch (e) {
+    Logger.log('corpora:userでのエラー: ' + e);
+  }
+
+  Logger.log('=== 親フォルダ「日本電産サーボ」経由で子フォルダ一覧を確認 ===');
+  try {
+    var parents = driveFilesList_(
+      "name contains '日本電産サーボ' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    );
+    Logger.log('「日本電産サーボ」を含む親候補: ' + parents.length + '件');
+    parents.forEach(function (p) {
+      Logger.log('  親候補 id=' + p.id + ' name=[' + p.name + ']');
+      var children = Drive.Files.list({
+        q: "'" + p.id + "' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+        fields: 'files(id, name)'
+      });
+      (children.files || []).forEach(function (c) { Logger.log('    子: id=' + c.id + ' name=[' + c.name + ']'); });
+    });
+  } catch (e) {
+    Logger.log('親フォルダ経由確認でのエラー: ' + e);
+  }
 }
 
 /**
