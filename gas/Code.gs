@@ -1163,7 +1163,7 @@ function findZubanFolder_(zuban) {
  * findZubanFolder_が見つけられない実例（例：AE48127C01）の原因調査用（2026-09-03、使い捨て）。
  * GASエディタでこの関数を選んで実行し、実行数ログ（表示→実行数）を確認すること。
  */
-function diagnoseZubanFolderSearch_() {
+function diagnoseZubanFolderSearch() {
   var zuban = 'AE48127C01'; // 調査対象。別の図番を調べたい場合はここを書き換えて再実行する
   var nameEsc = String(zuban).replace(/'/g, "\\'");
 
