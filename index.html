@@ -105,6 +105,7 @@
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px; font-size: 0.9rem; }
 
   .status-note { font-size: 0.82rem; color: var(--ink-soft); text-align: center; }
+  #scanStatus { font-size: 1rem; font-weight: 700; color: var(--ink); }
 
   .recent-chip { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.88rem; padding: 13px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; margin-bottom: 8px; cursor: pointer; }
 
@@ -276,7 +277,8 @@
         </div>
         <canvas id="canvas" style="display:none;"></canvas>
       </div>
-      <button class="btn btn-primary" id="startScanBtn">QRを読み取る</button>
+      <button class="btn btn-primary" id="startScanBtn">QRコードを読み取る</button>
+      <div class="status-note" id="scanStatus"></div>
       <button class="btn btn-ghost" id="manualToggleBtn">図番が読み取れない場合は直接入力</button>
       <div class="manual-entry" id="manualEntry">
         <input type="text" id="manualZubanInput" placeholder="例：9081-6120-Z000">
@@ -287,7 +289,6 @@
         <div id="candidateList"></div>
       </div>
       <div id="recentList"></div>
-      <div class="status-note" id="scanStatus"></div>
     </section>
 
     <!-- SCREEN 2: 過去情報表示 -->
