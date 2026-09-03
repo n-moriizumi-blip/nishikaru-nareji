@@ -1149,12 +1149,23 @@ function getInspectionFolderUrl_(zuban) {
  * 検索自体はAdvanced Drive Service（driveFilesList_）で行い、見つかったIDをDriveApp.getFolderByIdで
  * 開き直してFolderオブジェクトとして返す（getFolderByIdは共有ドライブ上でも問題なく使えるため、
  * 戻り値を使う側（createFolder/createFile等）はこれまでどおりDriveAppのAPIで操作できる）。
+ *
+ * 完全一致で0件の場合、containsで拾ってから前後の空白を無視して比較し直す（2026-09-03追加）。
+ * 実例（AE48127C01）で、フォルダ名の末尾に人手入力による余分な半角スペースが2つ付いており、
+ * 実在するのに完全一致検索だけでは見つからなかったため（共有ドライブの権限等の問題ではなかった）。
  */
 function findZubanFolder_(zuban) {
-  var name = String(zuban).replace(/'/g, "\\'");
+  var target = String(zuban).trim();
+  var nameEsc = target.replace(/'/g, "\\'");
   var files = driveFilesList_(
-    "name = '" + name + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
+  if (files.length === 0) {
+    var candidates = driveFilesList_(
+      "name contains '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    );
+    files = candidates.filter(function (f) { return String(f.name).trim() === target; });
+  }
   if (files.length === 0) return null;
   return DriveApp.getFolderById(files[0].id);
 }
@@ -1244,10 +1255,19 @@ function diagnoseZubanFolderSearch() {
  * 作って既存の置き場所と混同・分散するより、作成できない方が安全なため）。
  */
 function findExistingCompanyFolder_(companyName) {
-  var nameEsc = String(companyName).replace(/'/g, "\\'");
+  var target = String(companyName).trim();
+  var nameEsc = target.replace(/'/g, "\\'");
   var exact = driveFilesList_(
     "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
+  if (exact.length === 0) {
+    // 完全一致で見つからない場合、前後の余分な空白だけを無視して比較し直す
+    // （findZubanFolder_と同じ対処。前方一致など緩い一致は事故の実例があるため避ける）。
+    var candidates = driveFilesList_(
+      "name contains '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    );
+    exact = candidates.filter(function (f) { return String(f.name).trim() === target; });
+  }
   return exact.length > 0 ? exact[0] : null;
 }
 
