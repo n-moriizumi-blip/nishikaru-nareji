@@ -1351,6 +1351,26 @@ function diagnoseFolderById() {
   Logger.log('件数: ' + sameNameFolders.length);
   sameNameFolders.forEach(function (f) { Logger.log('  id=' + f.id + ' name=[' + f.name + ']' + (f.id === folderId ? ' ← 調査対象そのもの' : '')); });
 
+  Logger.log('=== 「品質情報記録ログ」に、このフォルダ名に近い図番で移行済みの行があるか ===');
+  var qlSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  if (qlSheet && qlSheet.getLastRow() >= 2) {
+    var qlHeader = qlSheet.getRange(1, 1, 1, qlSheet.getLastColumn()).getValues()[0];
+    var qlZubanCol = qlHeader.indexOf('図番');
+    var qlSourceCol = qlHeader.indexOf('移行元ファイルID');
+    var qlRows = qlSheet.getRange(2, 1, qlSheet.getLastRow() - 1, qlSheet.getLastColumn()).getValues();
+    var hits = 0;
+    qlRows.forEach(function (r, idx) {
+      var z = String(r[qlZubanCol] || '');
+      if (z.indexOf('FV-60-001-E') !== -1) {
+        hits++;
+        Logger.log('  行' + (idx + 2) + ': 図番=[' + z + '] 移行元ファイルID=[' + (qlSourceCol !== -1 ? r[qlSourceCol] : '?') + ']');
+      }
+    });
+    Logger.log('該当行数: ' + hits);
+  } else {
+    Logger.log('品質情報記録ログが空、またはシートが見つかりません');
+  }
+
   Logger.log('=== このフォルダの直下の子（フォルダ・ファイル）一覧、それぞれI-PROに存在するか ===');
   var children = Drive.Files.list({
     q: "'" + folderId + "' in parents and trashed = false",
