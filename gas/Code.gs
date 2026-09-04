@@ -246,7 +246,9 @@ function stripZubanPrefix_(value) {
  * 数字以外を含む図番（ハイフンや英字入り）はそのまま。
  */
 function numericZubanKey_(value) {
-  var s = String(value || '');
+  // 前後の空白差（Driveフォルダ名で実例が見つかった半角スペース混入等、2026-09-04）でも
+  // 別図番と誤判定されないよう、数字専用の0落ち吸収に加えて常にtrimする。
+  var s = String(value || '').trim();
   return /^\d+$/.test(s) ? String(parseInt(s, 10)) : s;
 }
 
@@ -1653,7 +1655,8 @@ function refreshOneZuban_(zuban) {
     '得意先コード': master.tokuisaki || '',
     '検査記録フォルダURL': zubanFolder ? zubanFolder.getUrl() : '',
     '品質情報リンク': JSON.stringify(scanned.qi),
-    '改善計画書リンク': JSON.stringify(scanned.fk)
+    '改善計画書リンク': JSON.stringify(scanned.fk),
+    '親フォルダ名': scanned.parentName || ''
   });
   invalidateZubanCache_(zuban); // zubanInfoの5分キャッシュも合わせて破棄し、更新をすぐ反映させる
 }
