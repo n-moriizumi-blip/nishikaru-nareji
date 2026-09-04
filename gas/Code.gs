@@ -1262,6 +1262,61 @@ function diagnoseZubanFolderSearch() {
 }
 
 /**
+ * 指定したフォルダIDの実体（フォルダ名・親階層）を確認し、
+ * そのフォルダ名が「図番インデックス」「進捗状況照会（I-PRO）」に存在するかを突き合わせる調査用（2026-09-04、使い捨て）。
+ * GASエディタでこの関数を選んで実行し、実行数ログ（表示→実行数）を確認すること。
+ */
+function diagnoseFolderById() {
+  var folderId = '1FK0hIPv43IZfa0ETXzJakheU2QfjKSwA'; // 調査対象。別のフォルダを調べたい場合はここを書き換えて再実行する
+
+  Logger.log('=== フォルダ本体の情報 ===');
+  var meta = Drive.Files.get(folderId, { supportsAllDrives: true, fields: 'id, name, mimeType, parents, driveId' });
+  Logger.log('name=[' + meta.name + '] mimeType=' + meta.mimeType + ' driveId=' + meta.driveId);
+
+  Logger.log('=== 親フォルダの階層（上に辿れる限り） ===');
+  var currentId = folderId;
+  var chain = [meta.name];
+  for (var depth = 0; depth < 10; depth++) {
+    var cur = Drive.Files.get(currentId, { supportsAllDrives: true, fields: 'id, name, parents' });
+    if (!cur.parents || cur.parents.length === 0) break;
+    var parent = Drive.Files.get(cur.parents[0], { supportsAllDrives: true, fields: 'id, name, parents' });
+    chain.unshift(parent.name);
+    currentId = parent.id;
+  }
+  Logger.log('パス: ' + chain.join(' / '));
+
+  var target = String(meta.name).trim();
+
+  Logger.log('=== 「図番インデックス」シートに同名の行があるか ===');
+  var idxSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var foundInIndex = false;
+  if (idxSheet && idxSheet.getLastRow() >= 2) {
+    var idxHeader = idxSheet.getRange(1, 1, 1, idxSheet.getLastColumn()).getValues()[0];
+    var zubanCol = idxHeader.indexOf('図番');
+    var idxRows = idxSheet.getRange(2, 1, idxSheet.getLastRow() - 1, idxSheet.getLastColumn()).getValues();
+    for (var i = 0; i < idxRows.length; i++) {
+      if (String(idxRows[i][zubanCol] || '').trim() === target) { foundInIndex = true; break; }
+    }
+  }
+  Logger.log('図番インデックスに存在: ' + foundInIndex);
+
+  Logger.log('=== 「進捗状況照会（I-PRO）」に同名の図番があるか（listAllKnownZubans_、numericZubanKey_で照合） ===');
+  var known = listAllKnownZubans_();
+  var targetKey = numericZubanKey_(target);
+  var matchesInIpro = known.filter(function (z) { return numericZubanKey_(z) === targetKey || String(z).trim() === target; });
+  Logger.log('I-PROに存在: ' + (matchesInIpro.length > 0) + '（一致件数: ' + matchesInIpro.length + '）');
+  matchesInIpro.forEach(function (z) { Logger.log('  一致した図番表記: [' + z + ']'); });
+
+  Logger.log('=== このフォルダ名と完全一致する同名フォルダがDrive全体に何件あるか（findZubanFolder_と同じ完全一致クエリ） ===');
+  var nameEsc = target.replace(/'/g, "\\'");
+  var sameNameFolders = driveFilesList_(
+    "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+  );
+  Logger.log('件数: ' + sameNameFolders.length);
+  sameNameFolders.forEach(function (f) { Logger.log('  id=' + f.id + ' name=[' + f.name + ']' + (f.id === folderId ? ' ← 調査対象そのもの' : '')); });
+}
+
+/**
  * 図番フォルダが無い場合、得意先名から既存の会社名フォルダを探し、その下に図番フォルダを新規作成する
  * （2026-08-30追加、ユーザー提案）。
  *
