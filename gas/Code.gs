@@ -605,6 +605,22 @@ function scanPastTroubleFiles_(zuban) {
     driveFilesList_(
       "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
     ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
+
+    // 類似図番をまとめる「シリーズ」フォルダの下に個別の図番フォルダが分かれているケースでは、
+    // 品質情報は個々の図番フォルダではなく親（シリーズ）フォルダに共通で1つだけ置かれていることがある
+    // （実例：池田ネジ商会/FV-60-001-E(シリーズ)/FV-60-001-E-R1.25 等、2026-09-04ユーザー確認）。
+    // その場合に備え、個別フォルダ内に見つからなければ親フォルダも見る。ただし親フォルダ内の
+    // 無関係なファイルまで拾わないよう、「{親フォルダ名} 品質情報」という命名規則に厳密一致するものだけを対象にする。
+    if (qi.length === 0) {
+      var parents = zubanFolder.getParents();
+      if (parents.hasNext()) {
+        var parentFolder = parents.next();
+        var parentNameEsc = String(parentFolder.getName()).replace(/'/g, "\\'");
+        driveFilesList_(
+          "name = '" + parentNameEsc + " 品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + parentFolder.getId() + "' in parents"
+        ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
+      }
+    }
   }
 
   var zubanEsc = String(zuban).replace(/'/g, "\\'");
