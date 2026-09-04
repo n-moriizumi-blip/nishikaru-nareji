@@ -69,7 +69,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_ZUBAN_INDEX, [
-    '図番', '品名', '得意先コード', '検査記録フォルダURL', '品質情報リンク', '改善計画書リンク', '更新日時'
+    '図番', '品名', '得意先コード', '検査記録フォルダURL', '品質情報リンク', '改善計画書リンク', '親フォルダ名', '更新日時'
   ]);
 
   ensureSheet_(ss, SHEET_SEIBAN_INDEX, [
@@ -549,17 +549,20 @@ function findPastTrouble_(zuban) {
   // 更新日時だけでなく、この機能が実際に書き込む品質情報リンク・改善計画書リンク自体が
   // 存在するか（JSON.stringifyされた文字列は結果が0件でも"[]"という空でない文字列になる）で判定する。
   var indexed = findZubanIndexRow_(zuban);
-  var qiFiles, fkFiles;
+  var qiFiles, fkFiles, parentName;
   if (indexed && indexed['品質情報リンク'] && indexed['改善計画書リンク']) {
     try { qiFiles = JSON.parse(indexed['品質情報リンク'] || '[]'); } catch (e) { qiFiles = []; }
     try { fkFiles = JSON.parse(indexed['改善計画書リンク'] || '[]'); } catch (e) { fkFiles = []; }
+    parentName = indexed['親フォルダ名'] || '';
   } else {
     var scanned = scanPastTroubleFiles_(zuban);
     qiFiles = scanned.qi;
     fkFiles = scanned.fk;
+    parentName = scanned.parentName || '';
     upsertZubanIndex_(zuban, {
       '品質情報リンク': JSON.stringify(qiFiles),
-      '改善計画書リンク': JSON.stringify(fkFiles)
+      '改善計画書リンク': JSON.stringify(fkFiles),
+      '親フォルダ名': parentName
     });
   }
 
@@ -585,6 +588,14 @@ function findPastTrouble_(zuban) {
   items = items.concat(findSharedEntries_(SHEET_QUALITY_LOG, zuban));
   items = items.concat(findSharedEntries_(SHEET_TOOL_MEMO, zuban));
 
+  // シリーズフォルダの旧「{シリーズ名} 品質情報」ファイルを移行した投稿は、図番が個別の
+  // 実図番ではなくシリーズ名（例：「FV-60-001-E(シリーズ)」）のまま登録されているため、
+  // 個別図番で検索しても見つからない。親フォルダ名（シリーズ名）でも重ねて探す（2026-09-04追加）。
+  if (parentName && parentName !== zuban) {
+    items = items.concat(findSharedEntries_(SHEET_QUALITY_LOG, parentName));
+    items = items.concat(findSharedEntries_(SHEET_TOOL_MEMO, parentName));
+  }
+
   return items;
 }
 
@@ -600,6 +611,7 @@ function findPastTrouble_(zuban) {
  */
 function scanPastTroubleFiles_(zuban) {
   var qi = [];
+  var parentName = '';
   var zubanFolder = findZubanFolder_(zuban);
   if (zubanFolder) {
     driveFilesList_(
@@ -609,13 +621,15 @@ function scanPastTroubleFiles_(zuban) {
     // 類似図番をまとめる「シリーズ」フォルダの下に個別の図番フォルダが分かれているケースでは、
     // 品質情報は個々の図番フォルダではなく親（シリーズ）フォルダに共通で1つだけ置かれていることがある
     // （実例：池田ネジ商会/FV-60-001-E(シリーズ)/FV-60-001-E-R1.25 等、2026-09-04ユーザー確認）。
-    // その場合に備え、個別フォルダ内に見つからなければ親フォルダも見る。ただし親フォルダ内の
-    // 無関係なファイルまで拾わないよう、「{親フォルダ名} 品質情報」という命名規則に厳密一致するものだけを対象にする。
-    if (qi.length === 0) {
-      var parents = zubanFolder.getParents();
-      if (parents.hasNext()) {
-        var parentFolder = parents.next();
-        var parentNameEsc = String(parentFolder.getName()).replace(/'/g, "\\'");
+    // 親フォルダ名は品質情報記録ログの共有投稿（findSharedEntries_）を親名でも探すために常に控えておく。
+    var parents = zubanFolder.getParents();
+    if (parents.hasNext()) {
+      var parentFolder = parents.next();
+      parentName = parentFolder.getName();
+      // qiが個別フォルダ内に見つからなければ親フォルダも見る。ただし親フォルダ内の無関係な
+      // ファイルまで拾わないよう、「{親フォルダ名} 品質情報」という命名規則に厳密一致するものだけを対象にする。
+      if (qi.length === 0) {
+        var parentNameEsc = String(parentName).replace(/'/g, "\\'");
         driveFilesList_(
           "name = '" + parentNameEsc + " 品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + parentFolder.getId() + "' in parents"
         ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
@@ -628,7 +642,7 @@ function scanPastTroubleFiles_(zuban) {
     "name contains '" + zubanEsc + "' and name contains '改善計画書' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   ).map(function (f) { return { name: f.name, url: f.webViewLink }; });
 
-  return { qi: qi, fk: fk };
+  return { qi: qi, fk: fk, parentName: parentName };
 }
 
 function findSharedEntries_(sheetName, zuban) {
@@ -1880,6 +1894,25 @@ function listAllKnownZubans_() {
 var QUALITY_INFO_LABEL_TOKENS_ = ['品質情報', '外観ランク', '得意先', '図番', '品名'];
 var QUALITY_INFO_RANK_VALUES_ = ['A', 'B', 'C', 'D', 'E'];
 var QUALITY_INFO_DATE_RE_ = /^[\s　・\-◆●○□■]*'?(\d{2,4})[.\/](\d{1,2})[.\/](\d{1,2})/;
+
+/**
+ * SHEET_ZUBAN_INDEXに「親フォルダ名」列を追加する（既存シート用、初回のみ手動実行）。
+ * シリーズフォルダ配下に個別図番フォルダが分かれているケースへの対応（2026-09-04）で追加。
+ */
+function addZubanIndexParentColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var lastCol = sheet.getLastColumn();
+  var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('親フォルダ名') !== -1) {
+    Logger.log('既に追加済みです');
+    return;
+  }
+  var kaizenCol = header.indexOf('改善計画書リンク');
+  var insertAt = kaizenCol !== -1 ? kaizenCol + 2 : lastCol + 1; // 改善計画書リンクの直後（1始まり列番号）
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('親フォルダ名');
+  Logger.log('「親フォルダ名」列を追加しました');
+}
 
 /** SHEET_QUALITY_LOGに「移行元ファイルID」列を追加する（既存シート用、初回のみ手動実行）。 */
 function addMigrationSourceColumn() {
