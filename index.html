@@ -29,6 +29,7 @@
     padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
   }
   header.appbar .title { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; }
+  header.appbar .app-version { font-size: 0.68rem; color: var(--ink-soft); margin-left: 8px; font-family: var(--mono, monospace); vertical-align: middle; }
   #userBox { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); }
   #signinBtn { display: none; }
   main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
@@ -153,7 +154,7 @@
   .tip-card .tags { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
   .tip-card .tags .tip-title { font-size: 0.9rem; font-weight: 700; color: var(--ink); }
   .tip-card .tag { font-size: 0.72rem; font-family: var(--font-mono); background: var(--surface-2); color: var(--ink-soft); padding: 4px 10px; border-radius: 4px; font-weight: 700; border: 1px solid var(--line); }
-  .tip-card p { font-size: 0.9rem; margin: 0 0 8px; line-height: 1.65; }
+  .tip-card p { font-size: 0.9rem; margin: 0 0 8px; line-height: 1.65; white-space: pre-wrap; }
   .tip-card p.tip-sub { font-size: 0.76rem; color: var(--ink-soft); margin-top: -4px; }
   .tip-card .meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.76rem; color: var(--ink-soft); border-top: 1px solid var(--line); padding-top: 8px; }
   .tip-card .meta-actions { display: flex; gap: 14px; }
@@ -253,7 +254,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ</span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.0.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
