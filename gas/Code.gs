@@ -325,13 +325,15 @@ function scanZuban_(seiban) {
  * それまで手入力は一切照合せず入力値をそのまま図番として扱っていたため、誤入力（誤字・脱字）が
  * あっても気づかないまま空の新規図番として進んでしまう問題があった（ユーザー指摘）。
  * ①図番インデックス（これまでこのアプリで扱った図番の蓄積）を完全一致・部分一致の両方で検索し、
- * ②完全一致が無ければI-PROへライブ照会（インデックスに無いだけで実在する図番を拾うため）する。
+ * ②完全一致が無ければI-PROへ完全一致でライブ照会、③それでも無ければI-PROへ部分一致でライブ照会する
+ * （図番インデックスはI-PROの進捗状況照会＋このアプリの利用実績から後追いで作られる一覧のため、
+ * 　実在するのにまだインデックスに載っていない図番は部分一致でも拾えないことがあるため、2026-09-03追加）。
  * 数字だけの図番は頭0の有無に関わらず同じ図番として扱う（numericZubanKey_、既存の頭0落ち対策と同じ考え方）。
  */
 function searchZubanCandidates_(query) {
   if (!query) return { error: 'query is required' };
   var queryKey = numericZubanKey_(query);
-  var queryLower = String(query).toLowerCase();
+  var queryLower = String(query).trim().toLowerCase();
 
   var exact = null;
   var partial = [];
@@ -349,7 +351,11 @@ function searchZubanCandidates_(query) {
         exact = { zuban: z, hinmei: rows[i][hinmeiCol] || '' };
         continue;
       }
-      if (!seenPartial[z] && z.toLowerCase().indexOf(queryLower) !== -1) {
+      var zLower = z.toLowerCase();
+      // 双方向の部分一致：インデックス側の図番が入力値を含む場合だけでなく、逆に入力値が
+      // インデックス側の図番を含む場合（余分な文字を打ってしまった等）も候補に拾う
+      // （2026-09-03、片方向だけだったのを修正。「部分一致しているのに候補が出ない」というユーザー報告で発覚）。
+      if (!seenPartial[z] && (zLower.indexOf(queryLower) !== -1 || queryLower.indexOf(zLower) !== -1)) {
         seenPartial[z] = true;
         partial.push({ zuban: z, hinmei: rows[i][hinmeiCol] || '' });
         if (partial.length >= 10) break;
@@ -361,6 +367,18 @@ function searchZubanCandidates_(query) {
     // インデックスに無いだけで実在する図番のこともあるため、I-PROへ完全一致でライブ照会する。
     var master = scanZubanMaster_(query);
     if (master.hinmei) exact = { zuban: query, hinmei: master.hinmei };
+  }
+
+  if (!exact && partial.length === 0) {
+    // 図番インデックスに部分一致すら無い場合、I-PROの実データ（進捗状況照会）を直接
+    // 部分一致で探す（品名までは引かず図番のみ、動作を軽くするため）。
+    var known = listAllKnownZubans_();
+    for (var k = 0; k < known.length && partial.length < 10; k++) {
+      var kLower = String(known[k]).toLowerCase();
+      if (kLower.indexOf(queryLower) !== -1 || queryLower.indexOf(kLower) !== -1) {
+        partial.push({ zuban: known[k], hinmei: '' });
+      }
+    }
   }
 
   return { exact: exact, candidates: partial };
