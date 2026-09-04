@@ -1780,31 +1780,52 @@ function dedupeZubanIndex() {
   var col = header.indexOf('図番');
   var updatedCol = header.indexOf('更新日時');
 
+  // ヘッダー行が壊れている（A1が「図番」ではない等）と、後続の処理が「0件」で静かに
+  // 終わってしまい原因が分かりにくいため、先に明示的にエラーを出す（2026-09-05、実際にA1セルの
+  // 内容が誤って「F」になっており、この関数もupsertZubanIndex_等の既存行検索も軒並み機能せず、
+  // 毎回新規行が追加され続けて32時間で3800行超に急増する事故が発生したことを受けて追加）。
+  if (col === -1 || updatedCol === -1) {
+    Logger.log('エラー: ヘッダー行に「図番」または「更新日時」列が見つかりません。A1セル等が書き換わっていないか確認してください。header=' + JSON.stringify(header));
+    return;
+  }
+
   var groups = {}; // numericZubanKey_ -> values配列上のindexのリスト
+  var order = []; // 初出順（groups.keys()の順序をそのまま使うと処理系依存になるため明示的に保持）
   for (var i = 1; i < values.length; i++) {
     var raw = values[i][col];
     if (!raw) continue;
     var key = numericZubanKey_(raw);
-    if (!groups[key]) groups[key] = [];
+    if (!groups[key]) { groups[key] = []; order.push(key); }
     groups[key].push(i);
   }
 
-  var rowsToDelete = [];
-  Object.keys(groups).forEach(function (key) {
+  // 1行ずつdeleteRowするとGASの実行時間制限（6分）に収まらない規模になり得るため
+  // （実際に今回3800行超の重複が発生した）、生き残る行だけをまとめて書き戻し、
+  // 末尾の余った行を1回のdeleteRowsでまとめて削除する方式に変更（2026-09-05）。
+  var removedCount = 0;
+  var survivorRows = order.map(function (key) {
     var idxList = groups[key];
-    if (idxList.length === 1) return;
-    idxList.sort(function (a, b) {
-      var da = values[a][updatedCol] ? new Date(values[a][updatedCol]).getTime() : 0;
-      var db = values[b][updatedCol] ? new Date(values[b][updatedCol]).getTime() : 0;
-      return db - da; // 新しい順。先頭（idxList[0]）を残し、残りを削除する
-    });
-    idxList.slice(1).forEach(function (dupIdx) { rowsToDelete.push(dupIdx + 1); });
+    if (idxList.length > 1) {
+      idxList.sort(function (a, b) {
+        var da = values[a][updatedCol] ? new Date(values[a][updatedCol]).getTime() : 0;
+        var db = values[b][updatedCol] ? new Date(values[b][updatedCol]).getTime() : 0;
+        return db - da; // 新しい順を先頭に
+      });
+      removedCount += idxList.length - 1;
+    }
+    return values[idxList[0]];
   });
 
-  rowsToDelete.sort(function (a, b) { return b - a; }); // 行番号が大きい順に削除（後続行のズレ防止）
-  rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+  if (survivorRows.length > 0) {
+    sheet.getRange(2, 1, survivorRows.length, header.length).setValues(survivorRows);
+  }
+  var excessStart = survivorRows.length + 2;
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= excessStart) {
+    sheet.deleteRows(excessStart, lastRow - excessStart + 1);
+  }
 
-  Logger.log('図番インデックスの重複整理が完了しました。削除' + rowsToDelete.length + '行（統合後の図番数: ' + Object.keys(groups).length + '）');
+  Logger.log('図番インデックスの重複整理が完了しました。削除' + removedCount + '行（統合後の図番数: ' + order.length + '）');
 }
 
 /**
