@@ -1314,6 +1314,20 @@ function diagnoseFolderById() {
   );
   Logger.log('件数: ' + sameNameFolders.length);
   sameNameFolders.forEach(function (f) { Logger.log('  id=' + f.id + ' name=[' + f.name + ']' + (f.id === folderId ? ' ← 調査対象そのもの' : '')); });
+
+  Logger.log('=== このフォルダの直下の子（フォルダ・ファイル）一覧、それぞれI-PROに存在するか ===');
+  var children = Drive.Files.list({
+    q: "'" + folderId + "' in parents and trashed = false",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    fields: 'files(id, name, mimeType)'
+  });
+  (children.files || []).forEach(function (c) {
+    var cTarget = String(c.name).trim();
+    var cKey = numericZubanKey_(cTarget);
+    var cMatch = known.filter(function (z) { return numericZubanKey_(z) === cKey || String(z).trim() === cTarget; });
+    Logger.log('  [' + c.name + '] (' + (c.mimeType === 'application/vnd.google-apps.folder' ? 'フォルダ' : 'ファイル') + ') I-PROに存在: ' + (cMatch.length > 0));
+  });
 }
 
 /**
