@@ -381,6 +381,30 @@ function searchZubanCandidates_(query) {
     }
   }
 
+  // I-PRO（進捗状況照会）は全ての図番を持っているわけではない（長期間受注が無いと抽出対象から
+  // 外れる。I-PRO抽出フォルダ参照）。そのためインデックス・I-PROどちらにも無くても、Driveに実際の
+  // 図番フォルダが既に存在するなら「実在する図番」として扱ってよい（2026-09-04追加、ユーザー指摘）。
+  if (!exact) {
+    var driveFolder = findZubanFolder_(query);
+    if (driveFolder) exact = { zuban: query, hinmei: '' };
+  }
+
+  if (!exact && partial.length === 0) {
+    // Driveフォルダ名の部分一致も候補に加える。Driveには図番以外のフォルダ（会社名・「写真」等）も
+    // 多くノイズが混ざりやすいが、ここは人が選ぶための候補一覧に過ぎないため実害は小さい。
+    var driveMatches = driveFilesList_(
+      "name contains '" + query.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    );
+    driveMatches.forEach(function (f) {
+      var name = String(f.name).trim();
+      if (!name || seenPartial[name] || partial.length >= 10) return;
+      var nameLower = name.toLowerCase();
+      if (nameLower.indexOf(queryLower) === -1 && queryLower.indexOf(nameLower) === -1) return;
+      seenPartial[name] = true;
+      partial.push({ zuban: name, hinmei: '' });
+    });
+  }
+
   return { exact: exact, candidates: partial };
 }
 
