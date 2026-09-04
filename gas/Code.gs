@@ -733,12 +733,27 @@ function upsertSeibanIndex_(seiban, zuban, hinmei, tokuisakiCode) {
   sheet.appendRow(newRow);
 }
 
+/**
+ * 見出し行から指定した列名の位置を探す。見つからなければ例外を投げる。
+ * 図番インデックスのA1セルが誤って書き換わった際、この確認をしていなかったせいで
+ * upsertZubanIndex_・findZubanIndexRow_が軒並み「既存行なし」と誤判定し続け、
+ * 実際の図番が空欄のまま新規行が量産される事故が起きた（2026-09-05）。同じ事故が
+ * 起きてもすぐ気づけるよう、該当列が見つからない場合は静かに-1を扱わず例外にする。
+ */
+function requireColumnIndex_(header, columnName) {
+  var col = header.indexOf(columnName);
+  if (col === -1) {
+    throw new Error('シートの見出し行に「' + columnName + '」列が見つかりません（header=' + JSON.stringify(header) + '）。見出しセルが書き換わっていないか確認してください。');
+  }
+  return col;
+}
+
 function findZubanIndexRow_(zuban) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   if (!sheet || sheet.getLastRow() < 2) return null;
   var values = sheet.getDataRange().getValues();
   var header = values[0];
-  var col = header.indexOf('図番');
+  var col = requireColumnIndex_(header, '図番');
   var key = numericZubanKey_(zuban);
   for (var i = 1; i < values.length; i++) {
     if (numericZubanKey_(values[i][col]) === key) return rowToObject_(header, values[i]);
@@ -758,7 +773,7 @@ function upsertZubanIndex_(zuban, fields) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
     var values = sheet.getDataRange().getValues();
     var header = values[0];
-    var col = header.indexOf('図番');
+    var col = requireColumnIndex_(header, '図番');
     var key = numericZubanKey_(zuban);
     for (var i = 1; i < values.length; i++) {
       if (numericZubanKey_(values[i][col]) === key) {
@@ -1598,7 +1613,7 @@ function refreshZubanIndex() {
     return;
   }
   var header = zubanSheet.getRange(1, 1, 1, zubanSheet.getLastColumn()).getValues()[0];
-  var zubanCol = header.indexOf('図番');
+  var zubanCol = requireColumnIndex_(header, '図番');
   var rows = zubanSheet.getDataRange().getValues();
 
   var cursor = Number(props.getProperty('refreshZubanIndexCursor') || '1');
@@ -1839,7 +1854,7 @@ function loadIndexedZubanSet_() {
   if (!sheet || sheet.getLastRow() < 2) return set;
   var values = sheet.getDataRange().getValues();
   var header = values[0];
-  var col = header.indexOf('図番');
+  var col = requireColumnIndex_(header, '図番');
   for (var i = 1; i < values.length; i++) {
     if (values[i][col]) set[numericZubanKey_(values[i][col])] = true;
   }
