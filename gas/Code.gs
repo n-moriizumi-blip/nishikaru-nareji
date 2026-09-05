@@ -57,7 +57,7 @@ function setupSheets() {
     '図番', '機械名', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
     '主軸', '取付方式', 'Y軸位置',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
-    '専用ツール保管', '前進端位置', '最終更新者メール', '最終更新日時'
+    '専用ツール保管', '前進端位置', 'プログラム番号', '最終更新者メール', '最終更新日時'
   ]);
 
   ensureSheet_(ss, SHEET_SHIPPING_SPEC, [
@@ -1018,7 +1018,7 @@ function saveToolPositions_(payload) {
           p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
           p.spindle || '', p.mount || '', p.yAxis || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
-          payload.toolStorage || '', payload.forwardPosition || '',
+          payload.toolStorage || '', payload.forwardPosition || '', payload.programNumber || '',
           identity.email, now
         ];
       });
@@ -2140,6 +2140,21 @@ function addToolSpindleMountYAxisColumns() {
   sheet.insertColumnsAfter(insertAt - 1, 3);
   sheet.getRange(1, insertAt, 1, 3).setValues([['主軸', '取付方式', 'Y軸位置']]);
   Logger.log('「主軸」「取付方式」「Y軸位置」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「プログラム番号」列を追加する（既存シート用、初回のみ手動実行）。
+ * 専用ツール保管・前進端位置と同じく機械レイアウト単位の1項目として追加（2026-09-05）。
+ */
+function addToolProgramNumberColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('プログラム番号') !== -1) { Logger.log('「プログラム番号」は追加済みです'); return; }
+  var forwardCol = header.indexOf('前進端位置');
+  var insertAt = forwardCol !== -1 ? forwardCol + 2 : sheet.getLastColumn() + 1; // 前進端位置の直後（1始まり列番号）
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('プログラム番号');
+  Logger.log('「プログラム番号」列を追加しました');
 }
 
 /** SHEET_TOOL_MEMOに「タイトル」列を追加する（既存シート用、初回のみ手動実行）。 */

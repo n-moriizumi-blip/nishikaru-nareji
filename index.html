@@ -476,6 +476,7 @@
         <div class="mini-grid" style="margin-top:10px;">
           <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
           <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
+          <div class="mini-field"><label>プログラム番号</label><input type="text" id="programNumberInput"></div>
         </div>
 
         <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
@@ -1708,10 +1709,7 @@
             (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
-        var meta = [
-          p['メーカー'] ? 'メーカー: ' + p['メーカー'] : '',
-          p['品番'] ? '品番: ' + p['品番'] : ''
-        ].filter(Boolean).join('　');
+        var meta = [p['メーカー'] || '', p['品番'] || ''].filter(Boolean).join('　');
         if (meta) html += '<span class="m">' + escapeHtml(meta) + '</span>';
         row.innerHTML = html;
         colEl.appendChild(row);
@@ -1722,8 +1720,10 @@
     specWrap.innerHTML = '';
     var storage = firstPositionValue(myPositions, '専用ツール保管');
     var forwardPos = firstPositionValue(myPositions, '前進端位置');
+    var programNumber = firstPositionValue(myPositions, 'プログラム番号');
     if (storage) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">専用ツール保管　<b>' + escapeHtml(storage) + '</b></div>');
     if (forwardPos) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">前進端位置　<b>' + escapeHtml(forwardPos) + '</b></div>');
+    if (programNumber) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">プログラム番号　<b>' + escapeHtml(programNumber) + '</b></div>');
   }
 
   document.getElementById('toolViewToggle').addEventListener('click', function () {
@@ -1758,6 +1758,7 @@
       document.getElementById('cycleTimeInput').value = ocrData.cycleTime || '';
       document.getElementById('toolStorageInput').value = ocrData.toolStorage || '';
       document.getElementById('forwardPositionInput').value = ocrData.forwardPosition || '';
+      document.getElementById('programNumberInput').value = ocrData.programNumber || '';
       var memoEl = document.getElementById('toolMemoNew');
       memoEl.value = ocrData.memo || '';
       memoEl.style.height = 'auto';
@@ -1794,6 +1795,7 @@
       document.getElementById('cycleTimeInput').value = firstPositionValue(myPositions, 'サイクルタイム');
       document.getElementById('toolStorageInput').value = firstPositionValue(myPositions, '専用ツール保管');
       document.getElementById('forwardPositionInput').value = firstPositionValue(myPositions, '前進端位置');
+      document.getElementById('programNumberInput').value = firstPositionValue(myPositions, 'プログラム番号');
       document.getElementById('toolMemoTitleNew').value = '';
       document.getElementById('toolMemoNew').value = '';
 
@@ -1972,6 +1974,7 @@
       cycleTime: document.getElementById('cycleTimeInput').value,
       toolStorage: document.getElementById('toolStorageInput').value,
       forwardPosition: document.getElementById('forwardPositionInput').value,
+      programNumber: document.getElementById('programNumberInput').value,
       idToken: currentUser.idToken
     };
 
