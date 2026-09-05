@@ -58,6 +58,22 @@
   @keyframes vf-scan { 0%, 100% { top: 14px; } 50% { top: calc(100% - 16px); } }
   @media (prefers-reduced-motion: reduce) { .vf-scanline { animation: none; } }
 
+  /* 「確認中…」「保存しています…」等の進行中メッセージにスキャンライン風の動きを付ける
+     （QR読み取り画面のビューファインダーと同じ演出モチーフを流用、2026-09-05）。 */
+  .status-loading { position: relative; overflow: hidden; padding-bottom: 6px; }
+  span.status-loading { display: inline-block; }
+  .status-loading::after {
+    content: ''; position: absolute; left: 0; bottom: 0; width: 32%; height: 2px;
+    background: var(--accent); box-shadow: 0 0 6px var(--accent);
+    animation: status-scan 1.3s ease-in-out infinite;
+  }
+  button.status-loading::after { bottom: 4px; }
+  @keyframes status-scan {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(420%); }
+  }
+  @media (prefers-reduced-motion: reduce) { .status-loading::after { animation: none; } }
+
   .btn {
     font-family: inherit; font-size: 1rem; font-weight: 700; border-radius: 4px; border: 1px solid transparent;
     padding: 17px 18px; cursor: pointer; text-align: center; min-height: 52px;
@@ -827,17 +843,21 @@
     var camWrap = document.getElementById('camWrap');
     var video = document.getElementById('video');
     camWrap.classList.remove('hidden');
-    document.getElementById('scanStatus').textContent = 'カメラを起動しています…';
+    setLoadingText(document.getElementById('scanStatus'), 'カメラを起動しています…');
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (s) {
       stream = s;
       video.srcObject = s;
       video.setAttribute('playsinline', true);
       video.play();
       scanning = true;
-      document.getElementById('scanStatus').textContent = 'QRコードを枠内に写してください';
+      var scanStatusEl = document.getElementById('scanStatus');
+      clearLoadingText(scanStatusEl);
+      scanStatusEl.textContent = 'QRコードを枠内に写してください';
       requestAnimationFrame(scanTick);
     }).catch(function (err) {
-      document.getElementById('scanStatus').textContent = 'カメラを起動できませんでした: ' + err.message;
+      var scanStatusEl = document.getElementById('scanStatus');
+      clearLoadingText(scanStatusEl);
+      scanStatusEl.textContent = 'カメラを起動できませんでした: ' + err.message;
     });
   }
 
@@ -875,21 +895,23 @@
     var parts = qrText.split('/').filter(Boolean);
     var seiban = parts[parts.length - 1] || qrText;
     hideCandidateSelect();
-    document.getElementById('scanStatus').textContent = '図番を確認しています…';
+    var scanStatusEl = document.getElementById('scanStatus');
+    setLoadingText(scanStatusEl, '図番を確認しています…');
 
     fetch(GAS_API_URL + '?action=scanZuban&seiban=' + encodeURIComponent(seiban))
       .then(function (r) { return r.json(); })
       .then(function (data) {
+        clearLoadingText(scanStatusEl);
         if (data.error) {
-          document.getElementById('scanStatus').textContent = '変換に失敗しました: ' + data.error;
+          scanStatusEl.textContent = '変換に失敗しました: ' + data.error;
           return;
         }
         if (!data.found) {
-          document.getElementById('scanStatus').textContent =
+          scanStatusEl.textContent =
             '製番「' + seiban + '」に対応する図番が見つかりませんでした。直接入力してください。';
           return;
         }
-        document.getElementById('scanStatus').textContent = '';
+        scanStatusEl.textContent = '';
         if (data.multiple) {
           showCandidateSelect(data.candidates);
           return;
@@ -897,7 +919,8 @@
         goToZuban(data.zuban, data);
       })
       .catch(function (err) {
-        document.getElementById('scanStatus').textContent = '変換に失敗しました: ' + err.message;
+        clearLoadingText(scanStatusEl);
+        scanStatusEl.textContent = '変換に失敗しました: ' + err.message;
       });
   }
 
@@ -946,12 +969,14 @@
     var v = document.getElementById('manualZubanInput').value.trim();
     if (!v) return;
     hideCandidateSelect();
-    document.getElementById('scanStatus').textContent = '図番を確認しています…';
+    var manualScanStatusEl = document.getElementById('scanStatus');
+    setLoadingText(manualScanStatusEl, '図番を確認しています…');
     fetch(GAS_API_URL + '?action=searchZuban&query=' + encodeURIComponent(v))
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        document.getElementById('scanStatus').textContent = '';
-        if (res.error) { document.getElementById('scanStatus').textContent = '確認に失敗しました: ' + res.error; return; }
+        clearLoadingText(manualScanStatusEl);
+        manualScanStatusEl.textContent = '';
+        if (res.error) { manualScanStatusEl.textContent = '確認に失敗しました: ' + res.error; return; }
         if (res.exact) {
           goToZuban(res.exact.zuban);
           return;
@@ -969,7 +994,8 @@
         }
       })
       .catch(function (err) {
-        document.getElementById('scanStatus').textContent = '確認に失敗しました: ' + err.message;
+        clearLoadingText(manualScanStatusEl);
+        manualScanStatusEl.textContent = '確認に失敗しました: ' + err.message;
       });
   });
 
@@ -1004,13 +1030,16 @@
     document.getElementById('freshWrap').style.display = 'none';
     document.getElementById('deptViewSection').style.display = 'none';
     document.getElementById('shippingSpecWrap').style.display = 'none';
-    document.getElementById('zubanLoadingNote').classList.remove('hidden');
+    var zubanLoadingEl = document.getElementById('zubanLoadingNote');
+    zubanLoadingEl.classList.remove('hidden');
+    setLoadingText(zubanLoadingEl, '読み込み中…');
 
     fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(zuban))
       .then(function (r) { return r.json(); })
       .then(renderZubanInfo)
       .catch(function (err) {
-        document.getElementById('zubanLoadingNote').textContent = '取得に失敗しました: ' + err.message;
+        clearLoadingText(zubanLoadingEl);
+        zubanLoadingEl.textContent = '取得に失敗しました: ' + err.message;
       });
   }
 
@@ -1019,10 +1048,12 @@
   var currentInspectionFolderCandidates = null;
 
   function renderZubanInfo(data) {
-    document.getElementById('zubanLoadingNote').classList.add('hidden');
+    var zubanLoadingEl2 = document.getElementById('zubanLoadingNote');
+    clearLoadingText(zubanLoadingEl2);
+    zubanLoadingEl2.classList.add('hidden');
     if (data.error) {
-      document.getElementById('zubanLoadingNote').textContent = 'エラー: ' + data.error;
-      document.getElementById('zubanLoadingNote').classList.remove('hidden');
+      zubanLoadingEl2.textContent = 'エラー: ' + data.error;
+      zubanLoadingEl2.classList.remove('hidden');
       return;
     }
     currentZubanData = data;
@@ -1284,6 +1315,19 @@
     });
   }
 
+  // 「確認中…」「保存しています…」等の進行中メッセージにスキャンライン風の動きを付ける
+  // 共通ヘルパー（2026-09-05）。setLoadingText→ 完了時にclearLoadingTextかtextContentの
+  // 再設定＋classList.remove('status-loading')を呼ぶこと。
+  function setLoadingText(el, text) {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('status-loading');
+  }
+  function clearLoadingText(el) {
+    if (!el) return;
+    el.classList.remove('status-loading');
+  }
+
   // ==== ④ 紙の取込確認（ツールレイアウト表のAI読み取り） ====
   var pendingPaperPhotoBlobs = [];
   var pendingPaperPhotoDataUrls = [];
@@ -1360,7 +1404,8 @@
   function handlePaperPhotoSelected_(e) {
     var files = Array.prototype.slice.call(e.target.files || []);
     if (!files.length) return;
-    document.getElementById('paperImportStatus').textContent = '画像を処理しています…';
+    var paperImportStatusEl = document.getElementById('paperImportStatus');
+    setLoadingText(paperImportStatusEl, '画像を処理しています…');
     Promise.all(files.map(function (file) {
       return resizeImageForOcr_(file).then(function (blob) {
         return fileToBase64(blob).then(function (base64) {
@@ -1374,7 +1419,8 @@
       });
       renderPaperPhotoPreview_();
       document.getElementById('paperOcrBtn').classList.remove('hidden');
-      document.getElementById('paperImportStatus').textContent = '';
+      clearLoadingText(paperImportStatusEl);
+      paperImportStatusEl.textContent = '';
       e.target.value = '';
     });
   }
@@ -1385,7 +1431,8 @@
     if (!pendingPaperPhotoBlobs.length) return;
     var paperMachineName = document.getElementById('paperMachineInput').value.trim();
     if (!paperMachineName) { alert('この紙がどの機械（NC旋盤）のものか、機械名を入力してください'); return; }
-    document.getElementById('paperImportStatus').textContent = 'AIが読み取っています…（数十秒かかることがあります）';
+    var paperOcrStatusEl = document.getElementById('paperImportStatus');
+    setLoadingText(paperOcrStatusEl, 'AIが読み取っています…（数十秒かかることがあります）');
     document.getElementById('paperOcrBtn').disabled = true;
     Promise.all(pendingPaperPhotoBlobs.map(fileToBase64)).then(function (base64List) {
       return fetch(GAS_API_URL, {
@@ -1395,7 +1442,8 @@
     }).then(function (r) { return r.json(); })
       .then(function (res) {
         document.getElementById('paperOcrBtn').disabled = false;
-        if (res.error) { document.getElementById('paperImportStatus').textContent = '読み取りに失敗しました: ' + res.error; return; }
+        clearLoadingText(paperOcrStatusEl);
+        if (res.error) { paperOcrStatusEl.textContent = '読み取りに失敗しました: ' + res.error; return; }
 
         var ocrZuban = (res.data && res.data.zuban || '').replace(/[\s　]/g, '');
         var currentZubanNorm = currentZubanData.zuban.replace(/[\s　]/g, '');
@@ -1404,10 +1452,10 @@
             '写真から読み取った図番「' + res.data.zuban + '」が、今開いている図番「' + currentZubanData.zuban + '」と異なるようです。\n' +
             '別の図番の紙を撮影した可能性があります。このまま続けますか？'
           );
-          if (!proceed) { document.getElementById('paperImportStatus').textContent = '読み取り結果を破棄しました。図番を確認して撮り直してください。'; return; }
+          if (!proceed) { paperOcrStatusEl.textContent = '読み取り結果を破棄しました。図番を確認して撮り直してください。'; return; }
         }
 
-        document.getElementById('paperImportStatus').textContent = '';
+        paperOcrStatusEl.textContent = '';
         document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
         document.getElementById('toolsStatus').textContent = '';
         setScreen('tools');
@@ -1419,7 +1467,8 @@
       })
       .catch(function (err) {
         document.getElementById('paperOcrBtn').disabled = false;
-        document.getElementById('paperImportStatus').textContent = '読み取りに失敗しました: ' + err.message;
+        clearLoadingText(paperOcrStatusEl);
+        paperOcrStatusEl.textContent = '読み取りに失敗しました: ' + err.message;
       });
   });
 
@@ -1865,19 +1914,22 @@
       idToken: currentUser.idToken
     };
 
-    document.getElementById('toolsStatus').textContent = '保存しています…';
+    var toolsStatusEl = document.getElementById('toolsStatus');
+    setLoadingText(toolsStatusEl, '保存しています…');
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('toolsStatus').textContent = '保存に失敗しました: ' + res.error; return Promise.reject(res.error); }
+        if (res.error) { clearLoadingText(toolsStatusEl); toolsStatusEl.textContent = '保存に失敗しました: ' + res.error; return Promise.reject(res.error); }
         return refreshZubanData();
       })
       .then(function () {
-        document.getElementById('toolsStatus').textContent = '保存しました';
+        clearLoadingText(toolsStatusEl);
+        toolsStatusEl.textContent = '保存しました';
         exitToolEdit();
       })
       .catch(function (err) {
-        if (err) document.getElementById('toolsStatus').textContent = '保存に失敗しました: ' + err;
+        clearLoadingText(toolsStatusEl);
+        if (err) toolsStatusEl.textContent = '保存に失敗しました: ' + err;
       });
   });
 
@@ -2005,9 +2057,9 @@
       var chain = Promise.resolve();
       files.forEach(function (file, idx) {
         chain = chain.then(function () {
-          label.textContent = files.length > 1
+          setLoadingText(label, files.length > 1
             ? 'アップロード中…（' + (idx + 1) + '/' + files.length + '）'
-            : 'アップロード中…';
+            : 'アップロード中…');
           return resizeImageForUpload_(file).then(function (uploadBlob) {
             return fileToBase64(uploadBlob).then(function (base64) {
               var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
@@ -2027,11 +2079,13 @@
         });
       });
       chain.then(function () {
+        clearLoadingText(label);
         icon.textContent = '✅';
         label.textContent = urls.length > 1 ? urls.length + '枚 添付しました' : '写真を添付しました';
         btn.classList.add('has-photo');
         opts.onUploaded(urls.join('\n'));
       }).catch(function (err) {
+        clearLoadingText(label);
         label.textContent = '写真を選ぶ';
         alert('写真のアップロードに失敗しました: ' + err.message);
       });
@@ -2245,31 +2299,36 @@
     if (!currentUser) { alert('保存にはGoogleログインが必要です'); return; }
     var btn = btnId ? document.getElementById(btnId) : null;
     var originalBtnText = btn ? btn.textContent : null;
-    if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
-    document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しています…';
+    if (btn) { btn.disabled = true; setLoadingText(btn, '保存しています…'); }
+    var qiStatusEl = document.getElementById('qiStatus');
+    setLoadingText(qiStatusEl, statusPrefix + 'を保存しています…');
     fetch(GAS_API_URL, {
       method: 'POST',
       body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, idToken: currentUser.idToken })
     }).then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) {
-          document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + res.error;
-          if (btn) { btn.disabled = false; btn.textContent = originalBtnText; }
+          clearLoadingText(qiStatusEl);
+          qiStatusEl.textContent = '保存に失敗しました: ' + res.error;
+          if (btn) { clearLoadingText(btn); btn.disabled = false; btn.textContent = originalBtnText; }
           return Promise.reject();
         }
         return refreshZubanData();
       })
       .then(function () {
-        document.getElementById('qiStatus').textContent = statusPrefix + 'を保存しました';
+        clearLoadingText(qiStatusEl);
+        qiStatusEl.textContent = statusPrefix + 'を保存しました';
         renderShippingSpecDisplay(currentZubanData.shippingSpec);
         if (btn) {
+          clearLoadingText(btn);
           btn.textContent = '保存しました ✓';
           setTimeout(function () { btn.textContent = originalBtnText; btn.disabled = false; }, 1800);
         }
       })
       .catch(function (err) {
-        if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err;
-        if (btn) { btn.disabled = false; btn.textContent = originalBtnText; }
+        clearLoadingText(qiStatusEl);
+        if (err) qiStatusEl.textContent = '保存に失敗しました: ' + err;
+        if (btn) { clearLoadingText(btn); btn.disabled = false; btn.textContent = originalBtnText; }
       });
   }
 
@@ -2339,11 +2398,12 @@
           action: 'postQualityLog', zuban: currentZubanData.zuban, department: '仕上げ', idToken: currentUser.idToken,
           content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked
         };
-    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
+    var shiageQiStatusEl = document.getElementById('qiStatus');
+    setLoadingText(shiageQiStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        if (res.error) { clearLoadingText(shiageQiStatusEl); shiageQiStatusEl.textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
         if (isEdit) cancelEditShiageLog();
         else {
           document.getElementById('shiageContentInput').value = '';
@@ -2353,10 +2413,11 @@
         return refreshZubanData();
       })
       .then(function () {
-        document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました';
+        clearLoadingText(shiageQiStatusEl);
+        shiageQiStatusEl.textContent = (isEdit ? '更新' : '記録') + 'しました';
         renderQualityLogSection(currentZubanData);
       })
-      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+      .catch(function (err) { clearLoadingText(shiageQiStatusEl); if (err) shiageQiStatusEl.textContent = '保存に失敗しました: ' + err; });
   });
 
   // ==== 洗浄専用｜品質情報を記録する（部署='洗浄'、真空洗浄機・バレル情報の項目つき） ====
@@ -2459,21 +2520,23 @@
           content: content, photoUrl: pendingSenjouPhotoUrl, shared: document.getElementById('senjouShareCheck').checked,
           ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
         };
-    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
+    var senjouQiStatusEl = document.getElementById('qiStatus');
+    setLoadingText(senjouQiStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        if (res.error) { clearLoadingText(senjouQiStatusEl); senjouQiStatusEl.textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
         senjouFieldSuggestionsLoaded = false;
         cancelEditSenjouLog();
         return refreshZubanData();
       })
       .then(function () {
-        document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました';
+        clearLoadingText(senjouQiStatusEl);
+        senjouQiStatusEl.textContent = (isEdit ? '更新' : '記録') + 'しました';
         renderQualityLogSection(currentZubanData);
         loadSenjouFieldSuggestions_();
       })
-      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+      .catch(function (err) { clearLoadingText(senjouQiStatusEl); if (err) senjouQiStatusEl.textContent = '保存に失敗しました: ' + err; });
   });
 
   var resetQiPhotoBtn = wirePhotoUpload({
@@ -2495,11 +2558,12 @@
           rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
           shared: document.getElementById('qiShareCheck').checked
         };
-    document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しています…';
+    var qiSaveStatusEl = document.getElementById('qiStatus');
+    setLoadingText(qiSaveStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error) { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
+        if (res.error) { clearLoadingText(qiSaveStatusEl); qiSaveStatusEl.textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
         if (isEdit) cancelEditQualityLog();
         else {
           document.getElementById('qiContentInput').value = '';
@@ -2509,8 +2573,8 @@
         }
         return refreshZubanData();
       })
-      .then(function () { document.getElementById('qiStatus').textContent = (isEdit ? '更新' : '記録') + 'しました'; })
-      .catch(function (err) { if (err) document.getElementById('qiStatus').textContent = '保存に失敗しました: ' + err; });
+      .then(function () { clearLoadingText(qiSaveStatusEl); qiSaveStatusEl.textContent = (isEdit ? '更新' : '記録') + 'しました'; })
+      .catch(function (err) { clearLoadingText(qiSaveStatusEl); if (err) qiSaveStatusEl.textContent = '保存に失敗しました: ' + err; });
   });
 
   renderRecentList();
