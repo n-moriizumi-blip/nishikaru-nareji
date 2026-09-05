@@ -1260,7 +1260,7 @@ function findZubanFolder_(zuban) {
  * GASエディタでこの関数を選んで実行し、実行数ログ（表示→実行数）を確認すること。
  */
 function diagnoseZubanFolderSearch() {
-  var zuban = 'AE48127C01'; // 調査対象。別の図番を調べたい場合はここを書き換えて再実行する
+  var zuban = 'H02-006200B'; // 調査対象。別の図番を調べたい場合はここを書き換えて再実行する
   var nameEsc = String(zuban).replace(/'/g, "\\'");
 
   Logger.log('=== 完全一致検索（findZubanFolder_と同じクエリ） ===');
@@ -1268,7 +1268,15 @@ function diagnoseZubanFolderSearch() {
     "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
   Logger.log('件数: ' + exact.length);
-  exact.forEach(function (f) { Logger.log('  id=' + f.id + ' name=[' + f.name + '] len=' + f.name.length); });
+  exact.forEach(function (f) {
+    var parentNames = [];
+    try {
+      var folder = DriveApp.getFolderById(f.id);
+      var ps = folder.getParents();
+      while (ps.hasNext()) parentNames.push(ps.next().getName());
+    } catch (e) { parentNames.push('(親フォルダ取得エラー: ' + e + ')'); }
+    Logger.log('  id=' + f.id + ' name=[' + f.name + '] len=' + f.name.length + ' 親フォルダ=' + parentNames.join(' / '));
+  });
 
   Logger.log('=== 部分一致検索（contains、trashed問わず） ===');
   var partial = driveFilesList_(
