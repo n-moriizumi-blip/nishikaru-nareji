@@ -1698,14 +1698,17 @@
       grouped[colKey].forEach(function (p) {
         var row = document.createElement('div');
         row.className = 'tool-view-row';
-        var tLabel = [p['Tナンバー'], p['加工種類']].filter(Boolean).map(function (s) { return escapeHtml(String(s)); }).join('　');
-        var html = '<div class="t-line"><span class="t">' + tLabel + '</span>' +
-          (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
+        // 表示順は① T番 ② 主軸・取付方式・Y軸位置 ③ 加工種類・シフト ④ 詳細情報 ⑤ メーカー・品番
+        // （ユーザー提示のレイアウト案の並びに合わせる、2026-09-05）。
+        var html = '<div class="t-line"><span class="t">' + escapeHtml(String(p['Tナンバー'] || '')) + '</span></div>';
+        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
+        if (spindleTags) html += '<span class="m">' + escapeHtml(spindleTags) + '</span>';
+        if (p['加工種類'] || p['シフト']) {
+          html += '<div class="t-line"><span class="t">' + escapeHtml(String(p['加工種類'] || '')) + '</span>' +
+            (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
+        }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var meta = [
-          p['主軸'] || '',
-          p['取付方式'] || '',
-          p['Y軸位置'] || '',
           p['メーカー'] ? 'メーカー: ' + p['メーカー'] : '',
           p['品番'] ? '品番: ' + p['品番'] : ''
         ].filter(Boolean).join('　');
