@@ -154,6 +154,7 @@ function doPost(e) {
     if (action === 'saveShippingSpec') return jsonResponse_(saveShippingSpec_(payload));
     if (action === 'uploadPhoto') return jsonResponse_(uploadPhoto_(payload));
     if (action === 'ocrToolLayout') return jsonResponse_(ocrToolLayout_(payload));
+    if (action === 'ocrFreeMemo') return jsonResponse_(ocrFreeMemo_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1650,6 +1651,69 @@ function ocrToolLayout_(payload) {
   }
 
   return { ok: true, data: parsed };
+}
+
+/**
+ * 段取りメモ・手順書のような自由形式の手書き文書を、構造化せずそのままテキストに書き起こす
+ * （2026-09-05追加）。ocrToolLayout_はT番ごとの表構造を前提にしたJSON出力だが、
+ * 番号付き手順・矢印・注意書きが中心の手書きメモはその構造に当てはまらないため、
+ * ツール配置メモの自由入力欄にそのまま入れられるプレーンテキストとして書き起こす専用関数を分けた。
+ */
+function ocrFreeMemo_(payload) {
+  var imageList = payload.imageBase64List || (payload.imageBase64 ? [payload.imageBase64] : []);
+  if (!imageList.length) return { error: 'imageBase64List is required' };
+
+  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) return { error: 'GEMINI_API_KEYが設定されていません（GASエディタの「プロジェクトの設定」→「スクリプト プロパティ」で設定してください）' };
+
+  var multiNote = imageList.length > 1
+    ? '写真は同じメモの複数枚（続き・別ページ等）の可能性があります。全ての写真の内容を読み取り順につなげて1つの文章として出力してください。\n\n'
+    : '';
+
+  var prompt = multiNote +
+    'これは工場の加工手順・段取りに関する手書きメモの写真です。表形式に無理に当てはめず、書かれている内容を' +
+    'できるだけそのまま文字起こししてください。箇条書き・丸数字（①②③等）・矢印による手順の流れなど、' +
+    '元のメモの構造が伝わるように改行やインデントを使って構いません。読めない・自信がない文字は「?」にしてください。' +
+    '説明文やコードフェンス、前置きは付けず、書き起こしたテキストのみを出力してください。';
+
+  var parts = [{ text: prompt }];
+  imageList.forEach(function (base64) {
+    parts.push({ inline_data: { mime_type: payload.mimeType || 'image/jpeg', data: base64 } });
+  });
+
+  var resp;
+  try {
+    resp = UrlFetchApp.fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + apiKey,
+      {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ contents: [{ parts: parts }] }),
+        muteHttpExceptions: true
+      }
+    );
+  } catch (e) {
+    return { error: 'Gemini APIへの通信に失敗しました: ' + e };
+  }
+
+  var code = resp.getResponseCode();
+  if (code !== 200) {
+    return { error: 'Gemini APIエラー(' + code + '): ' + resp.getContentText().substring(0, 300) };
+  }
+
+  var json;
+  try {
+    json = JSON.parse(resp.getContentText());
+  } catch (e) {
+    return { error: 'Gemini応答の解析に失敗しました' };
+  }
+
+  var text = json.candidates && json.candidates[0] && json.candidates[0].content &&
+    json.candidates[0].content.parts && json.candidates[0].content.parts[0] &&
+    json.candidates[0].content.parts[0].text;
+  if (!text) return { error: 'Gemini応答が空でした（画像が不鮮明・読み取り不能の可能性）' };
+
+  return { ok: true, text: text.trim() };
 }
 
 /**

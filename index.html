@@ -441,6 +441,13 @@
           <div class="memo-new-form">
             <input type="text" id="toolMemoTitleNew" placeholder="タイトル（任意）">
             <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost" id="memoOcrCameraBtn" style="flex:1;">📝 写真を撮って文字起こし</button>
+              <button type="button" class="btn btn-ghost" id="memoOcrLibraryBtn" style="flex:1;">📝 アルバムから文字起こし</button>
+            </div>
+            <input type="file" id="memoOcrCameraInput" accept="image/*" capture="environment" multiple class="hidden">
+            <input type="file" id="memoOcrLibraryInput" accept="image/*" multiple class="hidden">
+            <div class="status-note" id="memoOcrStatus"></div>
             <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真を選ぶ</span></button>
             <input type="file" id="memoPhotoInput" accept="image/*" multiple class="hidden">
             <label class="confirm-row">
@@ -2166,6 +2173,44 @@
     btnId: 'memoPhotoBtn', iconId: 'memoPhotoIcon', labelId: 'memoPhotoLabel', inputId: 'memoPhotoInput',
     onUploaded: function (url) { pendingMemoPhotoUrl = url; }
   });
+
+  // ツール配置メモの自由入力欄に、手書きメモの写真をAIでそのまま文字起こしして流し込む
+  // （2026-09-05追加）。T番ごとの表に当てはまらない段取りメモ・手順書のような手書き文書向け。
+  // ④紙の取込確認（ocrToolLayout）とは別に、構造化せずテキストのみを返すocrFreeMemoを使う。
+  function handleMemoOcrPhotoSelected_(e) {
+    var files = Array.prototype.slice.call(e.target.files || []);
+    if (!files.length) return;
+    var memoOcrStatusEl = document.getElementById('memoOcrStatus');
+    setLoadingText(memoOcrStatusEl, 'AIが文字起こししています…（数十秒かかることがあります）');
+    Promise.all(files.map(function (file) {
+      return resizeImageForOcr_(file).then(fileToBase64);
+    })).then(function (base64List) {
+      return fetch(GAS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'ocrFreeMemo', imageBase64List: base64List, mimeType: 'image/jpeg' })
+      });
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        clearLoadingText(memoOcrStatusEl);
+        if (res.error) { memoOcrStatusEl.textContent = '文字起こしに失敗しました: ' + res.error; return; }
+        var memoEl = document.getElementById('toolMemoNew');
+        memoEl.value = memoEl.value ? memoEl.value + '\n\n' + res.text : res.text;
+        memoOcrStatusEl.textContent = '文字起こしした内容を自由入力欄に入れました。内容を確認・修正してから記録してください。';
+        e.target.value = '';
+      })
+      .catch(function (err) {
+        clearLoadingText(memoOcrStatusEl);
+        memoOcrStatusEl.textContent = '文字起こしに失敗しました: ' + err.message;
+      });
+  }
+  document.getElementById('memoOcrCameraBtn').addEventListener('click', function () {
+    document.getElementById('memoOcrCameraInput').click();
+  });
+  document.getElementById('memoOcrLibraryBtn').addEventListener('click', function () {
+    document.getElementById('memoOcrLibraryInput').click();
+  });
+  document.getElementById('memoOcrCameraInput').addEventListener('change', handleMemoOcrPhotoSelected_);
+  document.getElementById('memoOcrLibraryInput').addEventListener('change', handleMemoOcrPhotoSelected_);
 
   document.getElementById('memoAddBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
