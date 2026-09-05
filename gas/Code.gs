@@ -184,7 +184,7 @@ function getZubanInfo_(zuban, knownMaster) {
   var t0 = Date.now();
   var master = knownMaster || lookupZubanMaster_(zuban);
   var t1 = Date.now();
-  var pastTrouble = findPastTrouble_(zuban);
+  var pastTrouble = findPastTrouble_(zuban, master.tokuisaki);
   var t2 = Date.now();
   var qualityLog = readQualityLog_(zuban);
   var toolMemo = readToolMemo_(zuban);
@@ -537,7 +537,7 @@ function driveFilesList_(query) {
  * そのまま使い、Drive検索を省略する。無ければscanPastTroubleFiles_でライブ検索し、結果をインデックスに書き込む。
  * refreshZubanIndex()が毎日1回、インデックス済みの図番だけ再スキャンして最新化する。
  */
-function findPastTrouble_(zuban) {
+function findPastTrouble_(zuban, tokuisakiCode) {
   var items = [];
   var seenKeys = {};
   function pushUnique(item, key) {
@@ -557,7 +557,7 @@ function findPastTrouble_(zuban) {
     try { fkFiles = JSON.parse(indexed['改善計画書リンク'] || '[]'); } catch (e) { fkFiles = []; }
     parentName = indexed['親フォルダ名'] || '';
   } else {
-    var scanned = scanPastTroubleFiles_(zuban);
+    var scanned = scanPastTroubleFiles_(zuban, tokuisakiCode);
     qiFiles = scanned.qi;
     fkFiles = scanned.fk;
     parentName = scanned.parentName || '';
@@ -611,10 +611,10 @@ function findPastTrouble_(zuban) {
  * アプローチはやめ、両方の表記に共通する「改善計画書」で緩く一致させたうえで
  * 共有ドライブ全体を対象に検索する（Advanced Drive Serviceで共有ドライブ対応済みのため可能）。
  */
-function scanPastTroubleFiles_(zuban) {
+function scanPastTroubleFiles_(zuban, tokuisakiCode) {
   var qi = [];
   var parentName = '';
-  var zubanFolder = findZubanFolder_(zuban);
+  var zubanFolder = findZubanFolder_(zuban, tokuisakiCode);
   if (zubanFolder) {
     driveFilesList_(
       "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
@@ -1223,23 +1223,45 @@ function getInspectionFolderUrl_(zuban) {
   if (indexed && indexed['更新日時'] && indexed['検査記録フォルダURL']) {
     return { found: true, zuban: zuban, url: indexed['検査記録フォルダURL'] };
   }
-  var folder = findZubanFolder_(zuban);
-  if (!folder) return { found: false, zuban: zuban };
-  upsertZubanIndex_(zuban, { '検査記録フォルダURL': folder.getUrl() });
-  return { found: true, zuban: zuban, url: folder.getUrl() };
+  var master = lookupZubanMaster_(zuban);
+  var result = findZubanFolderCandidates_(zuban, master.tokuisaki);
+  if (result.resolved) {
+    var folder = DriveApp.getFolderById(result.resolved.id);
+    upsertZubanIndex_(zuban, { '検査記録フォルダURL': folder.getUrl() });
+    return { found: true, zuban: zuban, url: folder.getUrl() };
+  }
+  if (result.files.length > 1) {
+    // 同じ名前のフォルダが複数あり得意先名でも自動判別できなかった。インデックスへは保存せず、
+    // 候補一覧（親フォルダ名付き）を返して人に選んでもらう（2026-09-05追加）。
+    var candidates = result.files.map(function (f) {
+      var parentName = '';
+      try {
+        var pIter = DriveApp.getFolderById(f.id).getParents();
+        if (pIter.hasNext()) parentName = pIter.next().getName();
+      } catch (e) {}
+      return { name: f.name + (parentName ? '（' + parentName + '内）' : ''), url: f.webViewLink };
+    });
+    return { found: true, zuban: zuban, ambiguous: true, candidates: candidates };
+  }
+  return { found: false, zuban: zuban };
 }
 
 /**
- * タイトルが図番と完全一致するフォルダを探す（検査記録／社名／図番／の図番フォルダを想定）。
- * 検索自体はAdvanced Drive Service（driveFilesList_）で行い、見つかったIDをDriveApp.getFolderByIdで
- * 開き直してFolderオブジェクトとして返す（getFolderByIdは共有ドライブ上でも問題なく使えるため、
- * 戻り値を使う側（createFolder/createFile等）はこれまでどおりDriveAppのAPIで操作できる）。
+ * タイトルが図番と完全一致するフォルダの候補を全て探す（検査記録／社名／図番／の図番フォルダを想定）。
+ * 検索自体はAdvanced Drive Service（driveFilesList_）で行う。
  *
  * 完全一致で0件の場合、containsで拾ってから前後の空白を無視して比較し直す（2026-09-03追加）。
  * 実例（AE48127C01）で、フォルダ名の末尾に人手入力による余分な半角スペースが2つ付いており、
  * 実在するのに完全一致検索だけでは見つからなかったため（共有ドライブの権限等の問題ではなかった）。
+ *
+ * 同じ名前のフォルダがDrive上に複数実在することがある（実例：「H02-006200B」が「日機装」向けと
+ * 別の圧入品系列フォルダの2箇所に存在、2026-09-05ユーザー指摘）。その場合、tokuisakiCode（I-PROの
+ * 得意先コード）から得意先名を引き、候補フォルダの親フォルダ階層にその名前が含まれるものを
+ * 自動的に選ぶ。決められなければresolvedをnullのまま返し、呼び出し側の判断に委ねる
+ * （findZubanFolder_は従来どおりの1件返す用途向けに先頭を採用、検査記録フォルダを開くボタンは
+ * 人に選んでもらう）。
  */
-function findZubanFolder_(zuban) {
+function findZubanFolderCandidates_(zuban, tokuisakiCode) {
   var target = String(zuban).trim();
   var nameEsc = target.replace(/'/g, "\\'");
   var files = driveFilesList_(
@@ -1251,8 +1273,46 @@ function findZubanFolder_(zuban) {
     );
     files = candidates.filter(function (f) { return String(f.name).trim() === target; });
   }
-  if (files.length === 0) return null;
-  return DriveApp.getFolderById(files[0].id);
+  if (files.length <= 1) return { files: files, resolved: files[0] || null };
+
+  var tokuisakiName = tokuisakiCode ? lookupTokuisakiName_(tokuisakiCode) : null;
+  if (tokuisakiName) {
+    for (var i = 0; i < files.length; i++) {
+      if (folderAncestorNameContains_(files[i].id, tokuisakiName)) {
+        return { files: files, resolved: files[i] };
+      }
+    }
+  }
+  return { files: files, resolved: null };
+}
+
+/** 指定フォルダの親を数階層まで遡り、名前にnameFragmentを含む祖先があるか調べる。 */
+function folderAncestorNameContains_(folderId, nameFragment) {
+  try {
+    var current = DriveApp.getFolderById(folderId);
+    for (var depth = 0; depth < 6; depth++) {
+      var parents = current.getParents();
+      if (!parents.hasNext()) return false;
+      current = parents.next();
+      if (String(current.getName()).indexOf(nameFragment) !== -1) return true;
+    }
+  } catch (e) {
+    // 権限等でたどれない場合は不一致扱い
+  }
+  return false;
+}
+
+/**
+ * findZubanFolderCandidates_を使い、単一のFolderオブジェクトを返す（既存の呼び出し元向け）。
+ * 同名フォルダが複数あり得意先名でも自動判別できない場合は、背景処理（品質情報検索・日次更新等）を
+ * 止めないため従来どおり先頭の候補を採用する（人に選ばせたい場合はfindZubanFolderCandidates_を
+ * 直接使うこと。検査記録フォルダを開くボタン＝getInspectionFolderUrl_はそちらを使っている）。
+ */
+function findZubanFolder_(zuban, tokuisakiCode) {
+  var result = findZubanFolderCandidates_(zuban, tokuisakiCode);
+  if (result.resolved) return DriveApp.getFolderById(result.resolved.id);
+  if (result.files.length > 0) return DriveApp.getFolderById(result.files[0].id);
+  return null;
 }
 
 /**
@@ -1671,12 +1731,18 @@ function chainSeedZubanIndex_() {
 /** 指定した図番1件分を、インデックスを使わずライブスキャンして図番インデックスを上書きする。 */
 function refreshOneZuban_(zuban) {
   var master = scanZubanMaster_(zuban);
-  var scanned = scanPastTroubleFiles_(zuban);
-  var zubanFolder = findZubanFolder_(zuban);
+  var scanned = scanPastTroubleFiles_(zuban, master.tokuisaki);
+  // 同名フォルダが複数あり得意先名でも自動判別できない場合、ここで先頭を勝手に確定させて
+  // 検査記録フォルダURLをキャッシュしてしまうと、getInspectionFolderUrl_が以後ずっとその
+  // （誤っているかもしれない）URLを返し続け、候補一覧を人に選ばせる機会が失われる。
+  // そのため、自動判別できた場合のみURLを書き込み、できない場合は空欄のままにする
+  // （空欄なら次回アクセス時にgetInspectionFolderUrl_がライブ再判定し、候補を出せる）。
+  var folderResult = findZubanFolderCandidates_(zuban, master.tokuisaki);
+  var folderUrl = folderResult.resolved ? DriveApp.getFolderById(folderResult.resolved.id).getUrl() : '';
   upsertZubanIndex_(zuban, {
     '品名': master.hinmei || '',
     '得意先コード': master.tokuisaki || '',
-    '検査記録フォルダURL': zubanFolder ? zubanFolder.getUrl() : '',
+    '検査記録フォルダURL': folderUrl,
     '品質情報リンク': JSON.stringify(scanned.qi),
     '改善計画書リンク': JSON.stringify(scanned.fk),
     '親フォルダ名': scanned.parentName || ''

@@ -340,6 +340,10 @@
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
+      <div id="folderCandidateSelect" class="candidate-select hidden">
+        <p class="section-label sub">同じ名前のフォルダが複数見つかりました。開きたい方を選んでください</p>
+        <div id="folderCandidateList"></div>
+      </div>
       <button class="btn btn-ghost" id="backToScanBtn">別の図番を読み取る</button>
     </section>
 
@@ -1012,6 +1016,7 @@
 
   var currentZubanData = null;
   var currentInspectionFolderUrl = null;
+  var currentInspectionFolderCandidates = null;
 
   function renderZubanInfo(data) {
     document.getElementById('zubanLoadingNote').classList.add('hidden');
@@ -1022,6 +1027,8 @@
     }
     currentZubanData = data;
     currentInspectionFolderUrl = null;
+    currentInspectionFolderCandidates = null;
+    document.getElementById('folderCandidateSelect').classList.add('hidden');
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
     renderPastTroubleDisplay(data);
@@ -1209,7 +1216,16 @@
     if (showInspectionFolderBtn && currentInspectionFolderUrl === null) {
       fetch(GAS_API_URL + '?action=inspectionFolder&zuban=' + encodeURIComponent(currentZubanData.zuban))
         .then(function (r) { return r.json(); })
-        .then(function (d) { currentInspectionFolderUrl = d.found ? d.url : ''; });
+        .then(function (d) {
+          if (d.found && d.ambiguous) {
+            // 同じ名前のフォルダが複数あり得意先名でも自動判別できなかった場合。
+            // URLは確定させず、候補一覧から人に選んでもらう（2026-09-05追加）。
+            currentInspectionFolderCandidates = d.candidates;
+            currentInspectionFolderUrl = '__ambiguous__';
+          } else {
+            currentInspectionFolderUrl = d.found ? d.url : '';
+          }
+        });
     }
   }
 
@@ -1223,7 +1239,9 @@
   });
   document.getElementById('openInspectionFolderBtn').addEventListener('click', function () {
     if (this.disabled) return;
-    if (currentInspectionFolderUrl) {
+    if (currentInspectionFolderUrl === '__ambiguous__' && currentInspectionFolderCandidates) {
+      renderFolderCandidateSelect(currentInspectionFolderCandidates);
+    } else if (currentInspectionFolderUrl) {
       window.open(currentInspectionFolderUrl, '_blank');
     } else if (currentInspectionFolderUrl === '') {
       alert('この図番の検査記録フォルダが見つかりませんでした（未作成の可能性があります）');
@@ -1231,6 +1249,23 @@
       alert('確認中です。少し待ってからもう一度お試しください');
     }
   });
+
+  // 同じ名前のフォルダが複数あり自動判別できなかった場合の候補一覧（2026-09-05追加）。
+  function renderFolderCandidateSelect(candidates) {
+    var list = document.getElementById('folderCandidateList');
+    list.innerHTML = '';
+    candidates.forEach(function (c) {
+      var div = document.createElement('div');
+      div.className = 'candidate-item';
+      div.innerHTML = '<span class="candidate-zuban">' + escapeHtml(c.name) + '</span>';
+      div.addEventListener('click', function () {
+        document.getElementById('folderCandidateSelect').classList.add('hidden');
+        window.open(c.url, '_blank');
+      });
+      list.appendChild(div);
+    });
+    document.getElementById('folderCandidateSelect').classList.remove('hidden');
+  }
   document.getElementById('goPaperImportBtn').addEventListener('click', function () {
     if (this.disabled) return;
     goToPaperImport();
