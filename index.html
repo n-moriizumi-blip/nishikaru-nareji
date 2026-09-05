@@ -151,6 +151,14 @@
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer;
   }
   .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #241A0C; }
+  /* ツール配置1行内の主軸・取付方式・Y軸位置（2026-09-05追加）。.chipより小さく、行内に収まるようにする。 */
+  .mini-chip-group { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .mini-chip-group .mini-chip-label { font-size: 0.72rem; font-weight: 700; color: var(--ink-soft); margin-right: 2px; }
+  .mini-chip {
+    font-family: inherit; font-size: 0.76rem; font-weight: 700; padding: 6px 11px;
+    border-radius: 4px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer;
+  }
+  .mini-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #241A0C; }
   .dept-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
   .dept-btn {
     font-family: inherit; font-size: 0.86rem; font-weight: 700; padding: 10px 16px;
@@ -1695,6 +1703,9 @@
           (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var meta = [
+          p['主軸'] || '',
+          p['取付方式'] || '',
+          p['Y軸位置'] || '',
           p['メーカー'] ? 'メーカー: ' + p['メーカー'] : '',
           p['品番'] ? '品番: ' + p['品番'] : ''
         ].filter(Boolean).join('　');
@@ -1734,7 +1745,8 @@
           .map(function (p) {
             return {
               tNumber: p.tNumber || '', category: p.category || '', detail: p.detail || '',
-              shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || ''
+              shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || '',
+              spindle: p.spindle || '', mount: p.mount || '', yAxis: p.yAxis || ''
             };
           });
       });
@@ -1769,7 +1781,8 @@
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
           return {
             tNumber: p['Tナンバー'] || '', category: p['加工種類'] || '', detail: p['詳細情報'] || '',
-            shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || ''
+            shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || '',
+            spindle: p['主軸'] || '', mount: p['取付方式'] || '', yAxis: p['Y軸位置'] || ''
           };
         });
       });
@@ -1811,6 +1824,40 @@
     renderToolView(currentZubanData);
   }
 
+  // ツール配置1行内の主軸・取付方式・Y軸位置チップ（2026-09-05追加）。
+  // ⑤画面の.chip-row（1画面に1つだけの前提）とは違い、行が複数あるツールレイアウトでは
+  // グループの一意性を行要素自体のスコープで担保する（querySelectorをrow配下に限定する）。
+  var TOOL_MINI_CHIP_FIELDS = {
+    spindle: { label: '主軸', options: ['正面', '背面'] },
+    mount: { label: '取付方式', options: ['シングル', 'ダブル', 'トリプル', '回転', 'クロス', '傾斜', 'クシ歯', 'B軸'] },
+    yAxis: { label: 'Y軸位置', options: ['Y-', 'Y0', 'Y+'] }
+  };
+  function buildMiniChipGroupHtml(field, selectedValue) {
+    var def = TOOL_MINI_CHIP_FIELDS[field];
+    var chipsHtml = def.options.map(function (v) {
+      return '<button type="button" class="mini-chip" aria-pressed="' + (selectedValue === v ? 'true' : 'false') + '">' + escapeHtml(v) + '</button>';
+    }).join('');
+    return '<div class="mini-chip-group" data-field="' + field + '"><span class="mini-chip-label">' + def.label + '</span>' + chipsHtml + '</div>';
+  }
+  function wireMiniChipGroups(rowEl) {
+    rowEl.querySelectorAll('.mini-chip-group').forEach(function (group) {
+      var chips = group.querySelectorAll('.mini-chip');
+      chips.forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var alreadyPressed = chip.getAttribute('aria-pressed') === 'true';
+          chips.forEach(function (c) { c.setAttribute('aria-pressed', 'false'); });
+          if (!alreadyPressed) chip.setAttribute('aria-pressed', 'true');
+        });
+      });
+    });
+  }
+  function getMiniChipValue(rowEl, field) {
+    var group = rowEl.querySelector('.mini-chip-group[data-field="' + field + '"]');
+    if (!group) return '';
+    var pressed = group.querySelector('.mini-chip[aria-pressed="true"]');
+    return pressed ? pressed.textContent : '';
+  }
+
   function renderEditColumn(colKey) {
     var container = document.getElementById('editRows' + capitalize(colKey));
     container.innerHTML = '';
@@ -1824,6 +1871,11 @@
         '</div>' +
         '<div class="row-line">' +
           '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番" name="toolTNumber">' +
+        '</div>' +
+        buildMiniChipGroupHtml('spindle', row.spindle) +
+        buildMiniChipGroupHtml('mount', row.mount) +
+        buildMiniChipGroupHtml('yAxis', row.yAxis) +
+        '<div class="row-line">' +
           '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList" name="toolCategory">' +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
         '</div>' +
@@ -1839,6 +1891,7 @@
         var v = this.value.trim();
         if (v && !/^t/i.test(v)) this.value = 'T' + v;
       });
+      wireMiniChipGroups(div);
       container.appendChild(div);
     });
   }
@@ -1853,7 +1906,10 @@
         detail: row.querySelector('.rdetail').value,
         shift: row.querySelector('.rshift').value,
         maker: row.querySelector('.rmaker').value,
-        partNumber: row.querySelector('.rpartnum').value
+        partNumber: row.querySelector('.rpartnum').value,
+        spindle: getMiniChipValue(row, 'spindle'),
+        mount: getMiniChipValue(row, 'mount'),
+        yAxis: getMiniChipValue(row, 'yAxis')
       });
     });
     toolPositionsState[colKey] = arr;
@@ -1863,7 +1919,7 @@
     btn.addEventListener('click', function () {
       var colKey = btn.getAttribute('data-col');
       syncColumnFromDom(colKey);
-      toolPositionsState[colKey].push({ tNumber: '', category: '', detail: '', shift: '', maker: '', partNumber: '' });
+      toolPositionsState[colKey].push({ tNumber: '', category: '', detail: '', shift: '', maker: '', partNumber: '', spindle: '', mount: '', yAxis: '' });
       renderEditColumn(colKey);
     });
   });
@@ -1893,10 +1949,12 @@
     var positions = [];
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       toolPositionsState[colKey].forEach(function (row, idx) {
-        if (!row.tNumber && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber) return;
+        if (!row.tNumber && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber &&
+            !row.spindle && !row.mount && !row.yAxis) return;
         positions.push({
           column: colKey, order: idx + 1, tNumber: row.tNumber, category: row.category,
-          detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber
+          detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber,
+          spindle: row.spindle, mount: row.mount, yAxis: row.yAxis
         });
       });
     });

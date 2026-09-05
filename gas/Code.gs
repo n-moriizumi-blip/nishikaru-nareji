@@ -55,6 +55,7 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
     '図番', '機械名', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
+    '主軸', '取付方式', 'Y軸位置',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', '最終更新者メール', '最終更新日時'
   ]);
@@ -1015,6 +1016,7 @@ function saveToolPositions_(payload) {
         return [
           payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''),
           p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
+          p.spindle || '', p.mount || '', p.yAxis || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
           payload.toolStorage || '', payload.forwardPosition || '',
           identity.email, now
@@ -2121,6 +2123,23 @@ function addToolMachineColumn() {
   sheet.insertColumnAfter(insertAt - 1);
   sheet.getRange(1, insertAt).setValue('機械名');
   Logger.log('「機械名」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「主軸」「取付方式」「Y軸位置」列を追加する（既存シート用、初回のみ手動実行）。
+ * ツールレイアウトの入力項目にチップ選択形式の3項目を追加するため（2026-09-05、ユーザー提案の
+ * レイアウト案より）。主軸＝正面/背面、取付方式＝シングル/ダブル/トリプル/回転/クロス/傾斜/クシ歯/B軸、
+ * Y軸位置＝Y-/Y0/Y+。既存行はいずれも空欄のまま（旧データに記録が無いため）。
+ */
+function addToolSpindleMountYAxisColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('主軸') !== -1) { Logger.log('「主軸」等は追加済みです'); return; }
+  var partNumCol = header.indexOf('品番');
+  var insertAt = partNumCol !== -1 ? partNumCol + 2 : sheet.getLastColumn() + 1; // 品番の直後（1始まり列番号）
+  sheet.insertColumnsAfter(insertAt - 1, 3);
+  sheet.getRange(1, insertAt, 1, 3).setValues([['主軸', '取付方式', 'Y軸位置']]);
+  Logger.log('「主軸」「取付方式」「Y軸位置」列を追加しました');
 }
 
 /** SHEET_TOOL_MEMOに「タイトル」列を追加する（既存シート用、初回のみ手動実行）。 */
