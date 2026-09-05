@@ -313,7 +313,10 @@
         <div class="section-label" id="candidateSelectLabel">この製番に対応する図番が複数見つかりました。選んでください</div>
         <div id="candidateList"></div>
       </div>
-      <div id="recentList"></div>
+      <div id="recentSection" class="hidden">
+        <div class="section-label">最近見た図番</div>
+        <div id="recentList"></div>
+      </div>
     </section>
 
     <!-- SCREEN 2: 過去情報表示 -->
@@ -814,7 +817,9 @@
   function renderRecentList() {
     var wrap = document.getElementById('recentList');
     wrap.innerHTML = '';
-    getRecentZubans().forEach(function (z) {
+    var recent = getRecentZubans();
+    document.getElementById('recentSection').classList.toggle('hidden', recent.length === 0);
+    recent.forEach(function (z) {
       var div = document.createElement('div');
       div.className = 'recent-chip';
       div.textContent = z;
