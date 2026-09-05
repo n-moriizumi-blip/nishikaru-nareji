@@ -656,9 +656,14 @@ function findSharedEntries_(sheetName, zuban) {
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
   var shareCol = header.indexOf('共有フラグ');
+  // 数字だけの図番（例：919365190108）はSheets側で数値型として保存されるため、
+  // 文字列との厳密等価（===）では一致しない。numericZubanKey_で正規化して比較する
+  // （2026-09-05発覚。図番インデックス側は既にnumericZubanKey_対応済みだったが、
+  // 品質情報記録ログ等の実データ読み取り側がこの対応漏れで、共有投稿が表示されなかった）。
+  var key = numericZubanKey_(zuban);
   var out = [];
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][zubanCol] === zuban && rows[i][shareCol] === true) {
+    if (numericZubanKey_(rows[i][zubanCol]) === key && rows[i][shareCol] === true) {
       out.push({ source: sheetName, row: rowToObject_(header, rows[i]) });
     }
   }
@@ -688,9 +693,11 @@ function readRowsByZuban_(sheetName, zuban) {
   var rows = sheet.getDataRange().getValues();
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
+  // findSharedEntries_と同じ理由（数字だけの図番がSheets側で数値型になる）でnumericZubanKey_を使う。
+  var key = numericZubanKey_(zuban);
   var out = [];
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][zubanCol] === zuban) out.push(rowToObject_(header, rows[i]));
+    if (numericZubanKey_(rows[i][zubanCol]) === key) out.push(rowToObject_(header, rows[i]));
   }
   return out;
 }
@@ -1118,9 +1125,12 @@ function saveShippingSpec_(payload) {
     var rows = sheet.getDataRange().getValues();
     var header = rows[0];
     var zubanCol = header.indexOf('図番');
+    var zubanKey = numericZubanKey_(payload.zuban);
     var rowIndex = -1;
     for (var i = 1; i < rows.length; i++) {
-      if (rows[i][zubanCol] === payload.zuban) { rowIndex = i; break; }
+      // 数字だけの図番がSheets側で数値型になる問題（2026-09-05発覚）のため、
+      // 厳密等価ではなくnumericZubanKey_で正規化して比較する。
+      if (numericZubanKey_(rows[i][zubanCol]) === zubanKey) { rowIndex = i; break; }
     }
     var existing = rowIndex >= 0 ? rowToObject_(header, rows[rowIndex]) : { '図番': payload.zuban };
     var merged = Object.assign({}, existing, payload.fields || {});
@@ -1143,8 +1153,12 @@ function deleteRowsByZuban_(sheet, zuban, extraMatch) {
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
   var extraCol = extraMatch ? header.indexOf(extraMatch.field) : -1;
+  // findSharedEntries_・readRowsByZuban_と同じ理由（数字だけの図番がSheets側で数値型になる）で
+  // numericZubanKey_を使う。これが無いと数字だけの図番では古い行が消えず、保存のたびに
+  // ツール配置が重複していく（2026-09-05発覚）。
+  var key = numericZubanKey_(zuban);
   for (var i = rows.length - 1; i >= 1; i--) {
-    if (rows[i][zubanCol] !== zuban) continue;
+    if (numericZubanKey_(rows[i][zubanCol]) !== key) continue;
     if (extraMatch && extraCol !== -1 && String(rows[i][extraCol] || '') !== extraMatch.value) continue;
     sheet.deleteRow(i + 1);
   }
