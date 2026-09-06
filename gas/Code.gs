@@ -155,6 +155,7 @@ function doPost(e) {
     if (action === 'uploadPhoto') return jsonResponse_(uploadPhoto_(payload));
     if (action === 'ocrToolLayout') return jsonResponse_(ocrToolLayout_(payload));
     if (action === 'ocrFreeMemo') return jsonResponse_(ocrFreeMemo_(payload));
+    if (action === 'createInspectionFolder') return jsonResponse_(createInspectionFolder_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1260,7 +1261,30 @@ function getInspectionFolderUrl_(zuban) {
     });
     return { found: true, zuban: zuban, ambiguous: true, candidates: candidates };
   }
-  return { found: false, zuban: zuban };
+  // フォルダが実在しない場合、得意先名が分かっていれば会社名フォルダの下に新規作成できる
+  // 可能性がある（uploadPhoto_のcreateZubanFolderIfCompanyKnown_と同じ判定）。作成するかどうかは
+  // 必ず人に確認してから（confirmDialog）行うため、ここでは判定結果だけ返す（2026-09-07追加）。
+  var tokuisakiName = lookupTokuisakiName_(master.tokuisaki);
+  var companyFolder = tokuisakiName ? findExistingCompanyFolder_(tokuisakiName) : null;
+  return { found: false, zuban: zuban, canCreate: !!companyFolder, companyName: tokuisakiName || '' };
+}
+
+/**
+ * 検査記録フォルダが無い図番について、得意先名フォルダの下に図番名でフォルダを新規作成する
+ * （2026-09-07追加、ユーザー提案）。uploadPhoto_で使っているcreateZubanFolderIfCompanyKnown_と
+ * 同じ判定・作成処理を使う。作成するかどうかは必ずフロント側で人に確認させてから呼ぶこと
+ * （このAPI自体は確認なしにその場で作成する）。
+ */
+function createInspectionFolder_(payload) {
+  return withVerifiedIdentity_(payload, function () {
+    var zuban = payload.zuban;
+    if (!zuban) return { error: 'zuban is required' };
+    var folder = findZubanFolder_(zuban) || createZubanFolderIfCompanyKnown_(zuban);
+    if (!folder) return { error: '得意先名フォルダが見つからないため作成できませんでした' };
+    upsertZubanIndex_(zuban, { '検査記録フォルダURL': folder.getUrl() });
+    invalidateZubanCache_(zuban);
+    return { ok: true, url: folder.getUrl() };
+  });
 }
 
 /**

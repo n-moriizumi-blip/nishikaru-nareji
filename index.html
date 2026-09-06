@@ -1067,6 +1067,8 @@
   var currentZubanData = null;
   var currentInspectionFolderUrl = null;
   var currentInspectionFolderCandidates = null;
+  var currentInspectionFolderCanCreate = false;
+  var currentInspectionFolderCompanyName = '';
 
   function renderZubanInfo(data) {
     var zubanLoadingEl2 = document.getElementById('zubanLoadingNote');
@@ -1080,6 +1082,8 @@
     currentZubanData = data;
     currentInspectionFolderUrl = null;
     currentInspectionFolderCandidates = null;
+    currentInspectionFolderCanCreate = false;
+    currentInspectionFolderCompanyName = '';
     document.getElementById('folderCandidateSelect').classList.add('hidden');
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
@@ -1274,8 +1278,13 @@
             // URLは確定させず、候補一覧から人に選んでもらう（2026-09-05追加）。
             currentInspectionFolderCandidates = d.candidates;
             currentInspectionFolderUrl = '__ambiguous__';
+          } else if (d.found) {
+            currentInspectionFolderUrl = d.url;
           } else {
-            currentInspectionFolderUrl = d.found ? d.url : '';
+            // フォルダ未作成。得意先名フォルダが分かっていれば新規作成を提案できる（2026-09-07追加）。
+            currentInspectionFolderUrl = '';
+            currentInspectionFolderCanCreate = !!d.canCreate;
+            currentInspectionFolderCompanyName = d.companyName || '';
           }
         });
     }
@@ -1296,7 +1305,26 @@
     } else if (currentInspectionFolderUrl) {
       window.open(currentInspectionFolderUrl, '_blank');
     } else if (currentInspectionFolderUrl === '') {
-      alert('この図番の検査記録フォルダが見つかりませんでした（未作成の可能性があります）');
+      if (!currentInspectionFolderCanCreate) {
+        alert('この図番の検査記録フォルダが見つかりませんでした（得意先フォルダも見つからないため自動作成もできません）');
+        return;
+      }
+      var zubanForCreate = currentZubanData.zuban;
+      if (!confirm('図番「' + zubanForCreate + '」の検査記録フォルダが見つかりませんでした。\n' +
+        '「' + currentInspectionFolderCompanyName + '」フォルダの下に、図番名でフォルダを新規作成しますか？')) {
+        return;
+      }
+      if (!currentUser) { alert('フォルダ作成にはGoogleログインが必要です'); return; }
+      fetch(GAS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'createInspectionFolder', zuban: zubanForCreate, idToken: currentUser.idToken })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res.error) { alert('フォルダの作成に失敗しました: ' + res.error); return; }
+          currentInspectionFolderUrl = res.url;
+          window.open(res.url, '_blank');
+        })
+        .catch(function (err) { alert('フォルダの作成に失敗しました: ' + err.message); });
     } else {
       alert('確認中です。少し待ってからもう一度お試しください');
     }
