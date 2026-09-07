@@ -2132,6 +2132,11 @@ function previewZubanPaddingRepair() {
   var previewSheet = ss.getSheetByName('図番0埋め修正プレビュー');
   if (!previewSheet) previewSheet = ss.insertSheet('図番0埋め修正プレビュー');
   previewSheet.clear();
+  // C列・D列（現在の図番・修正後の図番）をテキスト形式に固定してから書き込む。
+  // これをしないと、このプレビューシート自体への書き込み時にSheetsが数字だけの図番を
+  // 数値と解釈し直し、0埋めがまた消えてしまう（まさに今回直そうとしている現象と同じ、
+  // 2026-09-07にユーザー確認のプレビューで実際に発生・発覚）。
+  previewSheet.getRange(1, 3, previewSheet.getMaxRows(), 2).setNumberFormat('@');
   previewSheet.getRange(1, 1, 1, 4).setValues([['シート名', '行番号', '現在の図番', '修正後の図番']]);
 
   var targets = [SHEET_ZUBAN_INDEX, SHEET_SEIBAN_INDEX, SHEET_QUALITY_LOG, SHEET_TOOL_MEMO, SHEET_TOOL_POSITIONS, SHEET_SHIPPING_SPEC];
