@@ -2088,6 +2088,118 @@ function dedupeZubanIndex() {
 }
 
 /**
+ * 「進捗状況照会」の全タブから、数字だけの図番のうち0埋め（先頭に0が付く）表記を集めて、
+ * numericZubanKey_ → 正しい0埋め表記、の対応表を作る（2026-09-07追加）。
+ * I-PRO側の同期処理（sync.py）の書き込みモード修正（RAW化）後に同期された行は0埋めが
+ * テキストとして保持されているため、これを「正しい図番」の拠り所として使う。
+ * 桁数が長い（＝0埋めされている）表記だけを採用し、0落ちした表記は無視する。
+ */
+function buildZubanPaddingMap_() {
+  var ss = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  var map = {};
+  ss.getSheets().forEach(function (sheet) {
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var col = header.indexOf('品番(図番)');
+    if (col === -1) col = header.indexOf('品番(図番）');
+    if (col === -1) return;
+    var values = sheet.getRange(2, col + 1, lastRow - 1, 1).getValues();
+    values.forEach(function (row) {
+      var z = stripZubanPrefix_(row[0]);
+      if (!z) return;
+      var key = numericZubanKey_(z);
+      if (!/^\d+$/.test(key)) return; // 数字だけの図番のみ対象（ハイフン等を含む図番は0落ちの心配が無い）
+      if (z.length > key.length && (!map[key] || z.length > map[key].length)) {
+        map[key] = z; // 先頭0付きの表記だけを正解として採用する
+      }
+    });
+  });
+  return map;
+}
+
+/**
+ * 図番の0落ち（数字だけの図番で先頭の0が消えた表記）を一括修正するための下調べ（2026-09-07追加）。
+ * 対象：図番インデックス・製番インデックス・品質情報記録ログ・ツール配置メモ・
+ * ツール配置ポジション・出荷仕様の「図番」列。実際の書き換えは行わず、
+ * 「図番0埋め修正プレビュー」タブに変更予定の一覧を出すだけ。内容を確認したら
+ * applyZubanPaddingRepair()を実行して実際に反映すること。
+ */
+function previewZubanPaddingRepair() {
+  var map = buildZubanPaddingMap_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var previewSheet = ss.getSheetByName('図番0埋め修正プレビュー');
+  if (!previewSheet) previewSheet = ss.insertSheet('図番0埋め修正プレビュー');
+  previewSheet.clear();
+  previewSheet.getRange(1, 1, 1, 4).setValues([['シート名', '行番号', '現在の図番', '修正後の図番']]);
+
+  var targets = [SHEET_ZUBAN_INDEX, SHEET_SEIBAN_INDEX, SHEET_QUALITY_LOG, SHEET_TOOL_MEMO, SHEET_TOOL_POSITIONS, SHEET_SHIPPING_SPEC];
+  var outRows = [];
+  targets.forEach(function (sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var col = header.indexOf('図番');
+    if (col === -1) return;
+    var values = sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1).getValues();
+    values.forEach(function (row, idx) {
+      var current = String(row[0] || '');
+      if (!current || !/^\d+$/.test(current)) return; // 0落ちの可能性があるのは数字だけの図番のみ
+      var corrected = map[current];
+      if (corrected && corrected !== current) {
+        outRows.push([sheetName, idx + 2, current, corrected]);
+      }
+    });
+  });
+
+  if (outRows.length > 0) previewSheet.getRange(2, 1, outRows.length, 4).setValues(outRows);
+  Logger.log('プレビュー作成完了: ' + outRows.length + '件。「図番0埋め修正プレビュー」タブを確認し、' +
+    '問題なければapplyZubanPaddingRepair()を実行してください。');
+}
+
+/**
+ * previewZubanPaddingRepair()で作成したプレビューをもとに、実際に図番列を書き換える（2026-09-07追加）。
+ * 書き換え後は今後また数値化されないよう該当列をテキスト形式（@）に固定する。
+ * 図番インデックスは書き換えにより同じ図番の行が複数できる可能性があるため、
+ * 続けて既存のdedupeZubanIndex()で統合する。
+ */
+function applyZubanPaddingRepair() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var previewSheet = ss.getSheetByName('図番0埋め修正プレビュー');
+  if (!previewSheet || previewSheet.getLastRow() < 2) {
+    Logger.log('プレビューが無いか空です。先にpreviewZubanPaddingRepair()を実行してください。');
+    return;
+  }
+  var rows = previewSheet.getRange(2, 1, previewSheet.getLastRow() - 1, 4).getValues();
+  var bySheet = {};
+  rows.forEach(function (r) {
+    var sheetName = r[0], rowNum = r[1], corrected = r[3];
+    if (!sheetName) return;
+    if (!bySheet[sheetName]) bySheet[sheetName] = [];
+    bySheet[sheetName].push({ rowNum: rowNum, corrected: String(corrected) });
+  });
+
+  var updated = 0;
+  Object.keys(bySheet).forEach(function (sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var col = header.indexOf('図番');
+    if (col === -1) return;
+    sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1).setNumberFormat('@');
+    bySheet[sheetName].forEach(function (item) {
+      sheet.getRange(item.rowNum, col + 1).setValue(item.corrected);
+      updated++;
+    });
+  });
+
+  Logger.log('図番の0埋め修正が完了しました: ' + updated + '件');
+  Logger.log('図番インデックスの重複整理を実行します（同じ図番が複数行になっている場合に統合）...');
+  dedupeZubanIndex();
+}
+
+/**
  * 図番インデックスに既にある図番を、Setとして1回で読み込む（seedZubanIndexの高速化用）。
  * numericZubanKey_で正規化したキーを使うことで、数字だけの図番の0落ち表記ゆれがあっても
  * 「既にインデックス済み」と正しく判定できるようにしている（2026-08-30）。
