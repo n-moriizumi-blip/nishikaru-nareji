@@ -1312,7 +1312,11 @@ function findZubanFolderCandidates_(zuban, tokuisakiCode) {
     var candidates = driveFilesList_(
       "name contains '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     );
-    files = candidates.filter(function (f) { return String(f.name).trim() === target; });
+    // 完全一致0件時の絞り込みは、前後空白だけでなく数字だけの図番の0落ち差異
+    // （実例：フォルダ名「03624100」、アプリ側の図番「3624100」）も吸収できるよう
+    // numericZubanKey_で正規化して比較する（2026-09-07発覚）。
+    var targetKey = numericZubanKey_(target);
+    files = candidates.filter(function (f) { return numericZubanKey_(String(f.name).trim()) === targetKey; });
   }
   if (files.length <= 1) return { files: files, resolved: files[0] || null };
 
