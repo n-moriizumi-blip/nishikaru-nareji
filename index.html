@@ -211,6 +211,13 @@
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
   .tools-header .zuban-inline { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 1rem; }
   .tool-view-wrap, #toolEditWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
+  #toolEditWrap { position: relative; }
+  /* 機械名が未選択の間、編集入力を触れなくして注意を表示する（2026-09-07追加）。 */
+  .machine-required-overlay {
+    position: absolute; inset: 0; z-index: 5; border-radius: 4px; cursor: not-allowed;
+    background: rgba(10, 8, 4, 0.82); display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .machine-required-overlay p { color: var(--accent); font-weight: 700; font-size: 0.95rem; max-width: 300px; text-align: center; line-height: 1.6; }
   .memo-zone { flex: 1 1 auto; min-height: 40px; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; }
   .memo-edit-wrap { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; gap: 10px; }
   .memo-edit-wrap .memo-zone { flex: 1 1 auto; min-height: 40px; }
@@ -382,20 +389,29 @@
       <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください（表裏や複数ページある場合は複数枚まとめて撮影・選択できます）。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
 
       <div class="field">
-        <label>機械名（この紙のレイアウトはどの機械のものか）</label>
-        <input type="text" id="paperMachineInput" list="machineNameList">
+        <div class="section-label sub">機械名（この紙のレイアウトはどの機械のものか）</div>
+        <div class="dept-btn-row" id="paperMachineBtnRow"></div>
+        <div id="paperMachineAddRow" class="hidden" style="display:flex; gap:8px; margin-top:6px;">
+          <input type="text" id="newPaperMachineInput" list="machineNameList" placeholder="機械名（例：A20 No.88）" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
+          <button type="button" class="btn btn-secondary" id="newPaperMachineConfirmBtn">作成</button>
+        </div>
       </div>
 
-      <div class="field" style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button type="button" class="btn btn-secondary" id="paperPhotoCameraBtn">📷 写真を撮る</button>
-        <button type="button" class="btn btn-secondary" id="paperPhotoLibraryBtn">🖼 アルバムから選ぶ</button>
-        <input type="file" id="paperPhotoCameraInput" accept="image/*" capture="environment" class="hidden">
-        <input type="file" id="paperPhotoInput" accept="image/*" multiple class="hidden">
-      </div>
-      <div id="paperPhotoPreviewWrap" class="hidden paper-photo-list"></div>
+      <div id="paperImportGated" style="position:relative;">
+        <div id="paperImportMachineOverlay" class="machine-required-overlay hidden">
+          <p>⚠ 先に上で機械を選ぶか、＋追加してください</p>
+        </div>
+        <div class="field" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary" id="paperPhotoCameraBtn">📷 写真を撮る</button>
+          <button type="button" class="btn btn-secondary" id="paperPhotoLibraryBtn">🖼 アルバムから選ぶ</button>
+          <input type="file" id="paperPhotoCameraInput" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="paperPhotoInput" accept="image/*" multiple class="hidden">
+        </div>
+        <div id="paperPhotoPreviewWrap" class="hidden paper-photo-list"></div>
 
-      <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
-      <div class="status-note" id="paperImportStatus"></div>
+        <button type="button" class="btn btn-primary hidden" id="paperOcrBtn" style="margin-top:12px;">AIで読み取る</button>
+        <div class="status-note" id="paperImportStatus"></div>
+      </div>
 
       <button class="btn btn-ghost" id="paperImportBackBtn" style="margin-top:16px;">ツールレイアウトに戻る</button>
     </section>
@@ -436,6 +452,9 @@
       </div>
 
       <div id="toolEditWrap" class="hidden">
+        <div id="toolEditMachineOverlay" class="machine-required-overlay hidden">
+          <p>⚠ 先に上の「機械（NC旋盤）で切り替える」欄で機械を選ぶか、＋追加してください</p>
+        </div>
         <div id="ocrReviewBanner" class="ocr-review-banner hidden">
           <p><strong>⚠ AIによる読み取り結果です。原本の写真と1件ずつ照合してから登録してください。</strong></p>
           <div id="ocrReviewPhotos" class="ocr-review-photos"></div>
@@ -1391,7 +1410,9 @@
     setScreen('paperImport');
     document.getElementById('paperImportZubanHeader').textContent = zubanLabel(currentZubanData);
     document.getElementById('paperImportStatus').textContent = '';
-    document.getElementById('paperMachineInput').value = selectedMachine || '';
+    document.getElementById('paperMachineAddRow').classList.add('hidden');
+    renderPaperMachinePicker_();
+    updatePaperImportGate_();
     document.getElementById('paperOcrBtn').classList.add('hidden');
     document.getElementById('paperPhotoInput').value = '';
     document.getElementById('paperPhotoCameraInput').value = '';
@@ -1399,6 +1420,57 @@
     pendingPaperPhotoDataUrls = [];
     renderPaperPhotoPreview_();
   }
+
+  // ④紙の取込確認の機械名は③の機械ピッカーと同じ「選択 or ＋追加」方式にする
+  // （2026-09-07、デザイン統一のため単なるテキスト入力から変更）。
+  function renderPaperMachinePicker_() {
+    var row = document.getElementById('paperMachineBtnRow');
+    row.innerHTML = '';
+    availableMachines.forEach(function (m) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'dept-btn';
+      btn.textContent = m;
+      btn.setAttribute('aria-pressed', m === selectedMachine ? 'true' : 'false');
+      btn.addEventListener('click', function () {
+        selectedMachine = m;
+        renderPaperMachinePicker_();
+        updatePaperImportGate_();
+      });
+      row.appendChild(btn);
+    });
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'dept-btn';
+    addBtn.textContent = '＋ 追加';
+    addBtn.addEventListener('click', function () {
+      document.getElementById('paperMachineAddRow').classList.remove('hidden');
+      document.getElementById('newPaperMachineInput').value = '';
+      document.getElementById('newPaperMachineInput').focus();
+    });
+    row.appendChild(addBtn);
+  }
+  document.getElementById('newPaperMachineConfirmBtn').addEventListener('click', function () {
+    var name = document.getElementById('newPaperMachineInput').value.trim();
+    if (!name) { alert('機械名を入力してください'); return; }
+    if (availableMachines.indexOf(name) === -1) availableMachines.push(name);
+    selectedMachine = name;
+    document.getElementById('paperMachineAddRow').classList.add('hidden');
+    renderPaperMachinePicker_();
+    updatePaperImportGate_();
+  });
+
+  // 機械が未選択の間、写真撮影・AI読み取りを触れなくする（2026-09-07追加）。
+  function updatePaperImportGate_() {
+    document.getElementById('paperImportMachineOverlay').classList.toggle('hidden', !!selectedMachine);
+  }
+  // 機械未選択のオーバーレイをクリックした（＝入力しようとした）ときの注意表示。
+  // ③編集画面・④紙の取込確認画面のオーバーレイ共通。
+  document.querySelectorAll('.machine-required-overlay').forEach(function (el) {
+    el.addEventListener('click', function () {
+      alert('先に機械（NC旋盤）を選ぶか、新しく追加してください');
+    });
+  });
 
   function renderPaperPhotoPreview_() {
     var wrap = document.getElementById('paperPhotoPreviewWrap');
@@ -1483,8 +1555,7 @@
 
   document.getElementById('paperOcrBtn').addEventListener('click', function () {
     if (!pendingPaperPhotoBlobs.length) return;
-    var paperMachineName = document.getElementById('paperMachineInput').value.trim();
-    if (!paperMachineName) { alert('この紙がどの機械（NC旋盤）のものか、機械名を入力してください'); return; }
+    if (!selectedMachine) { alert('この紙がどの機械（NC旋盤）のものか、上で機械を選ぶか追加してください'); return; }
     var paperOcrStatusEl = document.getElementById('paperImportStatus');
     setLoadingText(paperOcrStatusEl, 'AIが読み取っています…（数十秒かかることがあります）');
     document.getElementById('paperOcrBtn').disabled = true;
@@ -1514,7 +1585,6 @@
         document.getElementById('toolsStatus').textContent = '';
         setScreen('tools');
         availableMachines = computeAvailableMachines_(currentZubanData);
-        selectedMachine = paperMachineName;
         if (availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
         renderMachinePicker_();
         enterToolEdit(res.data, pendingPaperPhotoDataUrls);
@@ -1574,18 +1644,27 @@
       });
       row.appendChild(btn);
     });
-    var addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'dept-btn';
-    addBtn.textContent = '＋ 追加';
-    addBtn.addEventListener('click', function () {
-      document.getElementById('machineRenameRow').classList.add('hidden');
-      document.getElementById('machineAddRow').classList.remove('hidden');
-      document.getElementById('newMachineInput').value = '';
-      document.getElementById('newMachineInput').focus();
-    });
-    row.appendChild(addBtn);
-    document.getElementById('renameMachineBtn').classList.toggle('hidden', !selectedMachine);
+    // 「＋追加」「✎変更」は編集画面でのみ操作できるようにする（閲覧画面ではデータを
+    // 変更する行為ができないようにするため、2026-09-07、ユーザー指摘）。
+    if (toolEditMode) {
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'dept-btn';
+      addBtn.textContent = '＋ 追加';
+      addBtn.addEventListener('click', function () {
+        document.getElementById('machineRenameRow').classList.add('hidden');
+        document.getElementById('machineAddRow').classList.remove('hidden');
+        document.getElementById('newMachineInput').value = '';
+        document.getElementById('newMachineInput').focus();
+      });
+      row.appendChild(addBtn);
+    }
+    document.getElementById('renameMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
+  }
+
+  // 機械が未選択の間、編集入力欄を触れなくする（2026-09-07追加）。
+  function updateToolEditMachineGate_() {
+    document.getElementById('toolEditMachineOverlay').classList.toggle('hidden', !!selectedMachine);
   }
 
   // 選択中の機械名を変更する（新規追加のみで既存の機械名を直す手段が無かったため、2026-09-07追加）。
@@ -1825,6 +1904,8 @@
     document.getElementById('toolViewToggle').textContent = '閲覧に戻る';
     document.getElementById('toolViewWrap').classList.add('hidden');
     document.getElementById('toolEditWrap').classList.remove('hidden');
+    renderMachinePicker_(); // 「＋追加」「✎変更」ボタンは編集画面に入って初めて表示されるため再描画する
+    updateToolEditMachineGate_();
     loadToolFieldSuggestions_();
 
     var banner = document.getElementById('ocrReviewBanner');
