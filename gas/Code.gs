@@ -158,6 +158,7 @@ function doPost(e) {
     if (action === 'createInspectionFolder') return jsonResponse_(createInspectionFolder_(payload));
     if (action === 'renameToolMachine') return jsonResponse_(renameToolMachine_(payload));
     if (action === 'copyToolMachine') return jsonResponse_(copyToolMachine_(payload));
+    if (action === 'deleteToolMachine') return jsonResponse_(deleteToolMachine_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1117,6 +1118,25 @@ function copyToolMachine_(payload) {
         var tCol = header.indexOf('Tナンバー');
         if (tCol !== -1) sheet.getRange(startRow, tCol + 1, newRows.length, 1).setNumberFormat('@');
       }
+    });
+    invalidateZubanCache_(zuban);
+    try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
+    return { ok: true };
+  });
+}
+
+/**
+ * 選択中の機械のツール配置ポジション・ツール配置メモを丸ごと削除する（2026-09-07追加、ユーザー要望）。
+ * 取り消せない操作のため、確認はフロント側の責任とし、ここでは無条件に削除する。
+ */
+function deleteToolMachine_(payload) {
+  return withVerifiedIdentity_(payload, function () {
+    var zuban = payload.zuban, machineName = payload.machineName;
+    if (!zuban || !machineName) return { error: 'zuban, machineName is required' };
+    [SHEET_TOOL_POSITIONS, SHEET_TOOL_MEMO].forEach(function (sheetName) {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() < 2) return;
+      deleteRowsByZuban_(sheet, zuban, { field: '機械名', value: machineName });
     });
     invalidateZubanCache_(zuban);
     try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}

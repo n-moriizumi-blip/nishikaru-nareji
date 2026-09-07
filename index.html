@@ -432,6 +432,7 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button type="button" class="btn btn-ghost hidden" id="renameMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">✎ 選択中の機械名を変更</button>
           <button type="button" class="btn btn-ghost hidden" id="copyMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">⧉ コピーして新しい機械を作る</button>
+          <button type="button" class="btn btn-ghost hidden" id="deleteMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto; color:var(--alert); border-color:var(--alert);">🗑 選択中の機械を削除</button>
         </div>
         <div id="machineRenameRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:6px;">
           <input type="text" id="renameMachineInput" list="machineNameList" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
@@ -1670,6 +1671,7 @@
     }
     document.getElementById('renameMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
     document.getElementById('copyMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
+    document.getElementById('deleteMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
   }
 
   // 機械が未選択の間、編集入力欄を触れなくする（2026-09-07追加）。
@@ -1724,6 +1726,36 @@
         renderToolView(currentZubanData);
       })
       .catch(function (err) { if (err) alert('コピーに失敗しました: ' + err.message); });
+  });
+
+  // 選択中の機械のツール配置ポジション・ツール配置メモを丸ごと削除する（取り消せない操作のため、
+  // 機械名をそのまま入力させる強めの確認を挟む、2026-09-07追加）。
+  document.getElementById('deleteMachineBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('削除にはGoogleログインが必要です'); return; }
+    var targetName = selectedMachine;
+    if (!targetName) return;
+    var typed = prompt('削除すると元に戻せません。本当に削除する場合は、機械名「' + targetName + '」をそのまま入力してください。');
+    if (typed === null) return;
+    if (typed !== targetName) { alert('入力が一致しなかったため、削除を中止しました。'); return; }
+    fetch(GAS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteToolMachine', zuban: currentZubanData.zuban, machineName: targetName, idToken: currentUser.idToken })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
+        return refreshZubanData();
+      })
+      .then(function () {
+        availableMachines = computeAvailableMachines_(currentZubanData);
+        selectedMachine = availableMachines.length > 0 ? availableMachines[0] : null;
+        toolEditMode = false;
+        document.getElementById('toolViewToggle').textContent = '編集する';
+        document.getElementById('toolViewWrap').classList.remove('hidden');
+        document.getElementById('toolEditWrap').classList.add('hidden');
+        renderMachinePicker_();
+        renderToolView(currentZubanData);
+      })
+      .catch(function (err) { if (err) alert('削除に失敗しました: ' + err.message); });
   });
   document.getElementById('renameMachineConfirmBtn').addEventListener('click', function () {
     var newName = document.getElementById('renameMachineInput').value.trim();
