@@ -157,6 +157,7 @@ function doPost(e) {
     if (action === 'ocrFreeMemo') return jsonResponse_(ocrFreeMemo_(payload));
     if (action === 'createInspectionFolder') return jsonResponse_(createInspectionFolder_(payload));
     if (action === 'renameToolMachine') return jsonResponse_(renameToolMachine_(payload));
+    if (action === 'copyToolMachine') return jsonResponse_(copyToolMachine_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1066,6 +1067,59 @@ function renameToolMachine_(payload) {
       }
     });
     invalidateZubanCache_(zuban);
+    return { ok: true };
+  });
+}
+
+/**
+ * 選択中の機械のツール配置ポジション・ツール配置メモを丸ごとコピーし、別の機械名で新規作成する
+ * （2026-09-07追加、ユーザー要望）。似た構成の機械を追加するときに最初から入力し直さずに済む。
+ * newMachineNameが既存の別の機械と同じ場合、実質的にそちらへ統合される（重複が増える）。
+ */
+function copyToolMachine_(payload) {
+  return withVerifiedIdentity_(payload, function (identity) {
+    var zuban = payload.zuban, sourceName = payload.sourceMachineName, newName = payload.newMachineName;
+    if (!zuban || !sourceName || !newName) return { error: 'zuban, sourceMachineName, newMachineName is required' };
+    if (sourceName === newName) return { error: '同じ機械名にはコピーできません' };
+    var zubanKey = numericZubanKey_(zuban);
+    var now = new Date();
+    [SHEET_TOOL_POSITIONS, SHEET_TOOL_MEMO].forEach(function (sheetName) {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() < 2) return;
+      var values = sheet.getDataRange().getValues();
+      var header = values[0];
+      var zubanCol = header.indexOf('図番');
+      var machineCol = header.indexOf('機械名');
+      if (zubanCol === -1 || machineCol === -1) return;
+      var idCol = header.indexOf('投稿ID'); // ツール配置メモのみ存在
+      var tsCol = header.indexOf('タイムスタンプ'); // ツール配置メモのみ存在
+      var emailCol = header.indexOf('投稿者メール'); // ツール配置メモのみ存在
+      var updatedByCol = header.indexOf('最終更新者メール'); // ツール配置ポジションのみ存在
+      var updatedAtCol = header.indexOf('最終更新日時'); // ツール配置ポジションのみ存在
+
+      var newRows = [];
+      for (var i = 1; i < values.length; i++) {
+        if (numericZubanKey_(values[i][zubanCol]) === zubanKey && String(values[i][machineCol] || '') === sourceName) {
+          var newRow = values[i].slice();
+          newRow[machineCol] = newName;
+          if (idCol !== -1) newRow[idCol] = Utilities.getUuid();
+          if (tsCol !== -1) newRow[tsCol] = now;
+          if (emailCol !== -1) newRow[emailCol] = identity.email;
+          if (updatedByCol !== -1) newRow[updatedByCol] = identity.email;
+          if (updatedAtCol !== -1) newRow[updatedAtCol] = now;
+          newRows.push(newRow);
+        }
+      }
+      if (newRows.length > 0) {
+        var startRow = sheet.getLastRow() + 1;
+        sheet.getRange(startRow, 1, newRows.length, newRows[0].length).setValues(newRows);
+        // Tナンバー（ツール配置ポジションのみ）は数値化を防ぐためテキスト形式に固定する。
+        var tCol = header.indexOf('Tナンバー');
+        if (tCol !== -1) sheet.getRange(startRow, tCol + 1, newRows.length, 1).setNumberFormat('@');
+      }
+    });
+    invalidateZubanCache_(zuban);
+    try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
     return { ok: true };
   });
 }

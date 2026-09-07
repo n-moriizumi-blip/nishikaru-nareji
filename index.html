@@ -429,10 +429,17 @@
       <div id="machinePickerWrap" class="hidden">
         <div class="section-label sub">機械（NC旋盤）で切り替える</div>
         <div class="dept-btn-row" id="machineBtnRow"></div>
-        <button type="button" class="btn btn-ghost hidden" id="renameMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">✎ 選択中の機械名を変更</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost hidden" id="renameMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">✎ 選択中の機械名を変更</button>
+          <button type="button" class="btn btn-ghost hidden" id="copyMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">⧉ コピーして新しい機械を作る</button>
+        </div>
         <div id="machineRenameRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:6px;">
           <input type="text" id="renameMachineInput" list="machineNameList" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
           <button type="button" class="btn btn-secondary" id="renameMachineConfirmBtn">変更する</button>
+        </div>
+        <div id="machineCopyRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:6px;">
+          <input type="text" id="copyMachineInput" list="machineNameList" placeholder="新しい機械名" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
+          <button type="button" class="btn btn-secondary" id="copyMachineConfirmBtn">コピー作成</button>
         </div>
         <div id="machineAddRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:14px;">
           <input type="text" id="newMachineInput" list="machineNameList" placeholder="機械名（例：A20）" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
@@ -1635,6 +1642,7 @@
         selectedMachine = m;
         toolEditMode = false;
         document.getElementById('machineRenameRow').classList.add('hidden');
+        document.getElementById('machineCopyRow').classList.add('hidden');
         document.getElementById('machineAddRow').classList.add('hidden');
         document.getElementById('toolViewToggle').textContent = '編集する';
         document.getElementById('toolViewWrap').classList.remove('hidden');
@@ -1653,6 +1661,7 @@
       addBtn.textContent = '＋ 追加';
       addBtn.addEventListener('click', function () {
         document.getElementById('machineRenameRow').classList.add('hidden');
+        document.getElementById('machineCopyRow').classList.add('hidden');
         document.getElementById('machineAddRow').classList.remove('hidden');
         document.getElementById('newMachineInput').value = '';
         document.getElementById('newMachineInput').focus();
@@ -1660,6 +1669,7 @@
       row.appendChild(addBtn);
     }
     document.getElementById('renameMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
+    document.getElementById('copyMachineBtn').classList.toggle('hidden', !selectedMachine || !toolEditMode);
   }
 
   // 機械が未選択の間、編集入力欄を触れなくする（2026-09-07追加）。
@@ -1670,11 +1680,50 @@
   // 選択中の機械名を変更する（新規追加のみで既存の機械名を直す手段が無かったため、2026-09-07追加）。
   document.getElementById('renameMachineBtn').addEventListener('click', function () {
     document.getElementById('machineAddRow').classList.add('hidden');
+    document.getElementById('machineCopyRow').classList.add('hidden');
     var renameRow = document.getElementById('machineRenameRow');
     renameRow.classList.remove('hidden');
     var input = document.getElementById('renameMachineInput');
     input.value = selectedMachine || '';
     input.focus();
+  });
+
+  // 選択中の機械のツール配置ポジション・ツール配置メモを丸ごとコピーして新しい機械を作る
+  // （似た構成の機械を追加する際に最初から入力し直さずに済むようにする、2026-09-07追加）。
+  document.getElementById('copyMachineBtn').addEventListener('click', function () {
+    document.getElementById('machineAddRow').classList.add('hidden');
+    document.getElementById('machineRenameRow').classList.add('hidden');
+    var copyRow = document.getElementById('machineCopyRow');
+    copyRow.classList.remove('hidden');
+    var input = document.getElementById('copyMachineInput');
+    input.value = '';
+    input.focus();
+  });
+  document.getElementById('copyMachineConfirmBtn').addEventListener('click', function () {
+    var newName = document.getElementById('copyMachineInput').value.trim();
+    if (!newName) { alert('新しい機械名を入力してください'); return; }
+    if (!currentUser) { alert('コピーにはGoogleログインが必要です'); return; }
+    if (newName === selectedMachine) { alert('元と同じ機械名にはコピーできません'); return; }
+    if (availableMachines.indexOf(newName) !== -1 &&
+      !confirm('「' + newName + '」は既に存在します。統合されます（両方のデータが1つにまとまります）。続けますか？')) return;
+    var sourceName = selectedMachine;
+    fetch(GAS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'copyToolMachine', zuban: currentZubanData.zuban, sourceMachineName: sourceName, newMachineName: newName, idToken: currentUser.idToken })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('コピーに失敗しました: ' + res.error); return Promise.reject(); }
+        selectedMachine = newName;
+        document.getElementById('machineCopyRow').classList.add('hidden');
+        return refreshZubanData();
+      })
+      .then(function () {
+        availableMachines = computeAvailableMachines_(currentZubanData);
+        if (availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
+        renderMachinePicker_();
+        renderToolView(currentZubanData);
+      })
+      .catch(function (err) { if (err) alert('コピーに失敗しました: ' + err.message); });
   });
   document.getElementById('renameMachineConfirmBtn').addEventListener('click', function () {
     var newName = document.getElementById('renameMachineInput').value.trim();
