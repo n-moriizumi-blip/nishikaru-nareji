@@ -1720,7 +1720,10 @@
   function renderToolView(data) {
     var memoZone = document.getElementById('memoZone');
     memoZone.innerHTML = '';
-    var memos = (data.toolMemo || []).slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
+    // ツール配置ポジションと同じく、機械（NC旋盤）ごとに別々のメモとして扱う（2026-09-07追加）。
+    var memos = (data.toolMemo || [])
+      .filter(function (m) { return String(m['機械名'] || '') === (selectedMachine || ''); })
+      .slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
     if (memos.length === 0) {
       memoZone.innerHTML = '<p class="status-note">まだ記録がありません</p>';
     } else {
@@ -2040,7 +2043,9 @@
   function renderMemoEditList() {
     var wrap = document.getElementById('memoEditList');
     wrap.innerHTML = '';
-    var memos = (currentZubanData.toolMemo || []).slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
+    var memos = (currentZubanData.toolMemo || [])
+      .filter(function (m) { return String(m['機械名'] || '') === (selectedMachine || ''); })
+      .slice().sort(function (a, b) { return new Date(a['タイムスタンプ']) - new Date(b['タイムスタンプ']); });
     if (memos.length === 0) { wrap.innerHTML = '<p class="status-note">まだ記録がありません</p>'; return; }
     memos.forEach(function (m) {
       wrap.appendChild(buildTipCard(m, { editable: true, onEdit: startEditMemo, onDelete: deleteMemo }));
@@ -2251,9 +2256,10 @@
     var content = document.getElementById('toolMemoNew').value.trim();
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingMemoId;
+    if (!isEdit && !selectedMachine) { alert('機械名を選ぶか、新しく追加してから記録してください'); return; }
     var payload = isEdit
       ? { action: 'updateToolMemo', postId: editingMemoId, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, idToken: currentUser.idToken }
-      : { action: 'postToolMemo', zuban: currentZubanData.zuban, idToken: currentUser.idToken, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
+      : { action: 'postToolMemo', zuban: currentZubanData.zuban, machineName: selectedMachine, idToken: currentUser.idToken, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {

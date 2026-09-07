@@ -49,7 +49,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_MEMO, [
-    '投稿ID', 'タイムスタンプ', '図番', '投稿者メール', '投稿者名',
+    '投稿ID', 'タイムスタンプ', '図番', '機械名', '投稿者メール', '投稿者名',
     'タイトル', '内容', '写真URL', '共有フラグ'
   ]);
 
@@ -869,7 +869,7 @@ function postToolMemo_(payload) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
     var id = Utilities.getUuid();
     sheet.appendRow([
-      id, new Date(), payload.zuban,
+      id, new Date(), payload.zuban, payload.machineName || '',
       identity.email, identity.name,
       payload.title || '', payload.content || '', payload.photoUrl || '',
       !!payload.shared
@@ -2440,6 +2440,23 @@ function addToolProgramNumberColumn() {
   sheet.insertColumnAfter(insertAt - 1);
   sheet.getRange(1, insertAt).setValue('プログラム番号');
   Logger.log('「プログラム番号」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_MEMOに「機械名」列を追加する（既存シート用、初回のみ手動実行）。
+ * ツール配置ポジションと同じく、機械（NC旋盤）ごとに別々のメモとして扱えるようにする
+ * （2026-09-07、ユーザー指摘：機械タブを切り替えても同じメモが表示されてしまう不具合への対応）。
+ * 既存行の機械名は空欄のまま（旧データがどの機械のものか記録が無いため）。
+ */
+function addToolMemoMachineColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('機械名') !== -1) { Logger.log('「機械名」は追加済みです'); return; }
+  var zubanCol = header.indexOf('図番');
+  var insertAt = zubanCol !== -1 ? zubanCol + 2 : sheet.getLastColumn() + 1;
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('機械名');
+  Logger.log('「機械名」列を追加しました');
 }
 
 /** SHEET_TOOL_MEMOに「タイトル」列を追加する（既存シート用、初回のみ手動実行）。 */
