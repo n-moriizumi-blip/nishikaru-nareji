@@ -1527,6 +1527,55 @@ function diagnoseFolderById() {
 }
 
 /**
+ * 検査記録フォルダの新規作成が「得意先フォルダも見つからない」と判定される実例の調査用
+ * （2026-09-07、使い捨て）。GASエディタでこの関数を選んで実行し、実行数ログを確認すること。
+ */
+function diagnoseInspectionFolderCreate() {
+  var zuban = '90007-FD3P-0000'; // 調査対象。別の図番を調べたい場合はここを書き換えて再実行する
+
+  Logger.log('=== scanZubanMaster_（I-PROから品名・得意先コードを引く） ===');
+  var master = scanZubanMaster_(zuban);
+  Logger.log('hinmei=[' + master.hinmei + '] tokuisaki=[' + master.tokuisaki + ']');
+
+  if (!master.tokuisaki) {
+    Logger.log('得意先コードが空のため、ここで判定不能（I-PRO側にこの図番の得意先コードが無い）');
+    return;
+  }
+
+  Logger.log('=== lookupTokuisakiName_（得意先コード→得意先名） ===');
+  var tokuisakiName = lookupTokuisakiName_(master.tokuisaki);
+  Logger.log('tokuisakiName=[' + tokuisakiName + ']');
+
+  if (!tokuisakiName) {
+    Logger.log('得意先名が空のため、ここで判定不能（進捗状況照会にこの得意先コードの行が無い）');
+    return;
+  }
+
+  Logger.log('=== findExistingCompanyFolder_と同じクエリで完全一致検索 ===');
+  var nameEsc = String(tokuisakiName).replace(/'/g, "\\'");
+  var exact = driveFilesList_(
+    "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+  );
+  Logger.log('件数: ' + exact.length);
+  exact.forEach(function (f) { Logger.log('  id=' + f.id + ' name=[' + f.name + '] len=' + f.name.length); });
+
+  Logger.log('=== 部分一致検索（contains） ===');
+  var partial = driveFilesList_(
+    "name contains '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+  );
+  Logger.log('件数: ' + partial.length);
+  partial.forEach(function (f) {
+    var codes = [];
+    for (var i = 0; i < f.name.length; i++) codes.push(f.name.charCodeAt(i));
+    Logger.log('  id=' + f.id + ' name=[' + f.name + '] len=' + f.name.length + ' codes=' + codes.join(','));
+  });
+
+  Logger.log('=== findExistingCompanyFolder_の実際の戻り値 ===');
+  var result = findExistingCompanyFolder_(tokuisakiName);
+  Logger.log(result ? ('見つかった: id=' + result.id + ' name=[' + result.name + ']') : '見つからなかった（null）');
+}
+
+/**
  * 図番フォルダが無い場合、得意先名から既存の会社名フォルダを探し、その下に図番フォルダを新規作成する
  * （2026-08-30追加、ユーザー提案）。
  *
