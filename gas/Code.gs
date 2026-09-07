@@ -1586,19 +1586,32 @@ function diagnoseInspectionFolderCreate() {
  * 完全一致が見つからない場合は自動作成をあきらめ、エラーを返す（想定外の場所に新しいフォルダを
  * 作って既存の置き場所と混同・分散するより、作成できない方が安全なため）。
  */
+/**
+ * 全角英数字・記号（Ａ-Ｚ、０-９等）を半角に変換する。
+ * I-PROの得意先名が全角英字表記（例：「ＮＥテック」）でも、Driveのフォルダ名は
+ * 半角表記（「NEテック」）であることがあり、前後空白のtrimだけでは一致しなかった
+ * （2026-09-07実例）。カタカナ・漢字・ひらがなはこの範囲に含まれないため影響しない。
+ */
+function toHalfWidthAscii_(str) {
+  return String(str || '').replace(/[Ａ-Ｚａ-ｚ０-９！-～]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+  });
+}
+
 function findExistingCompanyFolder_(companyName) {
   var target = String(companyName).trim();
+  var targetNorm = toHalfWidthAscii_(target);
   var nameEsc = target.replace(/'/g, "\\'");
   var exact = driveFilesList_(
     "name = '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
   );
   if (exact.length === 0) {
-    // 完全一致で見つからない場合、前後の余分な空白だけを無視して比較し直す
+    // 完全一致で見つからない場合、前後の余分な空白・全角半角の違いだけを無視して比較し直す
     // （findZubanFolder_と同じ対処。前方一致など緩い一致は事故の実例があるため避ける）。
     var candidates = driveFilesList_(
       "name contains '" + nameEsc + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     );
-    exact = candidates.filter(function (f) { return String(f.name).trim() === target; });
+    exact = candidates.filter(function (f) { return toHalfWidthAscii_(String(f.name).trim()) === targetNorm; });
   }
   return exact.length > 0 ? exact[0] : null;
 }
