@@ -413,6 +413,11 @@
       <div id="machinePickerWrap" class="hidden">
         <div class="section-label sub">機械（NC旋盤）で切り替える</div>
         <div class="dept-btn-row" id="machineBtnRow"></div>
+        <button type="button" class="btn btn-ghost hidden" id="renameMachineBtn" style="margin-top:6px; padding:8px 12px; font-size:0.8rem; min-height:auto;">✎ 選択中の機械名を変更</button>
+        <div id="machineRenameRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:6px;">
+          <input type="text" id="renameMachineInput" list="machineNameList" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
+          <button type="button" class="btn btn-secondary" id="renameMachineConfirmBtn">変更する</button>
+        </div>
         <div id="machineAddRow" class="hidden" style="display:flex; gap:8px; margin-top:6px; margin-bottom:14px;">
           <input type="text" id="newMachineInput" list="machineNameList" placeholder="機械名（例：A20）" style="flex:1; min-width:0; font-family:inherit; font-size:0.86rem; padding:10px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink);">
           <button type="button" class="btn btn-secondary" id="newMachineConfirmBtn">作成</button>
@@ -1559,6 +1564,8 @@
         if (toolEditMode && !confirm('編集中の内容は保存されません。機械を切り替えますか？')) return;
         selectedMachine = m;
         toolEditMode = false;
+        document.getElementById('machineRenameRow').classList.add('hidden');
+        document.getElementById('machineAddRow').classList.add('hidden');
         document.getElementById('toolViewToggle').textContent = '編集する';
         document.getElementById('toolViewWrap').classList.remove('hidden');
         document.getElementById('toolEditWrap').classList.add('hidden');
@@ -1572,12 +1579,50 @@
     addBtn.className = 'dept-btn';
     addBtn.textContent = '＋ 追加';
     addBtn.addEventListener('click', function () {
+      document.getElementById('machineRenameRow').classList.add('hidden');
       document.getElementById('machineAddRow').classList.remove('hidden');
       document.getElementById('newMachineInput').value = '';
       document.getElementById('newMachineInput').focus();
     });
     row.appendChild(addBtn);
+    document.getElementById('renameMachineBtn').classList.toggle('hidden', !selectedMachine);
   }
+
+  // 選択中の機械名を変更する（新規追加のみで既存の機械名を直す手段が無かったため、2026-09-07追加）。
+  document.getElementById('renameMachineBtn').addEventListener('click', function () {
+    document.getElementById('machineAddRow').classList.add('hidden');
+    var renameRow = document.getElementById('machineRenameRow');
+    renameRow.classList.remove('hidden');
+    var input = document.getElementById('renameMachineInput');
+    input.value = selectedMachine || '';
+    input.focus();
+  });
+  document.getElementById('renameMachineConfirmBtn').addEventListener('click', function () {
+    var newName = document.getElementById('renameMachineInput').value.trim();
+    if (!newName) { alert('機械名を入力してください'); return; }
+    if (!currentUser) { alert('変更にはGoogleログインが必要です'); return; }
+    if (newName === selectedMachine) { document.getElementById('machineRenameRow').classList.add('hidden'); return; }
+    if (availableMachines.indexOf(newName) !== -1 &&
+      !confirm('「' + newName + '」は既に存在します。統合しますか？（両方のデータが1つにまとまります）')) return;
+    var oldName = selectedMachine;
+    fetch(GAS_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'renameToolMachine', zuban: currentZubanData.zuban, oldMachineName: oldName, newMachineName: newName, idToken: currentUser.idToken })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { alert('変更に失敗しました: ' + res.error); return Promise.reject(); }
+        selectedMachine = newName;
+        document.getElementById('machineRenameRow').classList.add('hidden');
+        return refreshZubanData();
+      })
+      .then(function () {
+        availableMachines = computeAvailableMachines_(currentZubanData);
+        if (availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
+        renderMachinePicker_();
+        renderToolView(currentZubanData);
+      })
+      .catch(function (err) { if (err) alert('変更に失敗しました: ' + err.message); });
+  });
 
   document.getElementById('newMachineConfirmBtn').addEventListener('click', function () {
     var name = document.getElementById('newMachineInput').value.trim();

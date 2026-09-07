@@ -156,6 +156,7 @@ function doPost(e) {
     if (action === 'ocrToolLayout') return jsonResponse_(ocrToolLayout_(payload));
     if (action === 'ocrFreeMemo') return jsonResponse_(ocrFreeMemo_(payload));
     if (action === 'createInspectionFolder') return jsonResponse_(createInspectionFolder_(payload));
+    if (action === 'renameToolMachine') return jsonResponse_(renameToolMachine_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1035,6 +1036,36 @@ function saveToolPositions_(payload) {
     }
     invalidateZubanCache_(payload.zuban);
     try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
+    return { ok: true };
+  });
+}
+
+/**
+ * 選択中の機械名を、同じ図番のツール配置ポジション・ツール配置メモまとめて別の名前に変更する
+ * （2026-09-07追加、ユーザー要望）。新規追加のみで既存の機械名を直す手段が無かったため。
+ * newMachineNameが既存の別の機械と同じ場合、実質的にそちらへ統合される。
+ */
+function renameToolMachine_(payload) {
+  return withVerifiedIdentity_(payload, function () {
+    var zuban = payload.zuban, oldName = payload.oldMachineName, newName = payload.newMachineName;
+    if (!zuban || !oldName || !newName) return { error: 'zuban, oldMachineName, newMachineName is required' };
+    if (oldName === newName) return { ok: true };
+    var zubanKey = numericZubanKey_(zuban);
+    [SHEET_TOOL_POSITIONS, SHEET_TOOL_MEMO].forEach(function (sheetName) {
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() < 2) return;
+      var values = sheet.getDataRange().getValues();
+      var header = values[0];
+      var zubanCol = header.indexOf('図番');
+      var machineCol = header.indexOf('機械名');
+      if (zubanCol === -1 || machineCol === -1) return;
+      for (var i = 1; i < values.length; i++) {
+        if (numericZubanKey_(values[i][zubanCol]) === zubanKey && String(values[i][machineCol] || '') === oldName) {
+          sheet.getRange(i + 1, machineCol + 1).setValue(newName);
+        }
+      }
+    });
+    invalidateZubanCache_(zuban);
     return { ok: true };
   });
 }
