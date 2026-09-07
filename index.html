@@ -169,6 +169,13 @@
     font-family: inherit; font-size: 0.94rem; padding: 14px; border-radius: 4px;
     border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: none; min-height: 100px; line-height: 1.65;
   }
+  /* .field直下の自由入力（キーエンス測定プログラム名・洗浄専用のメディア/周波数/時間等）に
+     スタイルが無く、ブラウザ既定の白背景で浮いて見えていたため統一する（2026-09-07修正）。 */
+  .field input[type="text"], .field input[type="time"] {
+    font-family: inherit; font-size: 0.94rem; padding: 14px; border-radius: 4px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .field input[type="time"] { color-scheme: dark; }
   .photo-btn {
     display: flex; align-items: center; gap: 9px; border: 1px dashed var(--ink-soft); background: var(--surface-2);
     border-radius: 4px; padding: 14px 15px; font-size: 0.88rem; color: var(--ink-soft); font-weight: 700; cursor: pointer;
@@ -555,7 +562,6 @@
             <button type="button" class="chip">不要</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">検査専用を保存する</button>
       </div>
 
       <div id="specCommonSection" class="hidden">
@@ -617,8 +623,6 @@
         </div>
       </div>
 
-      <button type="button" class="btn btn-secondary hidden" id="specCommonSaveBtn">共通情報を保存する</button>
-
       <div id="specShukkaSection" class="hidden">
         <div class="section-label">出荷｜梱包・その他（生産管理課「出荷」担当のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
@@ -629,8 +633,9 @@
           <label>その他必要事項</label>
           <textarea id="shipOtherInput" placeholder="例：納品書に検査成績書を同封、等"></textarea>
         </div>
-        <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
       </div>
+
+      <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">保存する</button>
 
       <div id="specShiageSection" class="hidden">
         <div class="section-label">仕上専用｜品質情報を記録する（仕上げ担当のみ・複数件記録できます）</div>
@@ -2549,8 +2554,11 @@
 
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
-    document.getElementById('specCommonSaveBtn').classList.toggle('hidden', !showCommon);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
+    // 検査専用・共通情報・出荷は、部署をまたいで両方入力されることがあるため
+    // （例：検査担当は検査専用＋共通情報の両方を編集できる）、1つの保存ボタンにまとめている
+    // （2026-09-07変更、以前は3つの個別ボタンだった）。
+    document.getElementById('specSaveBtn').classList.toggle('hidden', !(showKensa || showCommon || showShukka));
     document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
     document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
@@ -2687,24 +2695,29 @@
       });
   }
 
-  document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet')
-    }, '検査専用', 'specKensaSaveBtn');
-  });
-  document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
-      'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value,
-      'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
-      '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
-    }, '共通情報', 'specCommonSaveBtn');
-  });
-  document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '梱包方法': document.getElementById('packMethodInput').value,
-      'その他必要事項': document.getElementById('shipOtherInput').value
-    }, '出荷（梱包・その他）', 'specShukkaSaveBtn');
+  // 検査専用・共通情報・出荷（梱包・その他）は、表示されている（＝編集権限がある）分だけ
+  // まとめて1回で保存する（部署をまたいで入力があっても1クリックで済むように、2026-09-07変更）。
+  document.getElementById('specSaveBtn').addEventListener('click', function () {
+    var fields = {};
+    if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
+      fields['検査記録の添付'] = getChipValue('inspRecord');
+      fields['ミルシート'] = getChipValue('millSheet');
+    }
+    if (!document.getElementById('specCommonSection').classList.contains('hidden')) {
+      fields['トレー梱包'] = getChipValue('tray');
+      fields['NG限度見本'] = getChipValue('ngSample');
+      fields['キーエンス測定'] = getChipValue('keyence');
+      fields['キーエンスプログラム名'] = document.getElementById('keyenceProgramInput').value;
+      fields['カット品'] = getChipValue('cutSample');
+      fields['テストピース'] = getChipValue('testPiece');
+      fields['借用ゲージ有無'] = getChipValue('gauge');
+      fields['借用ゲージ種類'] = document.getElementById('gaugeDetailInput').value;
+    }
+    if (!document.getElementById('specShukkaSection').classList.contains('hidden')) {
+      fields['梱包方法'] = document.getElementById('packMethodInput').value;
+      fields['その他必要事項'] = document.getElementById('shipOtherInput').value;
+    }
+    saveShippingSpecFields(fields, '共通・検査・出荷情報', 'specSaveBtn');
   });
   // ==== 仕上専用｜品質情報を記録する（品証の品質情報ログと同じ仕組み、部署='仕上げ'） ====
   var pendingShiagePhotoUrl = '';
