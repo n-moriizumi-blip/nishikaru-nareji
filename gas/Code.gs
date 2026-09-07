@@ -1689,6 +1689,33 @@ function diagnoseInspectionFolderCreate() {
 }
 
 /**
+ * 図番インデックスの図番セルの末尾が欠けているように見える実例（KSP75-FP-007450(3)-003-）の
+ * 調査用（2026-09-07、使い捨て）。表示上の列幅による省略なのか、実データが本当に欠けているのか
+ * を文字コード列まで出して確認する。GASエディタでこの関数を選んで実行し、実行数ログを確認すること。
+ */
+function diagnoseZubanIndexRow() {
+  var searchFragment = 'KSP75-FP-007450'; // 調査対象。別の図番を調べたい場合はここを書き換えて再実行する
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var zubanCol = header.indexOf('図番');
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var hits = 0;
+  for (var i = 0; i < values.length; i++) {
+    var raw = values[i][zubanCol];
+    var z = String(raw == null ? '' : raw);
+    if (z.indexOf(searchFragment) === -1) continue;
+    hits++;
+    var codes = [];
+    for (var c = 0; c < z.length; c++) codes.push(z.charCodeAt(c));
+    Logger.log('=== 行' + (i + 2) + ' ===');
+    Logger.log('生の値の型: ' + (typeof raw) + ' 値=[' + z + '] 長さ=' + z.length);
+    Logger.log('文字コード=' + codes.join(','));
+    Logger.log('改善計画書リンク列の内容=' + JSON.stringify(values[i][header.indexOf('改善計画書リンク')]));
+  }
+  Logger.log('該当行数: ' + hits);
+}
+
+/**
  * 図番フォルダが無い場合、得意先名から既存の会社名フォルダを探し、その下に図番フォルダを新規作成する
  * （2026-08-30追加、ユーザー提案）。
  *
