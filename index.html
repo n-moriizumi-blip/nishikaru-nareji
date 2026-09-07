@@ -638,8 +638,6 @@
         <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
       </div>
 
-      <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">まとめて保存する</button>
-
       <div id="specShiageSection" class="hidden">
         <div class="section-label">仕上専用｜品質情報を記録する（仕上げ担当のみ・複数件記録できます）</div>
         <div class="field">
@@ -737,6 +735,7 @@
         <button type="button" class="btn btn-ghost hidden" id="qiEditCancelBtn">編集をキャンセル</button>
       </div>
 
+      <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">まとめて保存する</button>
       <div class="status-note" id="qiStatus"></div>
       <button class="btn btn-ghost" id="qiBackBtn">過去情報表示に戻る</button>
     </section>
@@ -2558,15 +2557,16 @@
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
-    // 検査専用・共通情報・出荷は、部署をまたいで両方入力されることがある（例：検査担当は
-    // 検査専用＋共通情報の両方を編集できる）ため、各セクション個別の保存ボタンに加えて、
-    // 表示中の分をまとめて1回で保存できる「まとめて保存する」ボタンも一番下に用意する
-    // （2026-09-07追加。個別ボタンへの一本化を試したが、1項目だけ直したい時にも他の
-    // セクションの保存を待つことになり不便との指摘があり、個別ボタンを復活させた）。
-    document.getElementById('specSaveBtn').classList.toggle('hidden', !(showKensa || showCommon || showShukka));
     document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
     document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
     document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
+    // この画面の各セクションは、部署をまたいで複数表示されることがある（例：検査担当は
+    // 検査専用＋共通情報の両方を編集できる）ため、各セクション個別の保存ボタンに加えて、
+    // 画面全体の一番下に表示中の分をまとめて1回で保存できる「まとめて保存する」ボタンも
+    // 用意する（2026-09-07追加。当初は出荷仕様系の3セクションだけを対象にしていたが、
+    // 仕上専用・洗浄専用・品証専用も含めて画面全体を対象にしてほしいとの要望で拡張した）。
+    document.getElementById('specSaveBtn').classList.toggle('hidden',
+      !(showKensa || showCommon || showShukka || showShiage || showSenjou || showQiLog));
 
     if (showKensa) {
       setChipValue('inspRecord', spec['検査記録の添付']);
@@ -2704,9 +2704,11 @@
   // まとめて1回で保存する（部署をまたいで入力があっても1クリックで済むように、2026-09-07変更）。
   document.getElementById('specSaveBtn').addEventListener('click', function () {
     var fields = {};
+    var hasSpecFields = false;
     if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
       fields['検査記録の添付'] = getChipValue('inspRecord');
       fields['ミルシート'] = getChipValue('millSheet');
+      hasSpecFields = true;
     }
     if (!document.getElementById('specCommonSection').classList.contains('hidden')) {
       fields['トレー梱包'] = getChipValue('tray');
@@ -2717,12 +2719,31 @@
       fields['テストピース'] = getChipValue('testPiece');
       fields['借用ゲージ有無'] = getChipValue('gauge');
       fields['借用ゲージ種類'] = document.getElementById('gaugeDetailInput').value;
+      hasSpecFields = true;
     }
     if (!document.getElementById('specShukkaSection').classList.contains('hidden')) {
       fields['梱包方法'] = document.getElementById('packMethodInput').value;
       fields['その他必要事項'] = document.getElementById('shipOtherInput').value;
+      hasSpecFields = true;
     }
-    saveShippingSpecFields(fields, '共通・検査・出荷情報', 'specSaveBtn');
+    if (hasSpecFields) saveShippingSpecFields(fields, '共通・検査・出荷情報', 'specSaveBtn');
+
+    // 仕上専用・洗浄専用・品証専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
+    // 空のまま保存できる性質ではないため、内容が入力されている場合だけ、それぞれの
+    // 保存ボタンを自動的に押す（未使用のセクションで無関係な「内容を入力してください」
+    // という警告が出ないようにする、2026-09-07追加）。
+    if (!document.getElementById('specShiageSection').classList.contains('hidden') &&
+        document.getElementById('shiageContentInput').value.trim()) {
+      document.getElementById('shiageSaveBtn').click();
+    }
+    if (!document.getElementById('specSenjouSection').classList.contains('hidden') &&
+        document.getElementById('senjouContentInput').value.trim()) {
+      document.getElementById('senjouSaveBtn').click();
+    }
+    if (!document.getElementById('qiLogSection').classList.contains('hidden') &&
+        document.getElementById('qiContentInput').value.trim()) {
+      document.getElementById('qiSaveBtn').click();
+    }
   });
   // 各セクションにも個別の保存ボタンを残す（1項目だけ直したい時にまとめて保存を待たなくて済むように、
   // ユーザー要望で2026-09-07に復活）。
