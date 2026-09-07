@@ -1142,7 +1142,11 @@
   function renderPastTroubleDisplay(data) {
     var hasTrouble = (data.pastTrouble || []).length > 0;
     document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
-    document.getElementById('freshWrap').style.display = (!hasTrouble && myDeptQualityLog_(data).length === 0) ? 'block' : 'none';
+    // 「あなたが初挑戦です」は、この図番に本当に何も記録が無い場合だけ出す。共有された
+    // 過去トラが無くても、品質情報記録ログ（他部署分も含む）・ツール配置・出荷仕様等の
+    // 何かしらの記録が既にあるなら「初」ではないため、その場合はどちらも表示しない
+    // （2026-09-08、ユーザー指摘：入力が1つでもあれば初挑戦ではない）。
+    document.getElementById('freshWrap').style.display = (!hasTrouble && !hasAnyZubanData_(data)) ? 'block' : 'none';
 
     if (hasTrouble) {
       var list = document.getElementById('pastTroubleList');
@@ -1184,6 +1188,22 @@
     return (data.qualityLog || []).filter(function (row) {
       return currentAllAccess || (deptName && row['部署'] === deptName);
     });
+  }
+
+  // この図番に何かしら記録が既にあるか（「あなたが初挑戦です」判定用）。共有された過去トラが
+  // 無くても、他部署分も含めた品質情報記録ログ・ツール配置ポジション・ツール配置メモ・出荷仕様の
+  // どれか1つでも記録があれば「初」ではない（2026-09-08追加）。
+  function hasAnyZubanData_(data) {
+    if ((data.qualityLog || []).length > 0) return true;
+    if ((data.toolPositions || []).length > 0) return true;
+    if ((data.toolMemo || []).length > 0) return true;
+    var spec = data.shippingSpec;
+    if (spec) {
+      var ignoreKeys = { '図番': true, '最終更新者メール': true, '最終更新日時': true };
+      var hasSpecValue = Object.keys(spec).some(function (k) { return !ignoreKeys[k] && spec[k]; });
+      if (hasSpecValue) return true;
+    }
+    return false;
   }
 
   // 部署別の情報を見る（②画面）。検査・仕上げ・洗浄・出荷のボタンを押すと、その部署の情報だけを
