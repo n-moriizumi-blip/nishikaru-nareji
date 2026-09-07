@@ -1753,6 +1753,32 @@ function diagnoseOrphanedQualityLog() {
 }
 
 /**
+ * 品質情報記録ログの「部署」列の値'検査'を'品証'に一括で書き換える（2026-09-08、使い捨て）。
+ * 「検査」と「品質保証課」は同じ部署なのに画面上の呼び方がバラバラで紛らわしいとの指摘を受け、
+ * 表示・保存する部署名を「品証」に統一した。この統一に伴い、既に'検査'として保存済みの過去の
+ * 投稿もあわせて書き換えないと、②画面の「品証」タブに表示されなくなってしまうため実行する。
+ * GASエディタでこの関数を1回実行すること。
+ */
+function migrateKensaDeptToHinsho() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var deptCol = requireColumnIndex_(header, '部署');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('対象データなし'); return; }
+  var range = sheet.getRange(2, deptCol + 1, lastRow - 1, 1);
+  var values = range.getValues();
+  var hits = 0;
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === '検査') {
+      values[i][0] = '品証';
+      hits++;
+    }
+  }
+  range.setValues(values);
+  Logger.log('書き換え件数: ' + hits);
+}
+
+/**
  * 図番フォルダが無い場合、得意先名から既存の会社名フォルダを探し、その下に図番フォルダを新規作成する
  * （2026-08-30追加、ユーザー提案）。
  *

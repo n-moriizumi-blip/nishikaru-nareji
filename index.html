@@ -292,7 +292,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.12.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.13.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -366,7 +366,7 @@
         <div class="section-label">部署別の情報を見る</div>
         <div class="dept-btn-row" id="deptBtnRow">
           <button type="button" class="dept-btn" data-dept="加工">加工</button>
-          <button type="button" class="dept-btn" data-dept="検査">検査</button>
+          <button type="button" class="dept-btn" data-dept="品証">品証</button>
           <button type="button" class="dept-btn" data-dept="仕上げ">仕上げ</button>
           <button type="button" class="dept-btn" data-dept="洗浄">洗浄</button>
           <button type="button" class="dept-btn" data-dept="出荷">出荷</button>
@@ -547,7 +547,7 @@
       </div>
 
       <div id="specKensaSection" class="hidden">
-        <div class="section-label">検査専用｜検査記録の添付・ミルシート（検査担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label">品証専用（記録添付）｜検査記録の添付・ミルシート（品証担当のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>検査記録の添付</label>
           <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
@@ -562,7 +562,7 @@
             <button type="button" class="chip">不要</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">検査専用を保存する</button>
+        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">品証専用（記録添付）を保存する</button>
       </div>
 
       <div id="specCommonSection" class="hidden">
@@ -707,7 +707,7 @@
       </div>
 
       <div id="qiLogSection" class="hidden">
-        <div class="section-label">品質保証専用｜品質情報を記録する（検査担当のみ・複数件記録できます）</div>
+        <div class="section-label">品証専用（ログ）｜品質情報を記録する（品証担当のみ・複数件記録できます）</div>
         <div class="field">
           <label>外観ランク（任意）</label>
           <div class="chip-row" data-group="rank">
@@ -731,7 +731,7 @@
           <input type="checkbox" id="qiShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-secondary" id="qiSaveBtn">品証専用を記録する</button>
+        <button type="button" class="btn btn-secondary" id="qiSaveBtn">品証専用（ログ）を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="qiEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -821,7 +821,7 @@
 
   // ==== 役割判定（組織図マスタと照合。③④⑤の出し分けに使う） ====
   var currentRole = null; // seizou / kensa / seisan / shukka / senjou / shiage / other
-  var ROLE_DEPT_NAME = { seizou: '加工', kensa: '検査', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }; // 部署ボタン・品質情報記録ログの「部署」列との対応
+  var ROLE_DEPT_NAME = { seizou: '加工', kensa: '品証', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }; // 部署ボタン・品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
   function fetchRole() {
@@ -1209,7 +1209,7 @@
   // 部署別の情報を見る（②画面）。検査・仕上げ・洗浄・出荷のボタンを押すと、その部署の情報だけを
   // その場に表示する。自部署（allAccessなら選んでいる部署）以外は完全閲覧のみで編集・削除ボタンを出さない。
   var DEPT_SPEC_FIELDS = {
-    '検査': [['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート']],
+    '品証': [['検査記録の添付', '検査記録の添付'], ['ミルシート', 'ミルシート']],
     '出荷': [['梱包方法', '梱包方法'], ['その他必要事項', 'その他必要事項']]
   };
   var selectedDeptView = null;
@@ -1225,7 +1225,7 @@
   function renderQualityLogSection(data) {
     document.getElementById('deptViewSection').style.display = 'block';
     if (!selectedDeptView) {
-      selectedDeptView = { seizou: '加工', kensa: '検査', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }[currentRole] || null;
+      selectedDeptView = { seizou: '加工', kensa: '品証', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }[currentRole] || null;
     }
     document.querySelectorAll('#deptBtnRow .dept-btn').forEach(function (btn) {
       btn.setAttribute('aria-pressed', btn.getAttribute('data-dept') === selectedDeptView ? 'true' : 'false');
@@ -2562,7 +2562,7 @@
     if (!currentZubanData) return;
     setScreen('qi');
     document.getElementById('qiZubanHeader').textContent = zubanLabel(currentZubanData);
-    document.getElementById('qiDeptDisplay').value = currentSection || (currentRole === 'kensa' ? '検査' : '');
+    document.getElementById('qiDeptDisplay').value = currentSection || (currentRole === 'kensa' ? '品証' : '');
     document.getElementById('qiDateDisplay').value = new Date().toLocaleDateString('ja-JP');
     document.getElementById('qiStatus').textContent = '';
 
@@ -2655,7 +2655,7 @@
     document.getElementById('qiContentInput').value = '';
     document.getElementById('qiShareCheck').checked = false;
     resetQiPhotoBtn();
-    document.getElementById('qiSaveBtn').textContent = '品証専用を記録する';
+    document.getElementById('qiSaveBtn').textContent = '品証専用（ログ）を記録する';
     document.getElementById('qiEditCancelBtn').classList.add('hidden');
   }
 
@@ -2746,7 +2746,7 @@
       fields['その他必要事項'] = document.getElementById('shipOtherInput').value;
       hasSpecFields = true;
     }
-    if (hasSpecFields) saveShippingSpecFields(fields, '共通・検査・出荷情報', 'specSaveBtn');
+    if (hasSpecFields) saveShippingSpecFields(fields, '共通・品証・出荷情報', 'specSaveBtn');
 
     // 仕上専用・洗浄専用・品証専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
     // 空のまま保存できる性質ではないため、内容が入力されている場合だけ、それぞれの
@@ -2770,7 +2770,7 @@
   document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet')
-    }, '検査専用', 'specKensaSaveBtn');
+    }, '品証専用（記録添付）', 'specKensaSaveBtn');
   });
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
@@ -2985,10 +2985,10 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingQiId;
     var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingQiId, department: '検査', rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
+      ? { action: 'updateQualityLog', postId: editingQiId, department: '品証', rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban,
-          department: '検査',
+          department: '品証',
           idToken: currentUser.idToken,
           rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
           shared: document.getElementById('qiShareCheck').checked
