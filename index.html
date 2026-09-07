@@ -2828,7 +2828,7 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingShiageId;
     var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingShiageId, content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked, idToken: currentUser.idToken }
+      ? { action: 'updateQualityLog', postId: editingShiageId, department: '仕上げ', content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban, department: '仕上げ', idToken: currentUser.idToken,
           content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked
@@ -2946,7 +2946,7 @@
     var barrelWire = getChipValue('senjouWire');
     var payload = isEdit
       ? {
-          action: 'updateQualityLog', postId: editingSenjouId, content: content, photoUrl: pendingSenjouPhotoUrl,
+          action: 'updateQualityLog', postId: editingSenjouId, department: '洗浄', content: content, photoUrl: pendingSenjouPhotoUrl,
           shared: document.getElementById('senjouShareCheck').checked, idToken: currentUser.idToken,
           ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
         }
@@ -2985,7 +2985,7 @@
     if (!content) { alert('内容を入力してください'); return; }
     var isEdit = !!editingQiId;
     var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingQiId, rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
+      ? { action: 'updateQualityLog', postId: editingQiId, department: '検査', rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban,
           department: '検査',

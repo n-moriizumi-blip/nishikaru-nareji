@@ -1000,11 +1000,17 @@ function deleteToolMemo_(payload) {
 
 /** 品質情報記録の更新／削除（⑤画面）。超音波以降は洗浄専用のみ使う項目（他部署の投稿では常に空文字）。 */
 function updateQualityLog_(payload) {
-  return updatePostById_(SHEET_QUALITY_LOG, payload, {
+  var fields = {
     '内容': payload.content || '', '外観ランク': payload.rank || '', '写真URL': payload.photoUrl || '', '共有フラグ': !!payload.shared,
     '超音波': payload.ultrasonic || '', 'バレルメディア': payload.barrelMedia || '', 'バレル周波数': payload.barrelFreq || '',
     'バレル時間': payload.barrelTime || '', 'バレルワイヤー': payload.barrelWire || ''
-  });
+  };
+  // 部署が空欄のまま編集されると、共有フラグをOFFにした瞬間に過去トラにも部署別タブにも
+  // 出ない「迷子」投稿になってしまう（2026-09-08発覚。旧データ移行時に部署を持たせて
+  // いなかった投稿を後から編集した実例で発生）。品証専用/仕上専用/洗浄専用の編集画面から
+  // 部署が渡された場合はここで補完する（未指定の呼び出しでは既存の部署をそのまま残す）。
+  if (payload.department) fields['部署'] = payload.department;
+  return updatePostById_(SHEET_QUALITY_LOG, payload, fields);
 }
 function deleteQualityLog_(payload) {
   return deletePostById_(SHEET_QUALITY_LOG, payload);
@@ -1713,6 +1719,37 @@ function diagnoseZubanIndexRow() {
     Logger.log('改善計画書リンク列の内容=' + JSON.stringify(values[i][header.indexOf('改善計画書リンク')]));
   }
   Logger.log('該当行数: ' + hits);
+}
+
+/**
+ * 品質情報記録ログのうち、「部署が空欄」かつ「共有フラグがFALSE」の投稿（過去トラにも
+ * 部署別タブにも表示されず、アプリのどこからも見えない「迷子」状態）を一覧する（2026-09-08、
+ * 使い捨て）。実例：旧データ移行時に部署を持たせず共有フラグtrueで登録された投稿を、後から
+ * 編集して共有をOFFにすると、部署が空欄のままこの状態に陥る。GASエディタでこの関数を選んで
+ * 実行し、実行数ログを確認すること。書き換えは行わない（対応方針をユーザーと相談してから行う）。
+ */
+function diagnoseOrphanedQualityLog() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idCol = header.indexOf('投稿ID');
+  var zubanCol = header.indexOf('図番');
+  var deptCol = header.indexOf('部署');
+  var shareCol = header.indexOf('共有フラグ');
+  var tsCol = header.indexOf('タイムスタンプ');
+  var contentCol = header.indexOf('内容');
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var hits = 0;
+  for (var i = 0; i < values.length; i++) {
+    var dept = String(values[i][deptCol] || '').trim();
+    var shared = values[i][shareCol] === true;
+    if (dept === '' && !shared) {
+      hits++;
+      var content = String(values[i][contentCol] || '');
+      Logger.log('行' + (i + 2) + ' 投稿ID=' + values[i][idCol] + ' 図番=[' + values[i][zubanCol] + ']' +
+        ' タイムスタンプ=' + values[i][tsCol] + ' 内容(先頭40文字)=[' + content.substring(0, 40) + ']');
+    }
+  }
+  Logger.log('該当（迷子）行数: ' + hits);
 }
 
 /**
