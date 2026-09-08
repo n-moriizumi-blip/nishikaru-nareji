@@ -3299,3 +3299,129 @@ function uploadEmptyTemplateSkipPhotos() {
     }
   });
 }
+
+/**
+ * uploadEmptyTemplateSkipPhotosでアップロードした9図番分の写真ベース品質情報を、内容を人手で
+ * 要約したテキストとともに品質情報記録ログへ登録する（2026-09-08、使い捨て）。
+ * 1枚の用紙に複数の日付の記入がある場合は、日付ごとに別の投稿として分ける
+ * （文字テキストの移行処理と同じ粒度に揃えるため）。写真は代表となる投稿（最も古い日付、または
+ * 複数枚ある場合はその投稿）にだけ添付する。GASエディタで1回実行すること。
+ */
+function registerEmptyTemplateSkipPhotos() {
+  var entries = [
+    {
+      zuban: '100524', date: '2024/3/21', sourceFileId: '1Vb88btFRjmTc8QZEBxdqVjEZQLXuiBunPhLtyQSAg6M',
+      content: '「指示無キ角C0.5」に対しφ6側内側面取りC0.5±0.05の規格に入ってないが（小さい0.427）、' +
+        'φ6に対しφ7の外径の為、ここは糸面でOK。他の面取は規格内であること。',
+      photoUrls: ['https://drive.google.com/file/d/1GQVjkS65uxD53LsngmsGxxguemVmBof1/view?usp=drivesdk']
+    },
+    {
+      zuban: '09940-34531-A', date: '2024/4/10', sourceFileId: '1U_USjXP45ZJZqz8ZbL5rfn6e1LatQ0eLpgETul8SuKU',
+      content: 'φ9.5+0.3/+0.13止まり、ブロックゲージ9.82が口元少し入ってしまう（9.83では止まる）。' +
+        '在庫も9.82入ってしまう物有り。処理があるので大き目はOKとの事で出荷する（社長）。\n' +
+        '外径φ20±0.2チャック痕有り、全数修正してもらう（挽き目～(並)だが在庫きれいなので修正してもらう）。\n' +
+        '11.5±0.2深さ、深い物有り(11.734)、在庫も深いのでOK(11.745)。',
+      photoUrls: ['https://drive.google.com/file/d/1L4h0kRON0Qd3YcIM5HJBjM_dGFnZJCb6/view?usp=drivesdk']
+    },
+    {
+      zuban: 'H02-000100A', date: '2023/11/22', sourceFileId: '1fTLyeDM-fusXYwzoWtuGrJl84n8SG8Ce3lowmXWShCc',
+      content: 'φ4.2±0.1 口元段差注意\nφ6+0.1/0 奥通り注意',
+      photoUrls: ['https://drive.google.com/file/d/191cNnS24jIGL3VGTOCxqSeHgBElgrlXe/view?usp=drivesdk']
+    },
+    {
+      zuban: '4-33608-03-0', date: '2023/1/5', sourceFileId: '1OtLFdW4n-DrDAQ0cLUli2atyxqk2bCNps7m-HW0B154',
+      content: '（φ0.5ピンゲージ全検・顕微鏡全検の指示あり）\n' +
+        '六角深さ3の所、切粉が底の所に付着（前回より深さが深い為）。取れないので良いが作業者に報告。社長OK。\n' +
+        'バリ・ザリ？有、社長OK（M6×1.0リングゲージOK）',
+      photoUrls: ['https://drive.google.com/file/d/1-FEYICFjcu1bKs1Ni_N0kL5_Tp6MeeXJ/view?usp=drivesdk']
+    },
+    {
+      zuban: '4-33608-03-0', date: '2023/6/26', sourceFileId: '1OtLFdW4n-DrDAQ0cLUli2atyxqk2bCNps7m-HW0B154',
+      content: '対辺=3±0.1 通3.10止3.11だが、大がそのまま合格とした。\n→(2025/7/15追記)止3.13が出たがOKとした',
+      photoUrls: ['https://drive.google.com/file/d/1-FEYICFjcu1bKs1Ni_N0kL5_Tp6MeeXJ/view?usp=drivesdk']
+    },
+    {
+      zuban: '100120898-1', date: '2022/12/6', sourceFileId: '16jUpfy8CPEVcVU5yZUQhtq1Lxl98Tm3-c0sAPi_bnqg',
+      content: '（φ29.5とφ17端面挽き目あらい、規格12S→Ry8.828で規格内OK。' +
+        '4-M3.5の面取が無い物がある、以前クレームになった事もあるので要注意）\n' +
+        '6.6+0.1/0→実測6.585で下限値規格外れ有り。0.010→0.020有（φ29.5）平行ではない、全検してもらう。',
+      photoUrls: ['https://drive.google.com/file/d/1KfSB0Vn3Jizm40A36mHq1AJwyzlDEN1p/view?usp=drivesdk']
+    },
+    {
+      zuban: '100120898-1', date: '2022/12/7', sourceFileId: '16jUpfy8CPEVcVU5yZUQhtq1Lxl98Tm3-c0sAPi_bnqg',
+      content: 'φ26h9 0/-0.052、垂れてるものNG', photoUrls: []
+    },
+    {
+      zuban: '100120898-1', date: '2025/4/21', sourceFileId: '16jUpfy8CPEVcVU5yZUQhtq1Lxl98Tm3-c0sAPi_bnqg',
+      content: 'φ26h9 0/-0.052の面取がC0.2(端)より大きめだが、在庫も同様だったのでOKとした。' +
+        '次回もう少し小さめになるよう注意してもらう。',
+      photoUrls: []
+    },
+    {
+      zuban: 'P42181791', date: '2025/2/13', sourceFileId: '1ZJdvfQXx4jGNcaF4JQ3FM-ZM2AQIm1UhJ6uu8ndJw5I',
+      content: '（M24×0.5通りきつい場合は修正(キズ大きい)、油つけてネジ全部通してもらう）\n' +
+        'φ15通り実測14.77、カット品を見ると粗い＋ゆがんでいる？そのため通りが小さめになってしまった？' +
+        '（うまく入らない）今回OKとしたが次回加工する際注意してもらう。',
+      photoUrls: ['https://drive.google.com/file/d/1PoKNZdqFmsIVoboLxa0osZd7yoevqFS_/view?usp=drivesdk']
+    },
+    {
+      zuban: 'P42181791', date: '2025/4/3', sourceFileId: '1ZJdvfQXx4jGNcaF4JQ3FM-ZM2AQIm1UhJ6uu8ndJw5I',
+      content: '深さ81.4±0.1、81.30～81.32で下限値ギリギリ。寸法内なのでOKだが加工者へ連絡済。',
+      photoUrls: []
+    },
+    {
+      zuban: 'R7363-02-65760', date: '2024/7/1', sourceFileId: '1puWk4cP--wvOBthhCRlYMj5NP7xK9Htri2LC9xI5fks',
+      content: 'φ8 0/-0.1端面キズ不良（外径側にふくらみ）。サンプルなし（客先で修正済）。' +
+        'M12×1側は二次加工の為キズなし。次回加工より回収器、流動時トレイ使用（洗浄ネコよけ使用）する。' +
+        '（キズサンプル1個送り確認中2024/7/5→良品限度サンプル1個と良品サンプル4個有り2024/7/26）',
+      photoUrls: [
+        'https://drive.google.com/file/d/11bRy1QCBBEuOpSiywlDmVhQQ_PSPV8X5/view?usp=drivesdk',
+        'https://drive.google.com/file/d/1VvOHSqvHMGDHRDBus3Yw-zN7Ekvvn6ER/view?usp=drivesdk',
+        'https://drive.google.com/file/d/1IT7hQgn8w15r0EnWsjnEdm-Hj48fEnLO/view?usp=drivesdk'
+      ]
+    },
+    {
+      zuban: 'SBE474793', date: '2023/12/27', sourceFileId: '1B7EUdJR0IRkvP9viFlRMpRBJI48MNy5Y1MvAimWe-GU',
+      content: '（φ6 R.G.全検の指示あり）\n' +
+        'φ6h7(0/-0.012)外径（素材径）全体的に小さ目で1～2mm小さい物はOKとする。\n' +
+        'M3側端面（面取部）バリ返り有り。前回そのまま出したが、その後協和精工との「外観検査個別基準書」で' +
+        '綿手袋にひっかからない事となり、少しひっかかるが今回は社長OKで出荷する。',
+      photoUrls: ['https://drive.google.com/file/d/1S7bpOwqa_hmvQ-lx1QMUggIoMHsJCXyP/view?usp=drivesdk']
+    },
+    {
+      zuban: 'SBE474793', date: '2024/2/6', sourceFileId: '1B7EUdJR0IRkvP9viFlRMpRBJI48MNy5Y1MvAimWe-GU',
+      content: 'M3ネジ穴切粉有り、1/104個クレーム有り。在庫782個確認し1個発生。' +
+        '→(2024/8/22再発)1/104個有りクレーム有り、在庫65個エアー実施→M3奥つつき、切粉なし。',
+      photoUrls: []
+    },
+    {
+      zuban: '24734-MJM-D000', date: '2023/6/15', sourceFileId: '1UKOlXXwvDmo0fdIsSsz9PhRmhI73_6H3N-TMZAYEbqI',
+      content: '六角R0.3段差有り（OK例：R0.3付き／NG例：Rになってない段になってる）。' +
+        '出荷に足りない為→285/369個出荷した。社長OK。他84個廃棄。（369個/1004個中）',
+      photoUrls: ['https://drive.google.com/file/d/1YMBCrYwXyhMBVoU6MvLjTfRGs0nThYYf/view?usp=drivesdk']
+    },
+    {
+      zuban: '24734-MJM-D000', date: '2023/12/15', sourceFileId: '1UKOlXXwvDmo0fdIsSsz9PhRmhI73_6H3N-TMZAYEbqI',
+      content: 'φ10内径挽き目▽Rz3.2→実測Rz16.853。客先よりクレームないのでOKとする。',
+      photoUrls: []
+    }
+  ];
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var rows = entries.map(function (e) {
+    var fields = {
+      '投稿ID': Utilities.getUuid(), 'タイムスタンプ': new Date(e.date), '図番': e.zuban, '部署': '品証',
+      '投稿者メール': '', '投稿者名': '(移行データ)', '外観ランク': 'A', '内容': e.content,
+      '写真URL': e.photoUrls.join('\n'), '共有フラグ': true, '移行元ファイルID': e.sourceFileId
+    };
+    return header.map(function (name) { return fields.hasOwnProperty(name) ? fields[name] : ''; });
+  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, header.length).setValues(rows);
+
+  var zubans = {};
+  entries.forEach(function (e) { zubans[e.zuban] = true; });
+  Object.keys(zubans).forEach(function (z) { invalidateZubanCache_(z); });
+
+  Logger.log('登録完了: ' + rows.length + '件（' + Object.keys(zubans).length + '図番分）');
+}
