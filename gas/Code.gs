@@ -3199,3 +3199,74 @@ function renameExistingPhotoFoldersToZubanPrefix() {
   props.deleteProperty('renamePhotoFoldersCursor');
   Logger.log('リネーム完了: ' + renamed + '件（写真フォルダ無し' + skipped + '件、図番フォルダ見つからず' + notFound + '件、全' + (rows.length - 1) + '図番）');
 }
+
+/**
+ * 「移行プレビュー」タブで「本文なし（未使用テンプレート）」とされた全ファイルについて、
+ * 実際に埋め込み写真があるかどうかを確認する（2026-09-08、使い捨て）。
+ * 「本文なし」判定時は写真枚数の確認をせず一律0にしていたため、AE48690A01のように写真だけの
+ * OK/NG判定基準資料が紛れていないか洗い出す。写真が1枚もあるファイルだけログに一覧を出す
+ * （0枚のものは本当に空のテンプレートとみなし、ログには出さない）。
+ */
+function diagnoseEmptyTemplateSkips() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  deleteTriggerById_(props.getProperty('diagnoseEmptySkipsContinuationTriggerId'));
+  props.deleteProperty('diagnoseEmptySkipsContinuationTriggerId');
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('移行プレビュー');
+  if (!sheet || sheet.getLastRow() < 2) { Logger.log('移行プレビューが空です'); return; }
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var nameCol = header.indexOf('元ファイル名');
+  var urlCol = header.indexOf('元URL');
+  var zubanCol = header.indexOf('図番');
+  var stateCol = header.indexOf('状態');
+
+  var listJson = props.getProperty('diagnoseEmptySkipsTargets');
+  var targets;
+  if (listJson) {
+    targets = JSON.parse(listJson);
+  } else {
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    targets = rows
+      .filter(function (r) { return String(r[stateCol] || '').indexOf('本文なし') !== -1; })
+      .map(function (r) { return { name: r[nameCol], zuban: r[zubanCol], url: r[urlCol] }; });
+    props.setProperty('diagnoseEmptySkipsTargets', JSON.stringify(targets));
+    Logger.log('「本文なし（未使用テンプレート）」件数: ' + targets.length);
+  }
+
+  var cursor = Number(props.getProperty('diagnoseEmptySkipsCursor') || '0');
+  var withPhotosJson = props.getProperty('diagnoseEmptySkipsWithPhotos');
+  var withPhotos = withPhotosJson ? JSON.parse(withPhotosJson) : [];
+  var i;
+  for (i = cursor; i < targets.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
+    var t = targets[i];
+    var m = /\/d\/([^/]+)/.exec(t.url || '');
+    if (!m) continue;
+    try {
+      var count = extractQualityInfoPhotoBlobs_(m[1]).length;
+      if (count > 0) withPhotos.push({ name: t.name, zuban: t.zuban, url: t.url, count: count });
+    } catch (e) {
+      Logger.log('確認失敗(' + t.name + '): ' + e);
+    }
+  }
+
+  if (i < targets.length) {
+    props.setProperty('diagnoseEmptySkipsCursor', String(i));
+    props.setProperty('diagnoseEmptySkipsWithPhotos', JSON.stringify(withPhotos));
+    var trigger = ScriptApp.newTrigger('diagnoseEmptyTemplateSkips').timeBased().after(60 * 1000).create();
+    props.setProperty('diagnoseEmptySkipsContinuationTriggerId', trigger.getUniqueId());
+    Logger.log('実行時間の上限のため中断（' + i + '/' + targets.length + '確認済み。1分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('diagnoseEmptySkipsCursor');
+  props.deleteProperty('diagnoseEmptySkipsTargets');
+  props.deleteProperty('diagnoseEmptySkipsWithPhotos');
+  Logger.log('確認完了（対象' + targets.length + '件）。うち写真が埋め込まれているもの: ' + withPhotos.length + '件');
+  withPhotos.forEach(function (w) {
+    Logger.log('図番=' + w.zuban + ' 写真' + w.count + '枚 ' + w.name + ' ' + w.url);
+  });
+}
