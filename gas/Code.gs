@@ -3080,3 +3080,54 @@ function runMigrateQualityInfo() {
   props.deleteProperty('migrateRunFileList');
   Logger.log('移行完了。新規登録' + inserted + 'ファイル分、スキップ' + skipped + '件（全' + files.length + '件）');
 }
+
+/**
+ * AE48690A01の「品質情報」ファイルを個別に品質情報記録ログへ登録する（2026-09-08、使い捨て）。
+ * このファイルは日付付きの文字ログではなく、外観OK/NG判定基準を写真で示した資料のため、
+ * parseQualityInfoSpreadsheet_の日付検出では本文なし（未使用テンプレート）と判定されて
+ * 通常の移行処理（runMigrateQualityInfo）からスキップされていた（バグではなく、この種類の
+ * ファイルを自動で文章化する仕組みが無いため）。写真は元ファイルから抽出してアップロードし、
+ * 内容は写真の注釈を人手で要約したテキストを1件の投稿として登録する。
+ * 部署は空欄のままにすると「迷子」投稿（過去トラにも部署別タブにも出ない）になるため、
+ * '品証'を明示する。GASエディタで1回だけ実行すること。
+ */
+function registerAE48690A01QualityInfoPhoto() {
+  var fileId = '1MBF_vOAAWp6EO3fymzPTsAbH5jVPSckPYBnterrVdoA';
+  var zuban = 'AE48690A01';
+  var content =
+    '外観判定基準（写真参考資料）\n' +
+    '・φ12部 溶着：NG\n' +
+    '・圧痕：OK（大きめでも打痕でへこんでいればOK、小さめでも打痕から外れていればNG）\n' +
+    '・φ7端面 溶着のひどいもの・キズが深いもの：NG\n' +
+    '・ローレット部圧痕による山の潰れ：NG\n' +
+    '・φ8 -0.006/-0.015部：キズ不可（薄いスリキズはOK）\n' +
+    '・φ8 -0.01/-0.05部：溶着不可\n' +
+    '・黒ずみ：OK\n' +
+    '・細かい粒子状の溶着：OK\n' +
+    '・外径大きく膨らんでいる溶着：NG\n' +
+    '・キズ：この程度はOK（限度見本・NG見本あり）\n' +
+    '・ローレット側の端面：ある程度のキズはOK\n' +
+    '\n' +
+    '抜取りn=5（加工数関係なく）。全検箇所：φ8js5±0.003(2ヶ所) φ8-0.006/-0.015 φ7h6 0/-0.009 ' +
+    'φ8-0.01/-0.05（三次元測定室のキーエンスTM-040にて全検）、6.2±0.05マイクロメータにて全検。';
+
+  var photoUrls = [];
+  try {
+    photoUrls = uploadMigratedPhotos_(zuban, extractQualityInfoPhotoBlobs_(fileId));
+  } catch (e) {
+    Logger.log('写真取得エラー: ' + e);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // 列位置の数え間違いを避けるため、列名で埋める（無い列は空欄のまま）。
+  var fields = {
+    '投稿ID': Utilities.getUuid(), 'タイムスタンプ': new Date(), '図番': zuban, '部署': '品証',
+    '投稿者メール': '', '投稿者名': '(移行データ)', '外観ランク': 'A', '内容': content,
+    '写真URL': photoUrls.join('\n'), '共有フラグ': true, '移行元ファイルID': fileId
+  };
+  var row = header.map(function (name) { return fields.hasOwnProperty(name) ? fields[name] : ''; });
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
+  invalidateZubanCache_(zuban);
+  Logger.log('登録完了。写真' + photoUrls.length + '枚アップロードしました。');
+}
