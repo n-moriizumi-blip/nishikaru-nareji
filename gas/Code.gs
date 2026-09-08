@@ -1863,8 +1863,24 @@ function createZubanFolderIfCompanyKnown_(zuban) {
 }
 
 /**
+ * 図番フォルダ直下の写真サブフォルダを取得する（無ければ新規作成）。
+ * 命名規則を「写真」から「{図番} 写真」に変更した（2026-09-08、ユーザー提案：複数の図番の
+ * 写真フォルダを横断して見た時にどの図番のものか分かりやすくするため）。既存の旧名「写真」
+ * フォルダも引き続き見つけて使う（renameExistingPhotoFoldersToZubanPrefixで一括リネームする
+ * までの間、新しい命名のフォルダを重複して作らないように）。
+ */
+function findOrCreatePhotoFolder_(zubanFolder) {
+  var newName = zubanFolder.getName() + ' 写真';
+  var found = driveFilesList_(
+    "(name = '" + newName.replace(/'/g, "\\'") + "' or name = '写真') and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+  );
+  if (found.length > 0) return DriveApp.getFolderById(found[0].id);
+  return zubanFolder.createFolder(newName);
+}
+
+/**
  * 写真アップロード（③ツール配置メモ・⑤品質情報記録の写真添付欄）。
- * 図番フォルダ（検査記録／社名／図番／）配下の「写真」サブフォルダに保存する。
+ * 図番フォルダ（検査記録／社名／図番／）配下の「{図番} 写真」サブフォルダに保存する。
  * 図番フォルダがまだ存在しない場合は、既存の会社名フォルダが見つかれば自動作成する
  * （createZubanFolderIfCompanyKnown_）。会社名フォルダ自体が見つからない場合はエラーを返す。
  */
@@ -1877,10 +1893,7 @@ function uploadPhoto_(payload) {
   if (!zubanFolder) {
     return { error: 'この図番の検査記録フォルダが見つからず、自動作成もできませんでした（得意先が特定できないか、既存の会社名フォルダが見つかりません）。図番: ' + payload.zuban };
   }
-  var photoFiles = driveFilesList_(
-    "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
-  );
-  var photoFolder = photoFiles.length > 0 ? DriveApp.getFolderById(photoFiles[0].id) : zubanFolder.createFolder('写真');
+  var photoFolder = findOrCreatePhotoFolder_(zubanFolder);
 
   var mimeType = payload.mimeType || 'image/jpeg';
   var bytes = Utilities.base64Decode(payload.dataBase64);
@@ -2911,15 +2924,12 @@ function extractQualityInfoPhotoBlobs_(fileId) {
   return Utilities.unzip(xlsxBlob).filter(function (e) { return e.getName().indexOf('xl/media/') === 0; });
 }
 
-/** 抽出した写真Blobを、通常のアップロード先（図番フォルダ配下の「写真」サブフォルダ）へ保存しURLを返す。 */
+/** 抽出した写真Blobを、通常のアップロード先（図番フォルダ配下の「{図番} 写真」サブフォルダ）へ保存しURLを返す。 */
 function uploadMigratedPhotos_(zuban, blobs) {
   if (blobs.length === 0) return [];
   var zubanFolder = findZubanFolder_(zuban) || createZubanFolderIfCompanyKnown_(zuban);
   if (!zubanFolder) return [];
-  var photoFiles = driveFilesList_(
-    "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
-  );
-  var photoFolder = photoFiles.length > 0 ? DriveApp.getFolderById(photoFiles[0].id) : zubanFolder.createFolder('写真');
+  var photoFolder = findOrCreatePhotoFolder_(zubanFolder);
   return blobs.map(function (blob) { return photoFolder.createFile(blob).getUrl(); });
 }
 
@@ -3130,4 +3140,62 @@ function registerAE48690A01QualityInfoPhoto() {
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, row.length).setValues([row]);
   invalidateZubanCache_(zuban);
   Logger.log('登録完了。写真' + photoUrls.length + '枚アップロードしました。');
+}
+
+/**
+ * 既存の「写真」フォルダを新しい命名規則「{図番} 写真」に一括リネームする（2026-09-08、
+ * ユーザー提案。今後の新規アップロード分はuploadPhoto_/uploadMigratedPhotos_側で対応済み）。
+ * 「写真」という名前のフォルダをDrive全体から検索するとこのアプリと無関係なフォルダまで
+ * 誤って対象にしてしまう恐れがあるため、図番インデックスに載っている図番のフォルダ
+ * （findZubanFolder_で確実に特定できたものだけ）に絞って処理する。GASエディタで実行、
+ * 6分を超える場合は1分後に自動で続きを実行する（refreshZubanIndex等と同じ方式）。
+ */
+function renameExistingPhotoFoldersToZubanPrefix() {
+  var startTime = Date.now();
+  var maxRunMs = 5 * 60 * 1000;
+  var props = PropertiesService.getScriptProperties();
+
+  deleteTriggerById_(props.getProperty('renamePhotoFoldersContinuationTriggerId'));
+  props.deleteProperty('renamePhotoFoldersContinuationTriggerId');
+
+  var zubanSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+  var header = zubanSheet.getRange(1, 1, 1, zubanSheet.getLastColumn()).getValues()[0];
+  var zubanCol = requireColumnIndex_(header, '図番');
+  var rows = zubanSheet.getDataRange().getValues();
+
+  var cursor = Number(props.getProperty('renamePhotoFoldersCursor') || '1');
+  if (cursor < 1 || cursor >= rows.length) cursor = 1;
+
+  var renamed = 0, skipped = 0, notFound = 0;
+  var i;
+  for (i = cursor; i < rows.length; i++) {
+    if (Date.now() - startTime > maxRunMs) break;
+    var zuban = rows[i][zubanCol];
+    if (!zuban) continue;
+    try {
+      var zubanFolder = findZubanFolder_(zuban);
+      if (!zubanFolder) { notFound++; continue; }
+      var photoFolders = driveFilesList_(
+        "name = '写真' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and '" + zubanFolder.getId() + "' in parents"
+      );
+      if (photoFolders.length === 0) { skipped++; continue; }
+      var newName = zubanFolder.getName() + ' 写真';
+      photoFolders.forEach(function (pf) { DriveApp.getFolderById(pf.id).setName(newName); });
+      renamed++;
+    } catch (e) {
+      Logger.log('図番「' + zuban + '」の写真フォルダのリネーム中にエラー（スキップして続行）: ' + e);
+      skipped++;
+    }
+  }
+
+  if (i < rows.length) {
+    props.setProperty('renamePhotoFoldersCursor', String(i));
+    var t = ScriptApp.newTrigger('renameExistingPhotoFoldersToZubanPrefix').timeBased().after(60 * 1000).create();
+    props.setProperty('renamePhotoFoldersContinuationTriggerId', t.getUniqueId());
+    Logger.log('実行時間の上限のため中断（今回' + renamed + '件リネーム、' + i + '/' + (rows.length - 1) + '。1分後に自動で続きを実行します）');
+    return;
+  }
+
+  props.deleteProperty('renamePhotoFoldersCursor');
+  Logger.log('リネーム完了: ' + renamed + '件（写真フォルダ無し' + skipped + '件、図番フォルダ見つからず' + notFound + '件、全' + (rows.length - 1) + '図番）');
 }
