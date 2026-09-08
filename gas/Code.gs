@@ -3270,3 +3270,32 @@ function diagnoseEmptyTemplateSkips() {
     Logger.log('図番=' + w.zuban + ' 写真' + w.count + '枚 ' + w.name + ' ' + w.url);
   });
 }
+
+/**
+ * diagnoseEmptyTemplateSkipsで見つかった写真ベースの品質情報候補（AE48690A01を除く9件）の
+ * 写真だけを先にDriveへアップロードする（2026-09-08、使い捨て）。品質情報記録ログへの登録は
+ * まだ行わない。スプレッドシートに埋め込まれたままの画像は各種読み取りツールで内容を確認
+ * できないため（2026-09-08判明）、単体の画像ファイルとして取り出した上でClaude側から中身を
+ * 確認し、内容を人手で要約してから別途登録する。
+ */
+function uploadEmptyTemplateSkipPhotos() {
+  var targets = [
+    { zuban: '100524', fileId: '1Vb88btFRjmTc8QZEBxdqVjEZQLXuiBunPhLtyQSAg6M' },
+    { zuban: '09940-34531-A', fileId: '1U_USjXP45ZJZqz8ZbL5rfn6e1LatQ0eLpgETul8SuKU' },
+    { zuban: 'H02-000100A', fileId: '1fTLyeDM-fusXYwzoWtuGrJl84n8SG8Ce3lowmXWShCc' },
+    { zuban: '4-33608-03-0', fileId: '1OtLFdW4n-DrDAQ0cLUli2atyxqk2bCNps7m-HW0B154' },
+    { zuban: '100120898-1', fileId: '16jUpfy8CPEVcVU5yZUQhtq1Lxl98Tm3-c0sAPi_bnqg' },
+    { zuban: 'P42181791', fileId: '1ZJdvfQXx4jGNcaF4JQ3FM-ZM2AQIm1UhJ6uu8ndJw5I' },
+    { zuban: 'R7363-02-65760', fileId: '1puWk4cP--wvOBthhCRlYMj5NP7xK9Htri2LC9xI5fks' },
+    { zuban: 'SBE474793', fileId: '1B7EUdJR0IRkvP9viFlRMpRBJI48MNy5Y1MvAimWe-GU' },
+    { zuban: '24734-MJM-D000', fileId: '1UKOlXXwvDmo0fdIsSsz9PhRmhI73_6H3N-TMZAYEbqI' }
+  ];
+  targets.forEach(function (t) {
+    try {
+      var urls = uploadMigratedPhotos_(t.zuban, extractQualityInfoPhotoBlobs_(t.fileId));
+      Logger.log('図番=' + t.zuban + ' ' + urls.length + '枚アップロード: ' + urls.join(' , '));
+    } catch (e) {
+      Logger.log('図番=' + t.zuban + ' 失敗: ' + e);
+    }
+  });
+}
