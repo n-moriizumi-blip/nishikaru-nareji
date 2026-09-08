@@ -1165,8 +1165,10 @@ var TOOL_FIELD_SEED_ = {
 };
 
 /**
- * ツール配置編集画面の「加工種類・メーカー・品番・機械名」の入力補完候補を返す。
+ * ツール配置編集画面の「メーカー・品番・機械名」の入力補完候補を返す。
  * あらかじめ分かっている種（TOOL_FIELD_SEED_）に、実際にこれまで入力された値（重複除去）を足し合わせる。
+ * 加工種類は2026-09-08よりチップではなく固定25種類からの選択式（CATEGORY_MAKER_MAP、index.html側）に
+ * 変更したため、ここでは候補を返さない。
  * マスタデータが無くても、使うほど候補が育っていく（品番は種が無いため入力履歴のみ）。
  */
 function getToolFieldSuggestions_() {
@@ -1176,12 +1178,12 @@ function getToolFieldSuggestions_() {
   if (cached) return JSON.parse(cached);
 
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
-  var result = { '加工種類': [], 'メーカー': [], '品番': [], '機械名': [] };
+  var result = { 'メーカー': [], '品番': [], '機械名': [] };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
   if (lastRow >= 2) {
     var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var cols = {};
-    ['加工種類', 'メーカー', '品番', '機械名'].forEach(function (name) { cols[name] = header.indexOf(name); });
+    ['メーカー', '品番', '機械名'].forEach(function (name) { cols[name] = header.indexOf(name); });
     var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
     Object.keys(cols).forEach(function (name) {
       var col = cols[name];
