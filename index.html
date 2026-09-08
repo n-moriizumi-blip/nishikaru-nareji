@@ -292,7 +292,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.13.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.13.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -2139,10 +2139,16 @@
     var pressed = group.querySelector('.mini-chip[aria-pressed="true"]');
     return pressed ? pressed.textContent : '';
   }
+  // 主軸・取付方式・Y軸位置はミルターン機（機械名がMで始まる、例：M12/M16/M20/M32）だけが
+  // 持つ機能のため、それ以外の機械では編集欄自体を出さない（2026-09-08、ユーザー指摘）。
+  function machineHasSpindleFields_(machineName) {
+    return /^m/i.test(String(machineName || '').trim());
+  }
 
   function renderEditColumn(colKey) {
     var container = document.getElementById('editRows' + capitalize(colKey));
     container.innerHTML = '';
+    var showSpindleFields = machineHasSpindleFields_(selectedMachine);
     toolPositionsState[colKey].forEach(function (row, idx) {
       var div = document.createElement('div');
       div.className = 'tool-edit-row';
@@ -2154,9 +2160,11 @@
         '<div class="row-line">' +
           '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番" name="toolTNumber">' +
         '</div>' +
-        buildMiniChipGroupHtml('spindle', row.spindle) +
-        buildMiniChipGroupHtml('mount', row.mount) +
-        buildMiniChipGroupHtml('yAxis', row.yAxis) +
+        (showSpindleFields ? (
+          buildMiniChipGroupHtml('spindle', row.spindle) +
+          buildMiniChipGroupHtml('mount', row.mount) +
+          buildMiniChipGroupHtml('yAxis', row.yAxis)
+        ) : '') +
         '<div class="row-line">' +
           '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList" name="toolCategory">' +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
@@ -2180,8 +2188,13 @@
 
   function syncColumnFromDom(colKey) {
     var container = document.getElementById('editRows' + capitalize(colKey));
+    var prevArr = toolPositionsState[colKey];
     var arr = [];
-    container.querySelectorAll('.tool-edit-row').forEach(function (row) {
+    container.querySelectorAll('.tool-edit-row').forEach(function (row, idx) {
+      // 主軸・取付方式・Y軸位置の欄が非表示の機械（Mで始まらない機械）では、DOM上に
+      // 入力欄自体が無いため、既存の値をそのまま保持する（誤って空欄で上書きしないため）。
+      var hasSpindleFields = !!row.querySelector('.mini-chip-group[data-field="spindle"]');
+      var prev = prevArr[idx] || {};
       arr.push({
         tNumber: row.querySelector('.tnum').value,
         category: row.querySelector('.rcategory').value,
@@ -2189,9 +2202,9 @@
         shift: row.querySelector('.rshift').value,
         maker: row.querySelector('.rmaker').value,
         partNumber: row.querySelector('.rpartnum').value,
-        spindle: getMiniChipValue(row, 'spindle'),
-        mount: getMiniChipValue(row, 'mount'),
-        yAxis: getMiniChipValue(row, 'yAxis')
+        spindle: hasSpindleFields ? getMiniChipValue(row, 'spindle') : (prev.spindle || ''),
+        mount: hasSpindleFields ? getMiniChipValue(row, 'mount') : (prev.mount || ''),
+        yAxis: hasSpindleFields ? getMiniChipValue(row, 'yAxis') : (prev.yAxis || '')
       });
     });
     toolPositionsState[colKey] = arr;
