@@ -294,7 +294,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.15.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.16.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1841,8 +1841,11 @@
     loadToolFieldSuggestions_();
   }
 
-  // 加工種類・メーカー・品番・機械名の入力補完候補（datalist）。1セッション1回取得すれば十分なため、取得済みなら再取得しない。
+  // 品番・機械名の入力補完候補（datalist）。1セッション1回取得すれば十分なため、取得済みなら再取得しない。
   var toolFieldSuggestionsLoaded = false;
+  // 「加工種類×メーカー」の組み合わせごとに、実際に使われた品番の一覧（"加工種類|||メーカー"がキー）。
+  // マスタ表が無いため、入力履歴から育てる（2026-09-08、ユーザー提案）。
+  var partNumberComboMap = {};
   function loadToolFieldSuggestions_() {
     if (toolFieldSuggestionsLoaded) return;
     toolFieldSuggestionsLoaded = true;
@@ -1857,6 +1860,8 @@
             return '<option value="' + escapeAttr(v) + '">';
           }).join('');
         });
+        partNumberComboMap = res['品番組み合わせ'] || {};
+        refreshAllPartNumberDatalists_();
       })
       .catch(function () { toolFieldSuggestionsLoaded = false; });
   }
@@ -2226,6 +2231,36 @@
   function buildMakerSelectHtml_(selectedValue, category) {
     return '<select class="rmaker" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategory_(category), selectedValue) + '</select>';
   }
+  // 加工種類とメーカーの両方が選ばれていて、かつその組み合わせで過去に使われた品番がある場合だけ、
+  // 品番欄の候補をその品番一覧に絞り込む。実績が無い組み合わせでは絞り込まず全品番候補に戻す
+  // （マスタ表が無く入力履歴から育てる方式のため、2026-09-08）。
+  function updatePartNumberDatalist_(div, listId, category, maker) {
+    var input = div.querySelector('.rpartnum');
+    var combo = (category && maker) ? partNumberComboMap[category + '|||' + maker] : null;
+    var existing = div.querySelector('datalist.rpartnum-list');
+    if (combo && combo.length) {
+      if (!existing) {
+        existing = document.createElement('datalist');
+        existing.className = 'rpartnum-list';
+        existing.id = listId;
+        div.appendChild(existing);
+      }
+      existing.innerHTML = combo.map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join('');
+      input.setAttribute('list', listId);
+    } else {
+      if (existing) existing.innerHTML = '';
+      input.setAttribute('list', 'toolPartNumberList');
+    }
+  }
+  // 品番組み合わせデータが非同期取得で後から届いた時点で、既に表示済みの各行にも反映する。
+  function refreshAllPartNumberDatalists_() {
+    document.querySelectorAll('.tool-edit-row[data-partnum-list-id]').forEach(function (div) {
+      var categorySelect = div.querySelector('.rcategory');
+      var makerSelect = div.querySelector('.rmaker');
+      updatePartNumberDatalist_(div, div.getAttribute('data-partnum-list-id'),
+        categorySelect ? categorySelect.value : '', makerSelect ? makerSelect.value : '');
+    });
+  }
 
   function renderEditColumn(colKey) {
     var container = document.getElementById('editRows' + capitalize(colKey));
@@ -2280,12 +2315,20 @@
           });
         }
       }
+      var partNumListId = 'partNumList_' + colKey + '_' + idx;
+      div.setAttribute('data-partnum-list-id', partNumListId);
+      updatePartNumberDatalist_(div, partNumListId, row.category, row.maker);
       // 加工種類を変えたら、メーカー欄の選択肢もその加工種類の対応メーカーに絞り込み直す
       // （既に選ばれていたメーカーが新しい絞り込みに含まれない場合は、選択肢として残したまま保持する）。
+      // あわせて、加工種類×メーカーの組み合わせが変わるため品番欄の候補も更新する。
       div.querySelector('.rcategory').addEventListener('change', function () {
         var makerSelect = div.querySelector('.rmaker');
         var currentMakerVal = makerSelect.value;
         makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategory_(this.value), currentMakerVal);
+        updatePartNumberDatalist_(div, partNumListId, this.value, currentMakerVal);
+      });
+      div.querySelector('.rmaker').addEventListener('change', function () {
+        updatePartNumberDatalist_(div, partNumListId, div.querySelector('.rcategory').value, this.value);
       });
       container.appendChild(div);
     });

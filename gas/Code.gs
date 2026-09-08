@@ -1170,6 +1170,11 @@ var TOOL_FIELD_SEED_ = {
  * メーカーも同日、加工種類に応じた対応表からの選択式（同じくindex.html側）に変更したため、
  * この2つはここでは候補を返さない。
  * マスタデータが無くても、使うほど候補が育っていく（品番は種が無いため入力履歴のみ）。
+ *
+ * 品番組み合わせ：「加工種類×メーカー」の組み合わせごとに、実際に一緒に使われた品番を学習し、
+ * "加工種類|||メーカー" をキーにした一覧として返す（2026-09-08追加）。品番はメーカーのカタログ品番で
+ * 無数にあり事前にマスタ表を作るのは非現実的なため、ユーザー提案により入力履歴から育てる方式にした。
+ * 該当する組み合わせの実績が無い場合、index.html側は絞り込まず全品番候補を出すフォールバックにする。
  */
 function getToolFieldSuggestions_() {
   var cacheKey = 'toolFieldSuggestions';
@@ -1178,7 +1183,7 @@ function getToolFieldSuggestions_() {
   if (cached) return JSON.parse(cached);
 
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
-  var result = { '品番': [], '機械名': [] };
+  var result = { '品番': [], '機械名': [], '品番組み合わせ': {} };
   var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
   if (lastRow >= 2) {
     var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
@@ -1197,6 +1202,23 @@ function getToolFieldSuggestions_() {
       });
       result[name] = list;
     });
+
+    var categoryCol = header.indexOf('加工種類');
+    var makerCol = header.indexOf('メーカー');
+    var partNumCol = header.indexOf('品番');
+    if (categoryCol !== -1 && makerCol !== -1 && partNumCol !== -1) {
+      var comboMap = {};
+      rows.forEach(function (r) {
+        var cat = String(r[categoryCol] || '').trim();
+        var maker = String(r[makerCol] || '').trim();
+        var pn = String(r[partNumCol] || '').trim();
+        if (!cat || !maker || !pn) return;
+        var key = cat + '|||' + maker;
+        if (!comboMap[key]) comboMap[key] = [];
+        if (comboMap[key].indexOf(pn) === -1) comboMap[key].push(pn);
+      });
+      result['品番組み合わせ'] = comboMap;
+    }
   } else {
     Object.keys(TOOL_FIELD_SEED_).forEach(function (name) { result[name] = TOOL_FIELD_SEED_[name].slice(); });
   }
