@@ -294,7 +294,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.15.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.15.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -503,7 +503,6 @@
           </div>
         </div>
 
-        <datalist id="toolMakerList"></datalist>
         <datalist id="toolPartNumberList"></datalist>
         <div class="tool-edit-grid" id="toolEditGrid">
           <div class="tool-edit-col" id="editColFront">
@@ -1851,7 +1850,7 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) return;
-        var map = { 'メーカー': 'toolMakerList', '品番': 'toolPartNumberList', '機械名': 'machineNameList' };
+        var map = { '品番': 'toolPartNumberList', '機械名': 'machineNameList' };
         Object.keys(map).forEach(function (key) {
           var list = document.getElementById(map[key]);
           list.innerHTML = (res[key] || []).map(function (v) {
@@ -2198,36 +2197,34 @@
     'バリ取りツール': ['ジーベック', 'ミニター']
   };
   var CATEGORY_LIST = Object.keys(CATEGORY_MAKER_MAP);
-  function buildCategorySelectHtml_(selectedValue) {
+  // メーカー全35社（対応表の行順）。加工種類が未選択・対応表に無い場合はこの全社が候補になる。
+  var ALL_MAKERS = [
+    '京セラ', '住友', 'SANDVIK', 'タンガロイ', 'NTK', '三菱', 'イスカル', 'NACHi', 'OSG', 'NS',
+    'GHURING', 'RIKEN', 'S.T.D', 'イワタツール', 'F.P', '栄工舎', 'ヤマワ', '岡部', 'エーワン', 'ハマツール',
+    'S.T.S', '田野井', 'アプリテック', 'MOLDINO', 'ダイジェット', 'カーメックス', 'サイトウ製作所', '三新',
+    'スーパーツール', 'ユニオンツール', 'VARGUS', 'ZEUS', 'シムテック', 'ジーベック', 'ミニター'
+  ];
+  function buildSelectOptionsHtml_(list, selectedValue) {
     var val = selectedValue || '';
-    // 過去データが25種類のどれとも一致しない場合（旧・自由入力時代の値等）は、選択肢を
+    // 過去データが選択肢のどれとも一致しない場合（旧・自由入力時代の値等）は、選択肢を
     // 追加してその値をそのまま保持する（勝手に空欄に変わって保存時に消えてしまわないように）。
-    var extra = (val && CATEGORY_MAKER_MAP[val] === undefined)
+    var extra = (val && list.indexOf(val) === -1)
       ? '<option value="' + escapeAttr(val) + '" selected>' + escapeHtml(val) + '</option>' : '';
-    var options = CATEGORY_LIST.map(function (c) {
-      return '<option value="' + escapeAttr(c) + '"' + (c === val ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+    var options = list.map(function (v) {
+      return '<option value="' + escapeAttr(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
     }).join('');
-    return '<select class="rcategory" name="toolCategory"><option value="">（未選択）</option>' + extra + options + '</select>';
+    return '<option value="">（未選択）</option>' + extra + options;
   }
-  // 加工種類が選ばれている（かつ対応表にある）間は、メーカー欄の候補をその行専用のdatalistに
-  // 差し替える。未選択・対応表に無い加工種類の場合は、共通のtoolMakerList（履歴ベース全候補）に戻す。
-  function updateMakerDatalist_(div, makerListId, category) {
-    var makerInput = div.querySelector('.rmaker');
-    var makers = CATEGORY_MAKER_MAP[category];
-    var existing = div.querySelector('datalist.rmaker-list');
-    if (makers) {
-      if (!existing) {
-        existing = document.createElement('datalist');
-        existing.className = 'rmaker-list';
-        existing.id = makerListId;
-        div.appendChild(existing);
-      }
-      existing.innerHTML = makers.map(function (m) { return '<option value="' + escapeAttr(m) + '">'; }).join('');
-      makerInput.setAttribute('list', makerListId);
-    } else {
-      if (existing) existing.innerHTML = '';
-      makerInput.setAttribute('list', 'toolMakerList');
-    }
+  function buildCategorySelectHtml_(selectedValue) {
+    return '<select class="rcategory" name="toolCategory">' + buildSelectOptionsHtml_(CATEGORY_LIST, selectedValue) + '</select>';
+  }
+  // 加工種類が選ばれている（かつ対応表にある）間は、メーカー欄の選択肢をその加工種類の対応
+  // メーカーだけに絞り込む。未選択・対応表に無い加工種類の場合は全35社を選択肢にする。
+  function makerListForCategory_(category) {
+    return (category && CATEGORY_MAKER_MAP[category]) ? CATEGORY_MAKER_MAP[category] : ALL_MAKERS;
+  }
+  function buildMakerSelectHtml_(selectedValue, category) {
+    return '<select class="rmaker" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategory_(category), selectedValue) + '</select>';
   }
 
   function renderEditColumn(colKey) {
@@ -2264,7 +2261,7 @@
         '</div>' +
         '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報" name="toolDetail">' +
         '<div class="row-line">' +
-          '<input type="text" class="rmaker" value="' + escapeAttr(row.maker) + '" placeholder="メーカー" name="toolMaker">' +
+          buildMakerSelectHtml_(row.maker, row.category) +
           '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList" name="toolPartNumber">' +
         '</div>';
       div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
@@ -2283,10 +2280,12 @@
           });
         }
       }
-      var makerListId = 'makerList_' + colKey + '_' + idx;
-      updateMakerDatalist_(div, makerListId, row.category);
+      // 加工種類を変えたら、メーカー欄の選択肢もその加工種類の対応メーカーに絞り込み直す
+      // （既に選ばれていたメーカーが新しい絞り込みに含まれない場合は、選択肢として残したまま保持する）。
       div.querySelector('.rcategory').addEventListener('change', function () {
-        updateMakerDatalist_(div, makerListId, this.value);
+        var makerSelect = div.querySelector('.rmaker');
+        var currentMakerVal = makerSelect.value;
+        makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategory_(this.value), currentMakerVal);
       });
       container.appendChild(div);
     });
