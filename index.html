@@ -272,11 +272,12 @@
     flex: 1 1 44px; font-family: var(--font-mono); font-weight: 700; text-align: center;
     background: var(--surface-2); color: var(--accent);
   }
+  .tool-edit-row .roffset { flex: 1 1 70px; }
   .tool-edit-row .rcategory { flex: 3 1 90px; }
   .tool-edit-row .rshift { flex: 1 1 56px; }
   .tool-edit-row .rmaker { flex: 1 1 80px; }
   .tool-edit-row .rpartnum { flex: 1 1 80px; }
-  .tool-edit-row .rdetail {
+  .tool-edit-row .rdetail, .tool-edit-row .rmcode {
     width: 100%; min-width: 0; font-family: inherit; font-size: 0.84rem; padding: 8px 8px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
@@ -292,7 +293,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.13.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.14.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1974,16 +1975,19 @@
       grouped[colKey].forEach(function (p) {
         var row = document.createElement('div');
         row.className = 'tool-view-row';
-        // 表示順は① T番・主軸・取付方式・Y軸位置（同じ行） ② 加工種類・シフト ③ 詳細情報 ④ メーカー・品番
-        // （ユーザー提示のレイアウト案の並びに合わせる、2026-09-05）。
-        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
-        var html = '<div class="t-line"><span class="t">' + escapeHtml(String(p['Tナンバー'] || '')) + '</span>' +
+        // 表示順は① T番・オフセットNo.・主軸・取付方式・取付位置/Y軸位置（同じ行） ② 加工種類・シフト
+        // ③ 詳細情報 ④ クーラント ⑤ メーカー・品番（ユーザー提示のレイアウト案の並びに合わせる、2026-09-05〜08）。
+        var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
+        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
+        var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
           (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
         if (p['加工種類'] || p['シフト']) {
           html += '<div class="t-line"><span class="t">' + escapeHtml(String(p['加工種類'] || '')) + '</span>' +
             (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
+        var coolantTags = [p['クーラント種別'] || '', p['Mコード'] || ''].filter(Boolean).join('　');
+        if (coolantTags) html += '<span class="d">クーラント　' + escapeHtml(coolantTags) + '</span>';
         var meta = [p['メーカー'] || '', p['品番'] || ''].filter(Boolean).join('　');
         if (meta) html += '<span class="m">' + escapeHtml(meta) + '</span>';
         row.innerHTML = html;
@@ -2024,9 +2028,10 @@
           .filter(function (p) { return p.column === colKey; })
           .map(function (p) {
             return {
-              tNumber: p.tNumber || '', category: p.category || '', detail: p.detail || '',
+              tNumber: p.tNumber || '', offsetNo: p.offsetNo || '', category: p.category || '', detail: p.detail || '',
               shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || '',
-              spindle: p.spindle || '', mount: p.mount || '', yAxis: p.yAxis || ''
+              spindle: p.spindle || '', mount: p.mount || '', mountPosition: p.mountPosition || '', yAxis: p.yAxis || '',
+              coolantType: p.coolantType || '', mCode: p.mCode || ''
             };
           });
       });
@@ -2061,9 +2066,10 @@
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
           return {
-            tNumber: p['Tナンバー'] || '', category: p['加工種類'] || '', detail: p['詳細情報'] || '',
+            tNumber: p['Tナンバー'] || '', offsetNo: p['オフセットNo.'] || '', category: p['加工種類'] || '', detail: p['詳細情報'] || '',
             shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || '',
-            spindle: p['主軸'] || '', mount: p['取付方式'] || '', yAxis: p['Y軸位置'] || ''
+            spindle: p['主軸'] || '', mount: p['取付方式'] || '', mountPosition: p['取付位置'] || '', yAxis: p['Y軸位置'] || '',
+            coolantType: p['クーラント種別'] || '', mCode: p['Mコード'] || ''
           };
         });
       });
@@ -2112,14 +2118,36 @@
   var TOOL_MINI_CHIP_FIELDS = {
     spindle: { label: '主軸', options: ['正面', '背面'] },
     mount: { label: '取付方式', options: ['シングル', 'ダブル', 'トリプル', '回転', 'クロス', '傾斜', 'クシ歯', 'B軸'] },
-    yAxis: { label: 'Y軸位置', options: ['Y-', 'Y0', 'Y+'] }
+    yAxis: { label: 'Y軸位置', options: ['Y-', 'Y0', 'Y+'] },
+    mountPosition: { label: '取付位置', options: ['上側', '下側'] },
+    coolantType: { label: 'クーラント', options: ['高圧', '中圧'] }
   };
-  function buildMiniChipGroupHtml(field, selectedValue) {
+  function buildMiniChipGroupHtml(field, selectedValue, extraClass) {
     var def = TOOL_MINI_CHIP_FIELDS[field];
     var chipsHtml = def.options.map(function (v) {
       return '<button type="button" class="mini-chip" aria-pressed="' + (selectedValue === v ? 'true' : 'false') + '">' + escapeHtml(v) + '</button>';
     }).join('');
-    return '<div class="mini-chip-group" data-field="' + field + '"><span class="mini-chip-label">' + def.label + '</span>' + chipsHtml + '</div>';
+    return '<div class="mini-chip-group' + (extraClass ? ' ' + extraClass : '') + '" data-field="' + field + '"><span class="mini-chip-label">' + def.label + '</span>' + chipsHtml + '</div>';
+  }
+  // ミルターン機の型式ごとに、主軸系チップの構成が異なる（2026-09-08、ユーザー提案）：
+  // M12/M16/M20＝取付方式「ダブル」の時だけ「取付位置」（上側/下側）を出す。Y軸位置は無し。
+  // M32＝取付方式「ダブル」「トリプル」の時だけ「Y軸位置」を出す。取付位置は無し。
+  function getMachineFamily_(machineName) {
+    var name = String(machineName || '').trim();
+    if (/^m32/i.test(name)) return 'm32';
+    if (/^m(12|16|20)/i.test(name)) return 'm121620';
+    return null;
+  }
+  // 取付方式チップが変わるたびに、取付位置／Y軸位置チップの表示・非表示を切り替える。
+  function updateMountDependentVisibility_(rowEl, family) {
+    var mountVal = getMiniChipValue(rowEl, 'mount');
+    if (family === 'm121620') {
+      var posGroup = rowEl.querySelector('.mini-chip-group[data-field="mountPosition"]');
+      if (posGroup) posGroup.classList.toggle('hidden', mountVal !== 'ダブル');
+    } else if (family === 'm32') {
+      var yGroup = rowEl.querySelector('.mini-chip-group[data-field="yAxis"]');
+      if (yGroup) yGroup.classList.toggle('hidden', mountVal !== 'ダブル' && mountVal !== 'トリプル');
+    }
   }
   function wireMiniChipGroups(rowEl) {
     rowEl.querySelectorAll('.mini-chip-group').forEach(function (group) {
@@ -2139,19 +2167,22 @@
     var pressed = group.querySelector('.mini-chip[aria-pressed="true"]');
     return pressed ? pressed.textContent : '';
   }
-  // 主軸・取付方式・Y軸位置はミルターン機（機械名がMで始まる、例：M12/M16/M20/M32）だけが
-  // 持つ機能のため、それ以外の機械では編集欄自体を出さない（2026-09-08、ユーザー指摘）。
-  function machineHasSpindleFields_(machineName) {
-    return /^m/i.test(String(machineName || '').trim());
-  }
-
   function renderEditColumn(colKey) {
     var container = document.getElementById('editRows' + capitalize(colKey));
     container.innerHTML = '';
-    var showSpindleFields = machineHasSpindleFields_(selectedMachine);
+    var family = getMachineFamily_(selectedMachine);
     toolPositionsState[colKey].forEach(function (row, idx) {
       var div = document.createElement('div');
       div.className = 'tool-edit-row';
+      var spindleMountHtml = '';
+      if (family) {
+        spindleMountHtml = buildMiniChipGroupHtml('spindle', row.spindle) + buildMiniChipGroupHtml('mount', row.mount);
+        if (family === 'm121620') {
+          spindleMountHtml += buildMiniChipGroupHtml('mountPosition', row.mountPosition, row.mount === 'ダブル' ? '' : 'hidden');
+        } else if (family === 'm32') {
+          spindleMountHtml += buildMiniChipGroupHtml('yAxis', row.yAxis, (row.mount === 'ダブル' || row.mount === 'トリプル') ? '' : 'hidden');
+        }
+      }
       div.innerHTML =
         '<div class="row-controls">' +
           '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
@@ -2159,12 +2190,11 @@
         '</div>' +
         '<div class="row-line">' +
           '<input type="text" class="tnum" value="' + escapeAttr(row.tNumber) + '" placeholder="T番" name="toolTNumber">' +
+          '<input type="text" class="roffset" value="' + escapeAttr(row.offsetNo) + '" placeholder="オフセットNo." name="toolOffsetNo">' +
         '</div>' +
-        (showSpindleFields ? (
-          buildMiniChipGroupHtml('spindle', row.spindle) +
-          buildMiniChipGroupHtml('mount', row.mount) +
-          buildMiniChipGroupHtml('yAxis', row.yAxis)
-        ) : '') +
+        spindleMountHtml +
+        buildMiniChipGroupHtml('coolantType', row.coolantType) +
+        '<input type="text" class="rmcode" value="' + escapeAttr(row.mCode) + '" placeholder="Mコード" name="toolMCode">' +
         '<div class="row-line">' +
           '<input type="text" class="rcategory" value="' + escapeAttr(row.category) + '" placeholder="加工種類" list="toolCategoryList" name="toolCategory">' +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
@@ -2182,6 +2212,14 @@
         if (v && !/^t/i.test(v)) this.value = 'T' + v;
       });
       wireMiniChipGroups(div);
+      if (family) {
+        var mountGroup = div.querySelector('.mini-chip-group[data-field="mount"]');
+        if (mountGroup) {
+          mountGroup.querySelectorAll('.mini-chip').forEach(function (chip) {
+            chip.addEventListener('click', function () { updateMountDependentVisibility_(div, family); });
+          });
+        }
+      }
       container.appendChild(div);
     });
   }
@@ -2194,9 +2232,17 @@
       // 主軸・取付方式・Y軸位置の欄が非表示の機械（Mで始まらない機械）では、DOM上に
       // 入力欄自体が無いため、既存の値をそのまま保持する（誤って空欄で上書きしないため）。
       var hasSpindleFields = !!row.querySelector('.mini-chip-group[data-field="spindle"]');
+      var mountPosGroup = row.querySelector('.mini-chip-group[data-field="mountPosition"]');
+      var yAxisGroup = row.querySelector('.mini-chip-group[data-field="yAxis"]');
+      // 取付位置／Y軸位置は、機械（＝グループが無い）だけでなく取付方式の選択（＝css非表示）
+      // でも出し分けているため、非表示中は現在の入力を保存対象にしない（保存すると取付方式を
+      // 変えた後も古い値が残ってしまうため、2026-09-08）。
+      var mountPosVisible = mountPosGroup && !mountPosGroup.classList.contains('hidden');
+      var yAxisVisible = yAxisGroup && !yAxisGroup.classList.contains('hidden');
       var prev = prevArr[idx] || {};
       arr.push({
         tNumber: row.querySelector('.tnum').value,
+        offsetNo: row.querySelector('.roffset').value,
         category: row.querySelector('.rcategory').value,
         detail: row.querySelector('.rdetail').value,
         shift: row.querySelector('.rshift').value,
@@ -2204,7 +2250,10 @@
         partNumber: row.querySelector('.rpartnum').value,
         spindle: hasSpindleFields ? getMiniChipValue(row, 'spindle') : (prev.spindle || ''),
         mount: hasSpindleFields ? getMiniChipValue(row, 'mount') : (prev.mount || ''),
-        yAxis: hasSpindleFields ? getMiniChipValue(row, 'yAxis') : (prev.yAxis || '')
+        mountPosition: mountPosGroup ? (mountPosVisible ? getMiniChipValue(row, 'mountPosition') : '') : (prev.mountPosition || ''),
+        yAxis: yAxisGroup ? (yAxisVisible ? getMiniChipValue(row, 'yAxis') : '') : (prev.yAxis || ''),
+        coolantType: getMiniChipValue(row, 'coolantType'),
+        mCode: row.querySelector('.rmcode').value
       });
     });
     toolPositionsState[colKey] = arr;
@@ -2214,7 +2263,10 @@
     btn.addEventListener('click', function () {
       var colKey = btn.getAttribute('data-col');
       syncColumnFromDom(colKey);
-      toolPositionsState[colKey].push({ tNumber: '', category: '', detail: '', shift: '', maker: '', partNumber: '', spindle: '', mount: '', yAxis: '' });
+      toolPositionsState[colKey].push({
+        tNumber: '', offsetNo: '', category: '', detail: '', shift: '', maker: '', partNumber: '',
+        spindle: '', mount: '', mountPosition: '', yAxis: '', coolantType: '', mCode: ''
+      });
       renderEditColumn(colKey);
     });
   });
@@ -2244,12 +2296,13 @@
     var positions = [];
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       toolPositionsState[colKey].forEach(function (row, idx) {
-        if (!row.tNumber && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber &&
-            !row.spindle && !row.mount && !row.yAxis) return;
+        if (!row.tNumber && !row.offsetNo && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber &&
+            !row.spindle && !row.mount && !row.mountPosition && !row.yAxis && !row.coolantType && !row.mCode) return;
         positions.push({
-          column: colKey, order: idx + 1, tNumber: row.tNumber, category: row.category,
+          column: colKey, order: idx + 1, tNumber: row.tNumber, offsetNo: row.offsetNo, category: row.category,
           detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber,
-          spindle: row.spindle, mount: row.mount, yAxis: row.yAxis
+          spindle: row.spindle, mount: row.mount, mountPosition: row.mountPosition, yAxis: row.yAxis,
+          coolantType: row.coolantType, mCode: row.mCode
         });
       });
     });

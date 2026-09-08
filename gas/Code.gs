@@ -54,8 +54,8 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
-    '図番', '機械名', '列区分', '順番', 'Tナンバー', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
-    '主軸', '取付方式', 'Y軸位置',
+    '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
+    '主軸', '取付方式', '取付位置', 'Y軸位置', 'クーラント種別', 'Mコード',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', 'プログラム番号', '最終更新者メール', '最終更新日時'
   ]);
@@ -1032,9 +1032,10 @@ function saveToolPositions_(payload) {
       sheet.getRange(startRow, 5, positions.length, 1).setNumberFormat('@');
       var rows = positions.map(function (p) {
         return [
-          payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''),
+          payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''), p.offsetNo || '',
           p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
-          p.spindle || '', p.mount || '', p.yAxis || '',
+          p.spindle || '', p.mount || '', p.mountPosition || '', p.yAxis || '',
+          p.coolantType || '', p.mCode || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
           payload.toolStorage || '', payload.forwardPosition || '', payload.programNumber || '',
           identity.email, now
@@ -2624,6 +2625,32 @@ function addToolSpindleMountYAxisColumns() {
   sheet.insertColumnsAfter(insertAt - 1, 3);
   sheet.getRange(1, insertAt, 1, 3).setValues([['主軸', '取付方式', 'Y軸位置']]);
   Logger.log('「主軸」「取付方式」「Y軸位置」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「オフセットNo.」「取付位置」「クーラント種別」「Mコード」列を追加する
+ * （既存シート用、初回のみ手動実行）。2026-09-08、ユーザー要望：
+ * ・オフセットNo.＝Tナンバーの隣（1つのツールで複数番号を使うこともあるため自由入力、全機械共通）
+ * ・取付位置（上側/下側）＝M12/M16/M20で取付方式「ダブル」の時だけ使う項目
+ * ・Y軸位置は既存のまま（M32で取付方式「ダブル」「トリプル」の時だけ使う扱いに変更、列自体は追加不要）
+ * ・クーラント種別（高圧/中圧）・Mコード＝全機械共通
+ * 既存行はいずれも空欄のまま（旧データに記録が無いため）。
+ */
+function addToolOffsetMountPositionCoolantColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  function insertAfter(afterColName, newColName) {
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (header.indexOf(newColName) !== -1) { Logger.log('「' + newColName + '」は追加済みです'); return; }
+    var afterCol = header.indexOf(afterColName);
+    var insertAt = afterCol !== -1 ? afterCol + 2 : sheet.getLastColumn() + 1;
+    sheet.insertColumnAfter(insertAt - 1);
+    sheet.getRange(1, insertAt).setValue(newColName);
+    Logger.log('「' + newColName + '」列を追加しました');
+  }
+  insertAfter('Tナンバー', 'オフセットNo.');
+  insertAfter('取付方式', '取付位置');
+  insertAfter('Y軸位置', 'クーラント種別');
+  insertAfter('クーラント種別', 'Mコード');
 }
 
 /**
