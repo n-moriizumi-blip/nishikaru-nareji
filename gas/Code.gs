@@ -54,7 +54,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
-    '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '加工種類', '詳細情報', 'シフト', 'メーカー', '品番',
+    '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '工具種類', '詳細情報', 'シフト', 'メーカー', '品番',
     '主軸', '取付方式', '取付位置', 'Y軸位置', 'クーラント種別', 'Mコード',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', 'プログラム番号', '最終更新者メール', '最終更新日時'
@@ -1166,13 +1166,13 @@ var TOOL_FIELD_SEED_ = {
 /**
  * ツール配置編集画面の「品番・機械名」の入力補完候補を返す。
  * あらかじめ分かっている種（TOOL_FIELD_SEED_）に、実際にこれまで入力された値（重複除去）を足し合わせる。
- * 加工種類は2026-09-08よりチップではなく固定25種類からの選択式（CATEGORY_MAKER_MAP、index.html側）に、
- * メーカーも同日、加工種類に応じた対応表からの選択式（同じくindex.html側）に変更したため、
- * この2つはここでは候補を返さない。
+ * 工具種類（旧・加工種類、2026-09-10改名）は2026-09-08よりチップではなく固定25種類からの選択式
+ * （CATEGORY_MAKER_MAP、index.html側）に、メーカーも同日、工具種類に応じた対応表からの選択式
+ * （同じくindex.html側）に変更したため、この2つはここでは候補を返さない。
  * マスタデータが無くても、使うほど候補が育っていく（品番は種が無いため入力履歴のみ）。
  *
- * 品番組み合わせ：「加工種類×メーカー」の組み合わせごとに、実際に一緒に使われた品番を学習し、
- * "加工種類|||メーカー" をキーにした一覧として返す（2026-09-08追加）。品番はメーカーのカタログ品番で
+ * 品番組み合わせ：「工具種類×メーカー」の組み合わせごとに、実際に一緒に使われた品番を学習し、
+ * "工具種類|||メーカー" をキーにした一覧として返す（2026-09-08追加）。品番はメーカーのカタログ品番で
  * 無数にあり事前にマスタ表を作るのは非現実的なため、ユーザー提案により入力履歴から育てる方式にした。
  * 該当する組み合わせの実績が無い場合、index.html側は絞り込まず全品番候補を出すフォールバックにする。
  */
@@ -1203,7 +1203,7 @@ function getToolFieldSuggestions_() {
       result[name] = list;
     });
 
-    var categoryCol = header.indexOf('加工種類');
+    var categoryCol = header.indexOf('工具種類');
     var makerCol = header.indexOf('メーカー');
     var partNumCol = header.indexOf('品番');
     if (categoryCol !== -1 && makerCol !== -1 && partNumCol !== -1) {
@@ -1935,8 +1935,8 @@ function ocrToolLayout_(payload) {
     '  "cycleTime": "サイクルタイム",\n' +
     '  "toolStorage": "専用ツール保管（有/無など）",\n' +
     '  "forwardPosition": "前進端位置",\n' +
-    '  "positions": [ {"column": "front", "tNumber": "Tナンバー", "category": "加工種類（例:前挽き(外径)、後挽き(内径)、突切り等）", ' +
-    '"detail": "詳細情報（型番・寸法等、加工種類に当てはまらない補足）", "shift": "シフト（工具のオフセット量・ズレ量）", ' +
+    '  "positions": [ {"column": "front", "tNumber": "Tナンバー", "category": "工具種類（例:前挽き(外径)、後挽き(内径)、突切り等）", ' +
+    '"detail": "詳細情報（型番・寸法等、工具種類に当てはまらない補足）", "shift": "シフト（工具のオフセット量・ズレ量）", ' +
     '"maker": "工具メーカー名", "partNumber": "工具の品番"} ],\n' +
     '  "memo": "上部の変更履歴メモを可能な限りそのまま書き起こしたもの"\n' +
     '}\n\n' +
@@ -3424,4 +3424,23 @@ function registerEmptyTemplateSkipPhotos() {
   Object.keys(zubans).forEach(function (z) { invalidateZubanCache_(z); });
 
   Logger.log('登録完了: ' + rows.length + '件（' + Object.keys(zubans).length + '図番分）');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSの「加工種類」列の見出しを「工具種類」に改名する（既存シート用、初回のみ
+ * 手動実行）。ユーザー要望（2026-09-10）：ツールレイアウトで扱っているのは工具の種類（突切・
+ * ドリル等）であり「加工種類」より「工具種類」の方が実態に合うため。列の位置・中身のデータは
+ * 変更しない、見出しの文字列だけ書き換える。
+ */
+function renameToolCategoryColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var col = header.indexOf('加工種類');
+  if (col === -1) {
+    Logger.log(header.indexOf('工具種類') !== -1 ? '既に「工具種類」に改名済みです' : '「加工種類」列が見つかりません');
+    return;
+  }
+  sheet.getRange(1, col + 1).setValue('工具種類');
+  try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
+  Logger.log('「加工種類」を「工具種類」に改名しました');
 }
