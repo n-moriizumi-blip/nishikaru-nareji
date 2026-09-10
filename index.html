@@ -269,6 +269,7 @@
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
   .tool-edit-row .row-line select { color-scheme: dark; }
+  .tool-edit-row .row-line select.is-placeholder { color: var(--ink-soft); }
   .tool-edit-row .tnum {
     flex: 1 1 44px; font-family: var(--font-mono); font-weight: 700; text-align: center;
     background: var(--surface-2); color: var(--accent);
@@ -294,7 +295,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.17.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.17.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1980,8 +1981,9 @@
         var row = document.createElement('div');
         row.className = 'tool-view-row';
         // 表示順は① T番・オフセットNo.・主軸・取付方式・取付位置/Y軸位置（同じ行） ② 工具種類・シフト
-        // ③ 詳細情報 ④ メーカー・品番（ユーザー提示のレイアウト案の並びに合わせる、2026-09-05〜08。
-        // クーラントは編集画面のみの項目とし閲覧画面には出さない、2026-09-10）。
+        // ③ 詳細情報 ④ クーラント種別・Mコード ⑤ メーカー・品番（ユーザー提示のレイアウト案の並びに合わせる、
+        // 2026-09-05〜08。クーラントは「クーラント」という項目名（ラベル文字）は出さず、他の項目と同じく
+        // 値だけを表示する、2026-09-10）。
         var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
         var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
@@ -1991,6 +1993,8 @@
             (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
+        var coolantTags = [p['クーラント種別'] || '', p['Mコード'] || ''].filter(Boolean).join('　');
+        if (coolantTags) html += '<span class="d">' + escapeHtml(coolantTags) + '</span>';
         var meta = [p['メーカー'] || '', p['品番'] || ''].filter(Boolean).join('　');
         if (meta) html += '<span class="m">' + escapeHtml(meta) + '</span>';
         row.innerHTML = html;
@@ -2221,7 +2225,8 @@
     return '<option value="">' + escapeHtml(blankLabel) + '</option>' + extra + options;
   }
   function buildCategorySelectHtml_(selectedValue) {
-    return '<select class="rcategory" name="toolCategory">' + buildSelectOptionsHtml_(CATEGORY_LIST, selectedValue, '工具種類') + '</select>';
+    var cls = 'rcategory' + (selectedValue ? '' : ' is-placeholder');
+    return '<select class="' + cls + '" name="toolCategory">' + buildSelectOptionsHtml_(CATEGORY_LIST, selectedValue, '工具種類') + '</select>';
   }
   // 工具種類が選ばれている（かつ対応表にある）間は、メーカー欄の選択肢をその工具種類の対応
   // メーカーだけに絞り込む。未選択・対応表に無い工具種類の場合は全35社を選択肢にする。
@@ -2229,7 +2234,13 @@
     return (category && CATEGORY_MAKER_MAP[category]) ? CATEGORY_MAKER_MAP[category] : ALL_MAKERS;
   }
   function buildMakerSelectHtml_(selectedValue, category) {
-    return '<select class="rmaker" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategory_(category), selectedValue, 'メーカー') + '</select>';
+    var cls = 'rmaker' + (selectedValue ? '' : ' is-placeholder');
+    return '<select class="' + cls + '" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategory_(category), selectedValue, 'メーカー') + '</select>';
+  }
+  // 未選択（項目名だけが表示されている状態）の間は他のプレースホルダーと同じ薄いグレーで表示し、
+  // 何か選ぶと通常の文字色に戻す（2026-09-10、ユーザー指摘：選択式に変えた際に色分けが漏れていた）。
+  function updateSelectPlaceholderClass_(select) {
+    select.classList.toggle('is-placeholder', !select.value);
   }
   // 工具種類とメーカーの両方が選ばれていて、かつその組み合わせで過去に使われた品番がある場合だけ、
   // 品番欄の候補をその品番一覧に絞り込む。実績が無い組み合わせでは絞り込まず全品番候補に戻す
@@ -2326,12 +2337,15 @@
       // （既に選ばれていたメーカーが新しい絞り込みに含まれない場合は、選択肢として残したまま保持する）。
       // あわせて、工具種類×メーカーの組み合わせが変わるため品番欄の候補も更新する。
       div.querySelector('.rcategory').addEventListener('change', function () {
+        updateSelectPlaceholderClass_(this);
         var makerSelect = div.querySelector('.rmaker');
         var currentMakerVal = makerSelect.value;
         makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategory_(this.value), currentMakerVal, 'メーカー');
+        updateSelectPlaceholderClass_(makerSelect);
         updatePartNumberDatalist_(div, partNumListId, this.value, currentMakerVal);
       });
       div.querySelector('.rmaker').addEventListener('change', function () {
+        updateSelectPlaceholderClass_(this);
         updatePartNumberDatalist_(div, partNumListId, div.querySelector('.rcategory').value, this.value);
       });
       container.appendChild(div);
