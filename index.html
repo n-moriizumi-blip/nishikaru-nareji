@@ -270,6 +270,9 @@
   }
   .tool-edit-row .row-line select { color-scheme: dark; }
   .tool-edit-row .row-line select.is-placeholder { color: var(--ink-soft); }
+  /* テキスト欄のプレースホルダーはブラウザ既定色のままだとselect側の--ink-soft指定と
+     微妙に色がズレるため、同じ色に揃える（2026-09-10、ユーザー指摘）。 */
+  .tool-edit-row input::placeholder { color: var(--ink-soft); opacity: 1; }
   .tool-edit-row .tnum {
     flex: 1 1 44px; font-family: var(--font-mono); font-weight: 700; text-align: center;
     background: var(--surface-2); color: var(--accent);
@@ -295,7 +298,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.17.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.17.2</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
