@@ -55,9 +55,9 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
     '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '工具種類', '工具種類詳細', '詳細情報', 'シフト', 'メーカー', '品番',
-    '主軸', '取付方式', '取付位置', 'Y軸位置', 'クーラント種別', 'Mコード',
+    '主軸', '取付方式', '取付位置', 'Y軸位置', '突切方向', '突切刃形', 'クーラント種別', 'Mコード',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
-    '専用ツール保管', '前進端位置', 'プログラム番号', '最終更新者メール', '最終更新日時'
+    '専用ツール保管', '前進端位置', 'プログラム番号（メイン）', 'プログラム番号（サブ）', '最終更新者メール', '最終更新日時'
   ]);
 
   ensureSheet_(ss, SHEET_SHIPPING_SPEC, [
@@ -1035,9 +1035,10 @@ function saveToolPositions_(payload) {
           payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''), p.offsetNo || '',
           p.category || '', p.subCategory || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
           p.spindle || '', p.mount || '', p.mountPosition || '', p.yAxis || '',
+          p.cutoffDirection || '', p.cutoffBladeType || '',
           p.coolantType || '', p.mCode || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
-          payload.toolStorage || '', payload.forwardPosition || '', payload.programNumber || '',
+          payload.toolStorage || '', payload.forwardPosition || '', payload.programNumber || '', payload.programNumberSub || '',
           identity.email, now
         ];
       });
@@ -2706,6 +2707,31 @@ function addToolProgramNumberColumn() {
 }
 
 /**
+ * SHEET_TOOL_POSITIONSの「プログラム番号」列を「プログラム番号（メイン）」に改名し、
+ * その直後に「プログラム番号（サブ）」列を追加する（既存シート用、初回のみ手動実行）。
+ * ユーザー要望（2026-09-12）：メインと同じ場所にサブのプログラム番号も入力したい。
+ */
+function renameAndAddProgramNumberSubColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var oldCol = header.indexOf('プログラム番号');
+  if (oldCol !== -1) {
+    sheet.getRange(1, oldCol + 1).setValue('プログラム番号（メイン）');
+    Logger.log('「プログラム番号」を「プログラム番号（メイン）」に改名しました');
+    header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  } else if (header.indexOf('プログラム番号（メイン）') === -1) {
+    Logger.log('「プログラム番号」列が見つかりません');
+    return;
+  }
+  if (header.indexOf('プログラム番号（サブ）') !== -1) { Logger.log('「プログラム番号（サブ）」は追加済みです'); return; }
+  var mainCol = header.indexOf('プログラム番号（メイン）');
+  var insertAt = mainCol + 2; // メインの直後（1始まり列番号）
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('プログラム番号（サブ）');
+  Logger.log('「プログラム番号（サブ）」列を追加しました');
+}
+
+/**
  * SHEET_TOOL_MEMOに「機械名」列を追加する（既存シート用、初回のみ手動実行）。
  * ツール配置ポジションと同じく、機械（NC旋盤）ごとに別々のメモとして扱えるようにする
  * （2026-09-07、ユーザー指摘：機械タブを切り替えても同じメモが表示されてしまう不具合への対応）。
@@ -3461,4 +3487,20 @@ function addToolSubCategoryColumn() {
   sheet.getRange(1, insertAt).setValue('工具種類詳細');
   try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
   Logger.log('「工具種類詳細」列を追加しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「突切方向」「突切刃形」列を追加する（既存シート用、初回のみ手動実行）。
+ * 工具種類が「突切」の時だけ選ぶ2項目（方向＝右/左、刃形＝N/勝手付）を追加するため
+ * （2026-09-12、ユーザー要望）。「Y軸位置」列の直後に追加、既存行は空欄のまま。
+ */
+function addToolCutoffFieldsColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('突切方向') !== -1) { Logger.log('「突切方向」等は追加済みです'); return; }
+  var afterCol = header.indexOf('Y軸位置');
+  var insertAt = afterCol !== -1 ? afterCol + 2 : sheet.getLastColumn() + 1;
+  sheet.insertColumnsAfter(insertAt - 1, 2);
+  sheet.getRange(1, insertAt, 1, 2).setValues([['突切方向', '突切刃形']]);
+  Logger.log('「突切方向」「突切刃形」列を追加しました');
 }

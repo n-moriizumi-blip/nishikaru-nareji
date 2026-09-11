@@ -295,7 +295,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.19.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -527,7 +527,8 @@
         <div class="mini-grid" style="margin-top:10px;">
           <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
           <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
-          <div class="mini-field"><label>プログラム番号</label><input type="text" id="programNumberInput"></div>
+          <div class="mini-field"><label>プログラム番号（メイン）</label><input type="text" id="programNumberInput"></div>
+          <div class="mini-field"><label>プログラム番号（サブ）</label><input type="text" id="programNumberSubInput"></div>
         </div>
 
         <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
@@ -1986,7 +1987,7 @@
         // 2026-09-05〜08。クーラントは「クーラント」という項目名（ラベル文字）は出さず、他の項目と同じく
         // 値だけを表示する、2026-09-10）。
         var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
-        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
+        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || '', p['突切方向'] || '', p['突切刃形'] || ''].filter(Boolean).join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
           (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
         var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
@@ -2008,10 +2009,12 @@
     specWrap.innerHTML = '';
     var storage = firstPositionValue(myPositions, '専用ツール保管');
     var forwardPos = firstPositionValue(myPositions, '前進端位置');
-    var programNumber = firstPositionValue(myPositions, 'プログラム番号');
+    var programNumber = firstPositionValue(myPositions, 'プログラム番号（メイン）');
+    var programNumberSub = firstPositionValue(myPositions, 'プログラム番号（サブ）');
     if (storage) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">専用ツール保管　<b>' + escapeHtml(storage) + '</b></div>');
     if (forwardPos) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">前進端位置　<b>' + escapeHtml(forwardPos) + '</b></div>');
-    if (programNumber) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">プログラム番号　<b>' + escapeHtml(programNumber) + '</b></div>');
+    if (programNumber) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">プログラム番号（メイン）　<b>' + escapeHtml(programNumber) + '</b></div>');
+    if (programNumberSub) specWrap.insertAdjacentHTML('beforeend', '<div class="spec-item">プログラム番号（サブ）　<b>' + escapeHtml(programNumberSub) + '</b></div>');
   }
 
   document.getElementById('toolViewToggle').addEventListener('click', function () {
@@ -2040,7 +2043,8 @@
               tNumber: p.tNumber || '', offsetNo: p.offsetNo || '', category: p.category || '', subCategory: p.subCategory || '', detail: p.detail || '',
               shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || '',
               spindle: p.spindle || '', mount: p.mount || '', mountPosition: p.mountPosition || '', yAxis: p.yAxis || '',
-              coolantType: p.coolantType || '', mCode: p.mCode || ''
+              coolantType: p.coolantType || '', mCode: p.mCode || '',
+              cutoffDirection: p.cutoffDirection || '', cutoffBladeType: p.cutoffBladeType || ''
             };
           });
       });
@@ -2050,6 +2054,7 @@
       document.getElementById('toolStorageInput').value = ocrData.toolStorage || '';
       document.getElementById('forwardPositionInput').value = ocrData.forwardPosition || '';
       document.getElementById('programNumberInput').value = ocrData.programNumber || '';
+      document.getElementById('programNumberSubInput').value = ocrData.programNumberSub || '';
       var memoEl = document.getElementById('toolMemoNew');
       memoEl.value = ocrData.memo || '';
       memoEl.style.height = 'auto';
@@ -2078,7 +2083,8 @@
             tNumber: p['Tナンバー'] || '', offsetNo: p['オフセットNo.'] || '', category: p['工具種類'] || '', subCategory: p['工具種類詳細'] || '', detail: p['詳細情報'] || '',
             shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || '',
             spindle: p['主軸'] || '', mount: p['取付方式'] || '', mountPosition: p['取付位置'] || '', yAxis: p['Y軸位置'] || '',
-            coolantType: p['クーラント種別'] || '', mCode: p['Mコード'] || ''
+            coolantType: p['クーラント種別'] || '', mCode: p['Mコード'] || '',
+            cutoffDirection: p['突切方向'] || '', cutoffBladeType: p['突切刃形'] || ''
           };
         });
       });
@@ -2087,7 +2093,8 @@
       document.getElementById('cycleTimeInput').value = firstPositionValue(myPositions, 'サイクルタイム');
       document.getElementById('toolStorageInput').value = firstPositionValue(myPositions, '専用ツール保管');
       document.getElementById('forwardPositionInput').value = firstPositionValue(myPositions, '前進端位置');
-      document.getElementById('programNumberInput').value = firstPositionValue(myPositions, 'プログラム番号');
+      document.getElementById('programNumberInput').value = firstPositionValue(myPositions, 'プログラム番号（メイン）');
+      document.getElementById('programNumberSubInput').value = firstPositionValue(myPositions, 'プログラム番号（サブ）');
       document.getElementById('toolMemoTitleNew').value = '';
       document.getElementById('toolMemoNew').value = '';
 
@@ -2129,7 +2136,10 @@
     mount: { label: '取付方式', options: ['シングル', 'ダブル', 'トリプル', '回転', 'クロス', '傾斜', 'クシ歯', 'B軸'] },
     yAxis: { label: 'Y軸位置', options: ['Y-', 'Y0', 'Y+'] },
     mountPosition: { label: '取付位置', options: ['上側', '下側'] },
-    coolantType: { label: 'クーラント', options: ['高圧', '中圧'] }
+    coolantType: { label: 'クーラント', options: ['高圧', '中圧'] },
+    // 工具種類が「突切」の時だけ表示する2項目（2026-09-12、ユーザー要望）。
+    cutoffDirection: { label: '方向', options: ['右', '左'] },
+    cutoffBladeType: { label: '刃形', options: ['N', '勝手付'] }
   };
   function buildMiniChipGroupHtml(field, selectedValue, extraClass) {
     var def = TOOL_MINI_CHIP_FIELDS[field];
@@ -2304,6 +2314,16 @@
     if (!subtypes) input.value = '';
     datalist.innerHTML = (subtypes || []).map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join('');
   }
+  // 工具種類を変えた時に、「方向」「刃形」欄（突切専用）の表示・非表示を切り替える
+  // （2026-09-12、ユーザー要望）。突切以外に変えた場合は選択を保持したまま隠すだけにする
+  // （他の隠しフィールドと同じ扱い。保存時にsyncColumnFromDomが非表示なら空欄にする）。
+  function updateCutoffFieldsVisibility_(div, category) {
+    var isCutoff = category === '突切';
+    ['cutoffDirection', 'cutoffBladeType'].forEach(function (field) {
+      var group = div.querySelector('.mini-chip-group[data-field="' + field + '"]');
+      if (group) group.classList.toggle('hidden', !isCutoff);
+    });
+  }
   // 工具種類とメーカーの両方が選ばれていて、かつその組み合わせで過去に使われた品番がある場合だけ、
   // 品番欄の候補をその品番一覧に絞り込む。実績が無い組み合わせでは絞り込まず全品番候補に戻す
   // （マスタ表が無く入力履歴から育てる方式のため、2026-09-08）。
@@ -2353,6 +2373,9 @@
       }
       var subCatListId = 'subCatList_' + colKey + '_' + idx;
       var makerListId = 'makerList_' + colKey + '_' + idx;
+      var isCutoff = row.category === '突切';
+      var cutoffHtml = buildMiniChipGroupHtml('cutoffDirection', row.cutoffDirection, isCutoff ? '' : 'hidden') +
+        buildMiniChipGroupHtml('cutoffBladeType', row.cutoffBladeType, isCutoff ? '' : 'hidden');
       div.innerHTML =
         '<div class="row-controls">' +
           '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
@@ -2369,6 +2392,7 @@
           buildCategoryFieldHtml_(row.category) +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
         '</div>' +
+        cutoffHtml +
         buildSubCategoryFieldHtml_(row.category, row.subCategory, subCatListId) +
         '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報" name="toolDetail">' +
         '<div class="row-line">' +
@@ -2379,6 +2403,10 @@
       div.querySelector('[data-act="down"]').addEventListener('click', function () { moveRow(colKey, idx, 1); });
       div.querySelector('.row-remove').addEventListener('click', function () { removeRow(colKey, idx); });
       div.querySelector('.tnum').addEventListener('blur', function () {
+        var v = this.value.trim();
+        if (v && !/^t/i.test(v)) this.value = 'T' + v;
+      });
+      div.querySelector('.roffset').addEventListener('blur', function () {
         var v = this.value.trim();
         if (v && !/^t/i.test(v)) this.value = 'T' + v;
       });
@@ -2402,6 +2430,7 @@
       // 工具種類×詳細工具種類の対応メーカーに絞り込み直す。あわせて品番欄の候補も更新する。
       div.querySelector('.rcategory').addEventListener('change', function () {
         updateSubCategoryField_(div, subCatListId, this.value);
+        updateCutoffFieldsVisibility_(div, this.value);
         var subVal = div.querySelector('.rsubcategory').value;
         updateMakerFieldOptions_(div, makerListId, this.value, subVal);
         updatePartNumberDatalist_(div, partNumListId, this.value, div.querySelector('.rmaker').value);
@@ -2432,6 +2461,11 @@
       // 変えた後も古い値が残ってしまうため、2026-09-08）。
       var mountPosVisible = mountPosGroup && !mountPosGroup.classList.contains('hidden');
       var yAxisVisible = yAxisGroup && !yAxisGroup.classList.contains('hidden');
+      // 方向・刃形（突切専用）は行によらず常にDOM上に存在し、工具種類が突切の時だけhiddenを外す
+      // 方式のため、非表示中は現在のチップ状態を保存対象にしない（工具種類を変えた後も古い
+      // 選択が残らないように、2026-09-12）。
+      var cutoffGroup = row.querySelector('.mini-chip-group[data-field="cutoffDirection"]');
+      var cutoffVisible = cutoffGroup && !cutoffGroup.classList.contains('hidden');
       var prev = prevArr[idx] || {};
       arr.push({
         tNumber: row.querySelector('.tnum').value,
@@ -2447,7 +2481,9 @@
         mountPosition: mountPosGroup ? (mountPosVisible ? getMiniChipValue(row, 'mountPosition') : '') : (prev.mountPosition || ''),
         yAxis: yAxisGroup ? (yAxisVisible ? getMiniChipValue(row, 'yAxis') : '') : (prev.yAxis || ''),
         coolantType: getMiniChipValue(row, 'coolantType'),
-        mCode: row.querySelector('.rmcode').value
+        mCode: row.querySelector('.rmcode').value,
+        cutoffDirection: cutoffVisible ? getMiniChipValue(row, 'cutoffDirection') : '',
+        cutoffBladeType: cutoffVisible ? getMiniChipValue(row, 'cutoffBladeType') : ''
       });
     });
     toolPositionsState[colKey] = arr;
@@ -2459,7 +2495,8 @@
       syncColumnFromDom(colKey);
       toolPositionsState[colKey].push({
         tNumber: '', offsetNo: '', category: '', subCategory: '', detail: '', shift: '', maker: '', partNumber: '',
-        spindle: '', mount: '', mountPosition: '', yAxis: '', coolantType: '', mCode: ''
+        spindle: '', mount: '', mountPosition: '', yAxis: '', coolantType: '', mCode: '',
+        cutoffDirection: '', cutoffBladeType: ''
       });
       renderEditColumn(colKey);
     });
@@ -2491,12 +2528,14 @@
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       toolPositionsState[colKey].forEach(function (row, idx) {
         if (!row.tNumber && !row.offsetNo && !row.category && !row.subCategory && !row.detail && !row.shift && !row.maker && !row.partNumber &&
-            !row.spindle && !row.mount && !row.mountPosition && !row.yAxis && !row.coolantType && !row.mCode) return;
+            !row.spindle && !row.mount && !row.mountPosition && !row.yAxis && !row.coolantType && !row.mCode &&
+            !row.cutoffDirection && !row.cutoffBladeType) return;
         positions.push({
           column: colKey, order: idx + 1, tNumber: row.tNumber, offsetNo: row.offsetNo, category: row.category,
           subCategory: row.subCategory, detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber,
           spindle: row.spindle, mount: row.mount, mountPosition: row.mountPosition, yAxis: row.yAxis,
-          coolantType: row.coolantType, mCode: row.mCode
+          coolantType: row.coolantType, mCode: row.mCode,
+          cutoffDirection: row.cutoffDirection, cutoffBladeType: row.cutoffBladeType
         });
       });
     });
@@ -2512,6 +2551,7 @@
       toolStorage: document.getElementById('toolStorageInput').value,
       forwardPosition: document.getElementById('forwardPositionInput').value,
       programNumber: document.getElementById('programNumberInput').value,
+      programNumberSub: document.getElementById('programNumberSubInput').value,
       idToken: currentUser.idToken
     };
 
