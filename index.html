@@ -268,10 +268,6 @@
     min-width: 0; font-family: inherit; font-size: 0.82rem; padding: 8px 7px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
-  .tool-edit-row .row-line select { color-scheme: dark; }
-  .tool-edit-row .row-line select.is-placeholder { color: var(--ink-soft); }
-  /* テキスト欄のプレースホルダーはブラウザ既定色のままだとselect側の--ink-soft指定と
-     微妙に色がズレるため、同じ色に揃える（2026-09-10、ユーザー指摘）。 */
   .tool-edit-row input::placeholder { color: var(--ink-soft); opacity: 1; }
   .tool-edit-row .tnum {
     flex: 1 1 44px; font-family: var(--font-mono); font-weight: 700; text-align: center;
@@ -299,7 +295,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.18.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.19.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -508,6 +504,7 @@
           </div>
         </div>
 
+        <datalist id="toolCategoryList"></datalist>
         <datalist id="toolPartNumberList"></datalist>
         <div class="tool-edit-grid" id="toolEditGrid">
           <div class="tool-edit-col" id="editColFront">
@@ -2209,6 +2206,10 @@
     'バリ取りツール': ['ジーベック', 'ミニター']
   };
   var CATEGORY_LIST = Object.keys(CATEGORY_MAKER_MAP);
+  // 工具種類の候補は行によらず固定のため、共通の1つのdatalistに一度だけ入れておく。
+  document.getElementById('toolCategoryList').innerHTML = CATEGORY_LIST.map(function (v) {
+    return '<option value="' + escapeAttr(v) + '">';
+  }).join('');
   // メーカー全37社（対応表の行順）。工具種類が未選択・対応表に無い場合はこの全社が候補になる。
   var ALL_MAKERS = [
     '京セラ', 'OSG', 'NTK', '三菱', '住友', 'NS', 'SANDVIK', 'タンガロイ', 'イスカル', 'NACHi',
@@ -2243,25 +2244,15 @@
     '特殊工具|||内径特殊': ['エーワン', 'ハマツール'],
     '特殊工具|||外径特殊': ['エーワン', 'ハマツール']
   };
-  // 未選択時は他の項目（T番・シフト等のプレースホルダー）と同じように項目名そのものを表示する
-  // （2026-09-10、以前は「（未選択）」という固定文言だったが他の欄と表記が揃っていなかった）。
-  function buildSelectOptionsHtml_(list, selectedValue, blankLabel) {
-    var val = selectedValue || '';
-    // 過去データが選択肢のどれとも一致しない場合（旧・自由入力時代の値等）は、選択肢を
-    // 追加してその値をそのまま保持する（勝手に空欄に変わって保存時に消えてしまわないように）。
-    var extra = (val && list.indexOf(val) === -1)
-      ? '<option value="' + escapeAttr(val) + '" selected>' + escapeHtml(val) + '</option>' : '';
-    var options = list.map(function (v) {
-      return '<option value="' + escapeAttr(v) + '"' + (v === val ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
-    }).join('');
-    return '<option value="">' + escapeHtml(blankLabel) + '</option>' + extra + options;
+  // 工具種類欄。表がまだ育っている途中のため候補からの選択に加えて自由入力も許す
+  // （2026-09-11、ユーザー要望で選択式から変更。品番・工具種類詳細と同じinput+datalist方式）。
+  // 候補は固定23種類で行によらず同じため、共通の1つのdatalistを使い回す。
+  function buildCategoryFieldHtml_(selectedValue) {
+    return '<input type="text" class="rcategory" value="' + escapeAttr(selectedValue) +
+      '" placeholder="工具種類" list="toolCategoryList" name="toolCategory">';
   }
-  function buildCategorySelectHtml_(selectedValue) {
-    var cls = 'rcategory' + (selectedValue ? '' : ' is-placeholder');
-    return '<select class="' + cls + '" name="toolCategory">' + buildSelectOptionsHtml_(CATEGORY_LIST, selectedValue, '工具種類') + '</select>';
-  }
-  // 工具種類が選ばれている（かつ対応表にある）間は、メーカー欄の選択肢をその工具種類の対応
-  // メーカーだけに絞り込む。未選択・対応表に無い工具種類の場合は全37社を選択肢にする。
+  // 工具種類が選ばれている（かつ対応表にある）間は、メーカー欄の候補をその工具種類の対応
+  // メーカーだけに絞り込む。未選択・対応表に無い工具種類の場合は全37社が候補になる。
   function makerListForCategory_(category) {
     return (category && CATEGORY_MAKER_MAP[category]) ? CATEGORY_MAKER_MAP[category] : ALL_MAKERS;
   }
@@ -2274,9 +2265,23 @@
     }
     return makerListForCategory_(category);
   }
-  function buildMakerSelectHtml_(selectedValue, category, subCategory) {
-    var cls = 'rmaker' + (selectedValue ? '' : ' is-placeholder');
-    return '<select class="' + cls + '" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategoryAndSub_(category, subCategory), selectedValue, 'メーカー') + '</select>';
+  // メーカー欄も工具種類・詳細工具種類と同じく選択+自由入力（2026-09-11、ユーザー要望）。
+  // 候補は工具種類・詳細工具種類の組み合わせで変わるため、品番欄と同様に行ごとのdatalistを使う。
+  function buildMakerFieldHtml_(selectedValue, category, subCategory, listId) {
+    var options = makerListForCategoryAndSub_(category, subCategory).map(function (v) {
+      return '<option value="' + escapeAttr(v) + '">';
+    }).join('');
+    return '<input type="text" class="rmaker" value="' + escapeAttr(selectedValue) +
+      '" placeholder="メーカー" list="' + listId + '" name="toolMaker">' +
+      '<datalist id="' + listId + '">' + options + '</datalist>';
+  }
+  // 工具種類・詳細工具種類が変わった時に、メーカー欄の候補（datalist）を絞り込み直す。
+  function updateMakerFieldOptions_(div, listId, category, subCategory) {
+    var datalist = div.querySelector('#' + listId);
+    var options = makerListForCategoryAndSub_(category, subCategory).map(function (v) {
+      return '<option value="' + escapeAttr(v) + '">';
+    }).join('');
+    datalist.innerHTML = options;
   }
   // 内径・エンドミル・ドリル・特殊工具の詳細工具種類欄。候補からの選択に加えて自由入力も許す
   // （品番欄と同じ方式）ため、input+datalistで実装する（2026-09-11）。
@@ -2298,11 +2303,6 @@
     wrap.classList.toggle('hidden', !subtypes);
     if (!subtypes) input.value = '';
     datalist.innerHTML = (subtypes || []).map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join('');
-  }
-  // 未選択（項目名だけが表示されている状態）の間は他のプレースホルダーと同じ薄いグレーで表示し、
-  // 何か選ぶと通常の文字色に戻す（2026-09-10、ユーザー指摘：選択式に変えた際に色分けが漏れていた）。
-  function updateSelectPlaceholderClass_(select) {
-    select.classList.toggle('is-placeholder', !select.value);
   }
   // 工具種類とメーカーの両方が選ばれていて、かつその組み合わせで過去に使われた品番がある場合だけ、
   // 品番欄の候補をその品番一覧に絞り込む。実績が無い組み合わせでは絞り込まず全品番候補に戻す
@@ -2328,10 +2328,10 @@
   // 品番組み合わせデータが非同期取得で後から届いた時点で、既に表示済みの各行にも反映する。
   function refreshAllPartNumberDatalists_() {
     document.querySelectorAll('.tool-edit-row[data-partnum-list-id]').forEach(function (div) {
-      var categorySelect = div.querySelector('.rcategory');
-      var makerSelect = div.querySelector('.rmaker');
+      var categoryInput = div.querySelector('.rcategory');
+      var makerInput = div.querySelector('.rmaker');
       updatePartNumberDatalist_(div, div.getAttribute('data-partnum-list-id'),
-        categorySelect ? categorySelect.value : '', makerSelect ? makerSelect.value : '');
+        categoryInput ? categoryInput.value : '', makerInput ? makerInput.value : '');
     });
   }
 
@@ -2352,6 +2352,7 @@
         }
       }
       var subCatListId = 'subCatList_' + colKey + '_' + idx;
+      var makerListId = 'makerList_' + colKey + '_' + idx;
       div.innerHTML =
         '<div class="row-controls">' +
           '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
@@ -2365,13 +2366,13 @@
         buildMiniChipGroupHtml('coolantType', row.coolantType) +
         '<input type="text" class="rmcode" value="' + escapeAttr(row.mCode) + '" placeholder="Mコード" name="toolMCode">' +
         '<div class="row-line">' +
-          buildCategorySelectHtml_(row.category) +
+          buildCategoryFieldHtml_(row.category) +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
         '</div>' +
         buildSubCategoryFieldHtml_(row.category, row.subCategory, subCatListId) +
         '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報" name="toolDetail">' +
         '<div class="row-line">' +
-          buildMakerSelectHtml_(row.maker, row.category, row.subCategory) +
+          buildMakerFieldHtml_(row.maker, row.category, row.subCategory, makerListId) +
           '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList" name="toolPartNumber">' +
         '</div>';
       div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
@@ -2397,30 +2398,19 @@
       var partNumListId = 'partNumList_' + colKey + '_' + idx;
       div.setAttribute('data-partnum-list-id', partNumListId);
       updatePartNumberDatalist_(div, partNumListId, row.category, row.maker);
-      // 工具種類を変えたら、詳細工具種類欄の表示・候補を更新し、メーカー欄の選択肢もその時点の
-      // 工具種類×詳細工具種類の対応メーカーに絞り込み直す（既に選ばれていたメーカーが新しい
-      // 絞り込みに含まれない場合は、選択肢として残したまま保持する）。
-      // あわせて、組み合わせが変わるため品番欄の候補も更新する。
+      // 工具種類を変えたら、詳細工具種類欄の表示・候補を更新し、メーカー欄の候補もその時点の
+      // 工具種類×詳細工具種類の対応メーカーに絞り込み直す。あわせて品番欄の候補も更新する。
       div.querySelector('.rcategory').addEventListener('change', function () {
-        updateSelectPlaceholderClass_(this);
         updateSubCategoryField_(div, subCatListId, this.value);
-        var makerSelect = div.querySelector('.rmaker');
-        var currentMakerVal = makerSelect.value;
         var subVal = div.querySelector('.rsubcategory').value;
-        makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategoryAndSub_(this.value, subVal), currentMakerVal, 'メーカー');
-        updateSelectPlaceholderClass_(makerSelect);
-        updatePartNumberDatalist_(div, partNumListId, this.value, currentMakerVal);
+        updateMakerFieldOptions_(div, makerListId, this.value, subVal);
+        updatePartNumberDatalist_(div, partNumListId, this.value, div.querySelector('.rmaker').value);
       });
       // 詳細工具種類を変えたら（候補選択・自由入力どちらでも）、メーカー欄の絞り込みを更新する。
       div.querySelector('.rsubcategory').addEventListener('change', function () {
-        var makerSelect = div.querySelector('.rmaker');
-        var currentMakerVal = makerSelect.value;
-        makerSelect.innerHTML = buildSelectOptionsHtml_(
-          makerListForCategoryAndSub_(div.querySelector('.rcategory').value, this.value), currentMakerVal, 'メーカー');
-        updateSelectPlaceholderClass_(makerSelect);
+        updateMakerFieldOptions_(div, makerListId, div.querySelector('.rcategory').value, this.value);
       });
       div.querySelector('.rmaker').addEventListener('change', function () {
-        updateSelectPlaceholderClass_(this);
         updatePartNumberDatalist_(div, partNumListId, div.querySelector('.rcategory').value, this.value);
       });
       container.appendChild(div);
