@@ -54,7 +54,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
-    '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '工具種類', '詳細情報', 'シフト', 'メーカー', '品番',
+    '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '工具種類', '工具種類詳細', '詳細情報', 'シフト', 'メーカー', '品番',
     '主軸', '取付方式', '取付位置', 'Y軸位置', 'クーラント種別', 'Mコード',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
     '専用ツール保管', '前進端位置', 'プログラム番号', '最終更新者メール', '最終更新日時'
@@ -1033,7 +1033,7 @@ function saveToolPositions_(payload) {
       var rows = positions.map(function (p) {
         return [
           payload.zuban, machineName, p.column, p.order, String(p.tNumber || ''), p.offsetNo || '',
-          p.category || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
+          p.category || '', p.subCategory || '', p.detail || '', p.shift || '', p.maker || '', p.partNumber || '',
           p.spindle || '', p.mount || '', p.mountPosition || '', p.yAxis || '',
           p.coolantType || '', p.mCode || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
@@ -3443,4 +3443,22 @@ function renameToolCategoryColumn() {
   sheet.getRange(1, col + 1).setValue('工具種類');
   try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
   Logger.log('「加工種類」を「工具種類」に改名しました');
+}
+
+/**
+ * SHEET_TOOL_POSITIONSに「工具種類詳細」列を追加する（既存シート用、初回のみ手動実行）。
+ * 「工具種類×メーカー表」シートが改訂され、内径・エンドミル・ドリル・特殊工具の4種類は
+ * さらに詳細な工具種類（内径ボーリング／スクエアエンドミル等）を選べるようになったため
+ * （2026-09-11、ユーザー提案）。「工具種類」列の直後に追加、既存行は空欄のまま。
+ */
+function addToolSubCategoryColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_POSITIONS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('工具種類詳細') !== -1) { Logger.log('「工具種類詳細」は追加済みです'); return; }
+  var afterCol = header.indexOf('工具種類');
+  var insertAt = afterCol !== -1 ? afterCol + 2 : sheet.getLastColumn() + 1;
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('工具種類詳細');
+  try { CacheService.getScriptCache().remove('toolFieldSuggestions'); } catch (e) {}
+  Logger.log('「工具種類詳細」列を追加しました');
 }

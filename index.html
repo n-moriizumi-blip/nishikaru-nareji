@@ -282,6 +282,7 @@
   .tool-edit-row .rshift { flex: 1 1 56px; }
   .tool-edit-row .rmaker { flex: 1 1 80px; }
   .tool-edit-row .rpartnum { flex: 1 1 80px; }
+  .tool-edit-row .rsubcategory { flex: 1 1 100%; }
   .tool-edit-row .rdetail, .tool-edit-row .rmcode {
     width: 100%; min-width: 0; font-family: inherit; font-size: 0.84rem; padding: 8px 8px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
@@ -298,7 +299,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.17.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.18.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1991,8 +1992,9 @@
         var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
           (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
-        if (p['工具種類'] || p['シフト']) {
-          html += '<div class="t-line"><span class="t">' + escapeHtml(String(p['工具種類'] || '')) + '</span>' +
+        var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
+        if (categoryLabel || p['シフト']) {
+          html += '<div class="t-line"><span class="t">' + escapeHtml(categoryLabel) + '</span>' +
             (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
@@ -2038,7 +2040,7 @@
           .filter(function (p) { return p.column === colKey; })
           .map(function (p) {
             return {
-              tNumber: p.tNumber || '', offsetNo: p.offsetNo || '', category: p.category || '', detail: p.detail || '',
+              tNumber: p.tNumber || '', offsetNo: p.offsetNo || '', category: p.category || '', subCategory: p.subCategory || '', detail: p.detail || '',
               shift: p.shift || '', maker: p.maker || '', partNumber: p.partNumber || '',
               spindle: p.spindle || '', mount: p.mount || '', mountPosition: p.mountPosition || '', yAxis: p.yAxis || '',
               coolantType: p.coolantType || '', mCode: p.mCode || ''
@@ -2076,7 +2078,7 @@
       ['front', 'back', 'cycle'].forEach(function (colKey) {
         toolPositionsState[colKey] = grouped[colKey].map(function (p) {
           return {
-            tNumber: p['Tナンバー'] || '', offsetNo: p['オフセットNo.'] || '', category: p['工具種類'] || '', detail: p['詳細情報'] || '',
+            tNumber: p['Tナンバー'] || '', offsetNo: p['オフセットNo.'] || '', category: p['工具種類'] || '', subCategory: p['工具種類詳細'] || '', detail: p['詳細情報'] || '',
             shift: p['シフト'] || '', maker: p['メーカー'] || '', partNumber: p['品番'] || '',
             spindle: p['主軸'] || '', mount: p['取付方式'] || '', mountPosition: p['取付位置'] || '', yAxis: p['Y軸位置'] || '',
             coolantType: p['クーラント種別'] || '', mCode: p['Mコード'] || ''
@@ -2177,43 +2179,70 @@
     var pressed = group.querySelector('.mini-chip[aria-pressed="true"]');
     return pressed ? pressed.textContent : '';
   }
-  // 工具種類ごとの対応メーカー一覧（2026-09-08、ユーザー提供のスプレッドシートより）。
-  // 工具種類を選ぶと、メーカー欄の候補をこの一覧に絞り込む。
+  // 工具種類ごとの対応メーカー一覧（2026-09-08、ユーザー提供のスプレッドシートより。2026-09-11、
+  // 「工具種類×メーカー表」シートの改訂版に合わせて更新。内径・エンドミル・ドリル・特殊工具は
+  // それぞれ複数の詳細工具種類に分かれ、詳細を選ぶとさらに絞り込める＝SUBTYPES_BY_CATEGORY／
+  // SUB_CATEGORY_MAKER_MAP参照。ここでの一覧は詳細未選択時の値＝各詳細列の対応メーカーの和集合）。
   var CATEGORY_MAKER_MAP = {
-    '突切': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', 'イスカル'],
-    '前挽き': ['京セラ', '住友', 'SANDVIK', 'タンガロイ', 'NTK', '三菱'],
-    '後挽き': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', '三菱'],
-    '外径溝': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', 'VARGUS'],
-    '内径溝': ['京セラ', 'タンガロイ', 'NTK', 'イスカル', 'VARGUS', 'シムテック'],
-    '端面溝': ['京セラ', 'タンガロイ', 'NTK'],
-    '外径ネジ': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', 'S.T.S', 'VARGUS'],
-    '内径ネジ': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', '三菱', 'カーメックス', 'VARGUS', 'シムテック'],
-    'スレッドミル': ['OSG', 'NS', 'MOLDINO', 'カーメックス'],
-    '内径': ['京セラ', 'SANDVIK', 'タンガロイ', 'NTK', '三菱', 'イスカル', 'カーメックス', 'シムテック'],
-    '内径引き': ['京セラ', 'タンガロイ', 'NTK', 'カーメックス'],
-    'シェーパー': ['京セラ', 'NTK', 'エーワン', 'カーメックス'],
-    '内径ミーリング': ['NTK'],
-    'エンドミル': ['SANDVIK', 'タンガロイ', 'NTK', '三菱', 'NACHi', 'OSG', 'NS', 'GHURING', '三新'],
-    '面取ミーリング': ['京セラ', '三菱', 'NACHi', 'OSG', 'NS', 'GHURING', 'イワタツール'],
+    '突切': ['京セラ', 'NTK', 'SANDVIK', 'タンガロイ', 'イスカル'],
+    '前挽き': ['京セラ', 'NTK', '三菱', '住友', 'SANDVIK', 'タンガロイ'],
+    '後挽き': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ'],
+    '外径溝': ['京セラ', 'NTK', 'SANDVIK', 'タンガロイ', 'VARGUS'],
+    '内径溝': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ', 'イスカル', 'VARGUS', 'シムテック'],
+    '端面溝': ['京セラ', 'NTK', 'SANDVIK', 'タンガロイ', 'カーメックス'],
+    '外径ネジ': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ', 'S.T.S', 'VARGUS'],
+    '内径ネジ': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ', 'カーメックス', 'VARGUS', 'シムテック'],
+    'スレッドミル': ['OSG', 'NS', 'カーメックス', 'MOLDINO'],
+    '内径': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ', 'イスカル', 'カーメックス', 'シムテック'],
+    'シェーパー': ['NTK', 'カーメックス', 'エーワン'],
+    'エンドミル': ['京セラ', 'OSG', 'NTK', '三菱', 'NS', 'SANDVIK', 'タンガロイ', 'NACHi', 'GHURING', '三新', 'ユニオンツール'],
+    '面取カッター': ['京セラ', 'OSG', '三菱', 'NS', 'NACHi', 'GHURING'],
     'スリ割カッター': ['栄工舎', 'アプリテック', '三新'],
-    'センター': ['三菱', 'NACHi', 'OSG', 'イワタツール', 'ヤマワ', '岡部'],
-    'ドリル': ['SANDVIK', 'タンガロイ', '三菱', 'NACHi', 'OSG', 'NS', 'GHURING', 'RIKEN', 'S.T.D', 'MOLDINO', 'ダイジェット', 'サイトウ製作所'],
-    'タップ': ['SANDVIK', 'NACHi', 'OSG', 'GHURING', '田野井'],
-    'リーマー': ['F.P', '栄工舎'],
-    '内径特殊': ['エーワン', 'ハマツール'],
-    '外径特殊': ['エーワン', 'ハマツール'],
+    'センタードリル': ['OSG', '三菱', 'NACHi', 'ヤマワ', 'イワタツール', '岡部'],
+    'スポットドリル': ['OSG', '三菱', 'NACHi', 'ヤマワ', 'イワタツール'],
+    'ドリル': ['京セラ', 'OSG', '三菱', 'NS', 'SANDVIK', 'タンガロイ', 'NACHi', 'GHURING', 'RIKEN', 'S.T.D', 'YSK', 'MOLDINO', 'サイトウ製作所', 'ダイジェット', '第一ツール', 'ユニオンツール'],
+    'タップ': ['OSG', 'SANDVIK', 'NACHi', 'GHURING', 'ヤマワ', '田野井'],
+    'リーマー': ['F.P', '栄工舎', '第一ツール'],
+    '特殊工具': ['エーワン', 'ハマツール'],
     '転造ローレット': ['三新', 'スーパーツール', 'ZEUS'],
     '切削ローレット': ['スーパーツール', 'ZEUS'],
     'バリ取りツール': ['ジーベック', 'ミニター']
   };
   var CATEGORY_LIST = Object.keys(CATEGORY_MAKER_MAP);
-  // メーカー全35社（対応表の行順）。工具種類が未選択・対応表に無い場合はこの全社が候補になる。
+  // メーカー全37社（対応表の行順）。工具種類が未選択・対応表に無い場合はこの全社が候補になる。
   var ALL_MAKERS = [
-    '京セラ', '住友', 'SANDVIK', 'タンガロイ', 'NTK', '三菱', 'イスカル', 'NACHi', 'OSG', 'NS',
-    'GHURING', 'RIKEN', 'S.T.D', 'イワタツール', 'F.P', '栄工舎', 'ヤマワ', '岡部', 'エーワン', 'ハマツール',
-    'S.T.S', '田野井', 'アプリテック', 'MOLDINO', 'ダイジェット', 'カーメックス', 'サイトウ製作所', '三新',
+    '京セラ', 'OSG', 'NTK', '三菱', '住友', 'NS', 'SANDVIK', 'タンガロイ', 'イスカル', 'NACHi',
+    'GHURING', 'ヤマワ', 'イワタツール', 'RIKEN', 'F.P', '栄工舎', '岡部', 'カーメックス', 'S.T.D', 'YSK',
+    'MOLDINO', 'サイトウ製作所', 'ダイジェット', '第一ツール', 'エーワン', 'ハマツール', 'S.T.S', '田野井', 'アプリテック', '三新',
     'スーパーツール', 'ユニオンツール', 'VARGUS', 'ZEUS', 'シムテック', 'ジーベック', 'ミニター'
   ];
+  // 内径・エンドミル・ドリル・特殊工具は、選んだ後にさらに詳細な工具種類を選べる（2026-09-11、
+  // ユーザー提案。表が今後も増える見込みのため、この欄だけは候補からの選択に加えて自由入力も許す）。
+  var SUBTYPES_BY_CATEGORY = {
+    '内径': ['内径ボーリング', '内径引き', '内径端面溝'],
+    'エンドミル': ['スクエアエンドミル', 'ボールエンドミル', 'ラジアスエンドミル', 'Ｖカットエンドミル', 'ラフィングエンドミル', 'テーパーエンドミル'],
+    'ドリル': ['ソリッドドリル', 'チップ交換式ドリル', 'ヘッド交換式ドリル'],
+    '特殊工具': ['内径特殊', '外径特殊']
+  };
+  // 詳細工具種類ごとの対応メーカー一覧（"工具種類|||詳細工具種類"がキー）。表がまだ育っている途中のため
+  // 空配列（実績なし）の組み合わせもある。その場合はmakerListForCategoryAndSub_が工具種類レベルの
+  // 一覧にフォールバックする。
+  var SUB_CATEGORY_MAKER_MAP = {
+    '内径|||内径ボーリング': ['京セラ', 'NTK', '三菱', 'SANDVIK', 'タンガロイ', 'イスカル', 'カーメックス', 'シムテック'],
+    '内径|||内径引き': ['カーメックス'],
+    '内径|||内径端面溝': [],
+    'エンドミル|||スクエアエンドミル': ['京セラ', 'OSG', 'NTK', '三菱', 'NS', 'SANDVIK', 'タンガロイ', 'NACHi', 'GHURING', '三新', 'ユニオンツール'],
+    'エンドミル|||ボールエンドミル': [],
+    'エンドミル|||ラジアスエンドミル': [],
+    'エンドミル|||Ｖカットエンドミル': [],
+    'エンドミル|||ラフィングエンドミル': [],
+    'エンドミル|||テーパーエンドミル': [],
+    'ドリル|||ソリッドドリル': ['京セラ', 'OSG', '三菱', 'NS', 'SANDVIK', 'タンガロイ', 'NACHi', 'GHURING', 'RIKEN', 'S.T.D', 'YSK', 'MOLDINO', 'サイトウ製作所', 'ダイジェット', '第一ツール', 'ユニオンツール'],
+    'ドリル|||チップ交換式ドリル': ['京セラ', 'SANDVIK', 'タンガロイ'],
+    'ドリル|||ヘッド交換式ドリル': ['京セラ', 'SANDVIK', 'タンガロイ'],
+    '特殊工具|||内径特殊': ['エーワン', 'ハマツール'],
+    '特殊工具|||外径特殊': ['エーワン', 'ハマツール']
+  };
   // 未選択時は他の項目（T番・シフト等のプレースホルダー）と同じように項目名そのものを表示する
   // （2026-09-10、以前は「（未選択）」という固定文言だったが他の欄と表記が揃っていなかった）。
   function buildSelectOptionsHtml_(list, selectedValue, blankLabel) {
@@ -2232,13 +2261,43 @@
     return '<select class="' + cls + '" name="toolCategory">' + buildSelectOptionsHtml_(CATEGORY_LIST, selectedValue, '工具種類') + '</select>';
   }
   // 工具種類が選ばれている（かつ対応表にある）間は、メーカー欄の選択肢をその工具種類の対応
-  // メーカーだけに絞り込む。未選択・対応表に無い工具種類の場合は全35社を選択肢にする。
+  // メーカーだけに絞り込む。未選択・対応表に無い工具種類の場合は全37社を選択肢にする。
   function makerListForCategory_(category) {
     return (category && CATEGORY_MAKER_MAP[category]) ? CATEGORY_MAKER_MAP[category] : ALL_MAKERS;
   }
-  function buildMakerSelectHtml_(selectedValue, category) {
+  // 詳細工具種類まで選ばれていれば、さらにその組み合わせの対応メーカーに絞り込む。詳細が無い・
+  // 対応表にまだ実績が無い組み合わせの場合は工具種類レベルの一覧にフォールバックする（2026-09-11）。
+  function makerListForCategoryAndSub_(category, subCategory) {
+    if (category && subCategory) {
+      var subList = SUB_CATEGORY_MAKER_MAP[category + '|||' + subCategory];
+      if (subList && subList.length) return subList;
+    }
+    return makerListForCategory_(category);
+  }
+  function buildMakerSelectHtml_(selectedValue, category, subCategory) {
     var cls = 'rmaker' + (selectedValue ? '' : ' is-placeholder');
-    return '<select class="' + cls + '" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategory_(category), selectedValue, 'メーカー') + '</select>';
+    return '<select class="' + cls + '" name="toolMaker">' + buildSelectOptionsHtml_(makerListForCategoryAndSub_(category, subCategory), selectedValue, 'メーカー') + '</select>';
+  }
+  // 内径・エンドミル・ドリル・特殊工具の詳細工具種類欄。候補からの選択に加えて自由入力も許す
+  // （品番欄と同じ方式）ため、input+datalistで実装する（2026-09-11）。
+  function buildSubCategoryFieldHtml_(category, subCategory, listId) {
+    var subtypes = SUBTYPES_BY_CATEGORY[category];
+    var hiddenCls = subtypes ? '' : ' hidden';
+    var options = (subtypes || []).map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join('');
+    return '<div class="row-line rsubcategory-wrap' + hiddenCls + '">' +
+      '<input type="text" class="rsubcategory" value="' + escapeAttr(subCategory) + '" placeholder="工具種類の詳細" list="' + listId + '" name="toolSubCategory">' +
+      '</div><datalist id="' + listId + '">' + options + '</datalist>';
+  }
+  // 工具種類を変えた時に、詳細工具種類欄の表示・候補を更新する（対応する詳細が無い工具種類に
+  // 変えた場合は、無関係な詳細値が残らないよう入力もクリアする）。
+  function updateSubCategoryField_(div, listId, category) {
+    var wrap = div.querySelector('.rsubcategory-wrap');
+    var input = div.querySelector('.rsubcategory');
+    var datalist = div.querySelector('#' + listId);
+    var subtypes = SUBTYPES_BY_CATEGORY[category];
+    wrap.classList.toggle('hidden', !subtypes);
+    if (!subtypes) input.value = '';
+    datalist.innerHTML = (subtypes || []).map(function (v) { return '<option value="' + escapeAttr(v) + '">'; }).join('');
   }
   // 未選択（項目名だけが表示されている状態）の間は他のプレースホルダーと同じ薄いグレーで表示し、
   // 何か選ぶと通常の文字色に戻す（2026-09-10、ユーザー指摘：選択式に変えた際に色分けが漏れていた）。
@@ -2292,6 +2351,7 @@
           spindleMountHtml += buildMiniChipGroupHtml('yAxis', row.yAxis, (row.mount === 'ダブル' || row.mount === 'トリプル') ? '' : 'hidden');
         }
       }
+      var subCatListId = 'subCatList_' + colKey + '_' + idx;
       div.innerHTML =
         '<div class="row-controls">' +
           '<div class="order-btns"><button type="button" data-act="up">▲</button><button type="button" data-act="down">▼</button></div>' +
@@ -2308,9 +2368,10 @@
           buildCategorySelectHtml_(row.category) +
           '<input type="text" class="rshift" value="' + escapeAttr(row.shift) + '" placeholder="シフト" name="toolShift">' +
         '</div>' +
+        buildSubCategoryFieldHtml_(row.category, row.subCategory, subCatListId) +
         '<input type="text" class="rdetail" value="' + escapeAttr(row.detail) + '" placeholder="詳細情報" name="toolDetail">' +
         '<div class="row-line">' +
-          buildMakerSelectHtml_(row.maker, row.category) +
+          buildMakerSelectHtml_(row.maker, row.category, row.subCategory) +
           '<input type="text" class="rpartnum" value="' + escapeAttr(row.partNumber) + '" placeholder="品番" list="toolPartNumberList" name="toolPartNumber">' +
         '</div>';
       div.querySelector('[data-act="up"]').addEventListener('click', function () { moveRow(colKey, idx, -1); });
@@ -2336,16 +2397,27 @@
       var partNumListId = 'partNumList_' + colKey + '_' + idx;
       div.setAttribute('data-partnum-list-id', partNumListId);
       updatePartNumberDatalist_(div, partNumListId, row.category, row.maker);
-      // 工具種類を変えたら、メーカー欄の選択肢もその工具種類の対応メーカーに絞り込み直す
-      // （既に選ばれていたメーカーが新しい絞り込みに含まれない場合は、選択肢として残したまま保持する）。
-      // あわせて、工具種類×メーカーの組み合わせが変わるため品番欄の候補も更新する。
+      // 工具種類を変えたら、詳細工具種類欄の表示・候補を更新し、メーカー欄の選択肢もその時点の
+      // 工具種類×詳細工具種類の対応メーカーに絞り込み直す（既に選ばれていたメーカーが新しい
+      // 絞り込みに含まれない場合は、選択肢として残したまま保持する）。
+      // あわせて、組み合わせが変わるため品番欄の候補も更新する。
       div.querySelector('.rcategory').addEventListener('change', function () {
         updateSelectPlaceholderClass_(this);
+        updateSubCategoryField_(div, subCatListId, this.value);
         var makerSelect = div.querySelector('.rmaker');
         var currentMakerVal = makerSelect.value;
-        makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategory_(this.value), currentMakerVal, 'メーカー');
+        var subVal = div.querySelector('.rsubcategory').value;
+        makerSelect.innerHTML = buildSelectOptionsHtml_(makerListForCategoryAndSub_(this.value, subVal), currentMakerVal, 'メーカー');
         updateSelectPlaceholderClass_(makerSelect);
         updatePartNumberDatalist_(div, partNumListId, this.value, currentMakerVal);
+      });
+      // 詳細工具種類を変えたら（候補選択・自由入力どちらでも）、メーカー欄の絞り込みを更新する。
+      div.querySelector('.rsubcategory').addEventListener('change', function () {
+        var makerSelect = div.querySelector('.rmaker');
+        var currentMakerVal = makerSelect.value;
+        makerSelect.innerHTML = buildSelectOptionsHtml_(
+          makerListForCategoryAndSub_(div.querySelector('.rcategory').value, this.value), currentMakerVal, 'メーカー');
+        updateSelectPlaceholderClass_(makerSelect);
       });
       div.querySelector('.rmaker').addEventListener('change', function () {
         updateSelectPlaceholderClass_(this);
@@ -2375,6 +2447,7 @@
         tNumber: row.querySelector('.tnum').value,
         offsetNo: row.querySelector('.roffset').value,
         category: row.querySelector('.rcategory').value,
+        subCategory: row.querySelector('.rsubcategory').value,
         detail: row.querySelector('.rdetail').value,
         shift: row.querySelector('.rshift').value,
         maker: row.querySelector('.rmaker').value,
@@ -2395,7 +2468,7 @@
       var colKey = btn.getAttribute('data-col');
       syncColumnFromDom(colKey);
       toolPositionsState[colKey].push({
-        tNumber: '', offsetNo: '', category: '', detail: '', shift: '', maker: '', partNumber: '',
+        tNumber: '', offsetNo: '', category: '', subCategory: '', detail: '', shift: '', maker: '', partNumber: '',
         spindle: '', mount: '', mountPosition: '', yAxis: '', coolantType: '', mCode: ''
       });
       renderEditColumn(colKey);
@@ -2427,11 +2500,11 @@
     var positions = [];
     ['front', 'back', 'cycle'].forEach(function (colKey) {
       toolPositionsState[colKey].forEach(function (row, idx) {
-        if (!row.tNumber && !row.offsetNo && !row.category && !row.detail && !row.shift && !row.maker && !row.partNumber &&
+        if (!row.tNumber && !row.offsetNo && !row.category && !row.subCategory && !row.detail && !row.shift && !row.maker && !row.partNumber &&
             !row.spindle && !row.mount && !row.mountPosition && !row.yAxis && !row.coolantType && !row.mCode) return;
         positions.push({
           column: colKey, order: idx + 1, tNumber: row.tNumber, offsetNo: row.offsetNo, category: row.category,
-          detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber,
+          subCategory: row.subCategory, detail: row.detail, shift: row.shift, maker: row.maker, partNumber: row.partNumber,
           spindle: row.spindle, mount: row.mount, mountPosition: row.mountPosition, yAxis: row.yAxis,
           coolantType: row.coolantType, mCode: row.mCode
         });
