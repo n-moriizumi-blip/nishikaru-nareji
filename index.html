@@ -296,7 +296,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.2</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1991,11 +1991,13 @@
         var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
           (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
-        // 方向・刃形（突切専用）は工具種類の右に表示する（2026-09-12、ユーザー指摘）。
-        var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || '', p['突切方向'] || '', p['突切刃形'] || ''].filter(Boolean).join('　');
-        if (categoryLabel || p['シフト']) {
+        // 方向・刃形（突切専用）は工具種類の右に、シフトと同じ文字サイズ・色で表示する
+        // （2026-09-12、ユーザー指摘：主要な項目名(.t)ではなく補足のシフト(.shift)と同じ見た目にする）。
+        var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
+        var categorySubTags = [p['シフト'] || '', p['突切方向'] || '', p['突切刃形'] || ''].filter(Boolean).join('　');
+        if (categoryLabel || categorySubTags) {
           html += '<div class="t-line"><span class="t">' + escapeHtml(categoryLabel) + '</span>' +
-            (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
+            (categorySubTags ? '<span class="shift">' + escapeHtml(categorySubTags) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var coolantTags = [p['クーラント種別'] || '', p['Mコード'] || ''].filter(Boolean).join('　');
