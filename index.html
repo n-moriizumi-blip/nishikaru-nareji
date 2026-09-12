@@ -246,6 +246,9 @@
   .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
   .tool-view-row .t-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 18px; }
   .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  /* オフセットNo.はT番に付随する詳細情報のため、T番本体と同じ暖色系でまとまりを保ちつつ、
+     少し明るい色・非太字にして「関連はあるが主役はT番」という差をつける（2026-09-12）。 */
+  .tool-view-row .offset-no { color: var(--accent-ink); font-weight: 400; }
   /* 補足情報（シフト・取付方式・取付位置/Y軸位置・突切の方向/刃形・メーカー・品番等）は白（--ink）で
      表示し、視認性を上げつつ主要項目（T番・工具種類）とは大きさで差をつける（2026-09-12）。 */
   .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
@@ -303,7 +306,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.21.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.22.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1994,7 +1997,10 @@
         // ③ 詳細情報 ④ クーラント種別・Mコード ⑤ メーカー・品番（ユーザー提示のレイアウト案の並びに合わせる、
         // 2026-09-05〜08。クーラントは「クーラント」という項目名（ラベル文字）は出さず、他の項目と同じく
         // 値だけを表示する、2026-09-10）。
-        var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
+        // オフセットNo.はT番に付随する詳細情報のため、T番本体より控えめな色（--accent-ink・非太字）
+        // にして、関連はありつつ主役はT番だと分かるようにする（2026-09-12）。
+        var tLabel = escapeHtml(String(p['Tナンバー'] || '')) +
+          (p['オフセットNo.'] ? '<span class="offset-no">（' + escapeHtml(p['オフセットNo.']) + '）</span>' : '');
         // 正面/背面は一目で見分けられるよう緑/青で色分けする（2026-09-12）。
         var spindleTagsParts = [];
         if (p['主軸']) {
@@ -2003,7 +2009,7 @@
         }
         [p['取付方式'], p['取付位置'], p['Y軸位置']].forEach(function (v) { if (v) spindleTagsParts.push(escapeHtml(v)); });
         var spindleTagsHtml = spindleTagsParts.join('　');
-        var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
+        var html = '<div class="t-line"><span class="t">' + tLabel + '</span>' +
           (spindleTagsHtml ? '<span class="shift">' + spindleTagsHtml + '</span>' : '') + '</div>';
         // 方向・刃形（突切専用）は工具種類の右に、シフトと同じ文字サイズ・色で表示する
         // （2026-09-12、ユーザー指摘：主要な項目名(.t)ではなく補足のシフト(.shift)と同じ見た目にする）。
