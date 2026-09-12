@@ -17,6 +17,7 @@
     --alert: #E0533D; --alert-soft: #241A16; --alert-ink: #F2A897;
     --ok: #9BC48A;
     --info: #7EB6D9;
+    --mustard: #E0D070;
     --viewfinder-bg: #0C0B09;
     --font-ui: "BIZ UDPGothic", "Noto Sans JP", -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Roboto Mono", Consolas, monospace;
@@ -246,10 +247,9 @@
   .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
   .tool-view-row .t-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 18px; }
   .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
-  /* オフセットNo.はT番に付随する詳細情報のため、T番本体（--accent、鮮やかなアンバー・太字）とは
-     はっきり分かるよう落ち着いた色・非太字にする（2026-09-13、--accent-inkは--accentとほぼ同じ
-     色でユーザーから見て違いが分からなかったため、はっきり違うトーンの--ink-softに変更）。 */
-  .tool-view-row .offset-no { color: var(--ink-soft); font-weight: 400; }
+  /* オフセットNo.はT番（--accent、アンバー）・正面(--ok緑)・背面(--info青)・注意色(--alert赤)と
+     被らない黄色・マスタード系にする（2026-09-13、ユーザー選択）。 */
+  .tool-view-row .offset-no { color: var(--mustard); font-weight: 400; }
   /* 補足情報（シフト・取付方式・取付位置/Y軸位置・突切の方向/刃形・メーカー・品番等）は白（--ink）で
      表示し、視認性を上げつつ主要項目（T番・工具種類）とは大きさで差をつける（2026-09-12）。 */
   .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
@@ -307,7 +307,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.22.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.22.2</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
