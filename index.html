@@ -141,10 +141,11 @@
   .mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .mini-field { display: flex; flex-direction: column; gap: 5px; }
   .mini-field label { font-size: 0.72rem; font-weight: 700; color: var(--ink-soft); }
-  .mini-field input {
+  .mini-field input, .mini-field textarea {
     font-family: inherit; font-size: 0.86rem; padding: 10px 11px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
+  .mini-field textarea { resize: vertical; min-height: 60px; }
   .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .chip {
     font-family: inherit; font-size: 0.88rem; font-weight: 700; padding: 12px 18px;
@@ -249,7 +250,7 @@
   .tool-view-row .m { font-size: 0.72rem; color: var(--ink-soft); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
   .tool-view-spec { flex: none; display: flex; gap: 10px; flex-wrap: wrap; }
   .tool-view-spec .spec-item { flex: 1 1 160px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
-  .tool-view-spec .spec-item b { color: var(--ink); font-weight: 700; }
+  .tool-view-spec .spec-item b { color: var(--ink); font-weight: 700; white-space: pre-wrap; }
 
   .col-head-edit { display: flex; align-items: center; gap: 6px; background: var(--surface); padding: 8px 7px; min-width: 0; }
   .col-head-edit .label { font-size: 0.72rem; font-weight: 700; color: var(--accent); flex: 1; min-width: 0; line-height: 1.35; font-family: var(--font-mono); }
@@ -295,7 +296,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -528,7 +529,7 @@
           <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
           <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
           <div class="mini-field"><label>プログラム番号（メイン）</label><input type="text" id="programNumberInput"></div>
-          <div class="mini-field"><label>プログラム番号（サブ）</label><input type="text" id="programNumberSubInput"></div>
+          <div class="mini-field"><label>プログラム番号（サブ）</label><textarea id="programNumberSubInput" placeholder="複数ある場合は1行に1つずつ入力"></textarea></div>
         </div>
 
         <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
@@ -1987,10 +1988,11 @@
         // 2026-09-05〜08。クーラントは「クーラント」という項目名（ラベル文字）は出さず、他の項目と同じく
         // 値だけを表示する、2026-09-10）。
         var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
-        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || '', p['突切方向'] || '', p['突切刃形'] || ''].filter(Boolean).join('　');
+        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
           (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
-        var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
+        // 方向・刃形（突切専用）は工具種類の右に表示する（2026-09-12、ユーザー指摘）。
+        var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || '', p['突切方向'] || '', p['突切刃形'] || ''].filter(Boolean).join('　');
         if (categoryLabel || p['シフト']) {
           html += '<div class="t-line"><span class="t">' + escapeHtml(categoryLabel) + '</span>' +
             (p['シフト'] ? '<span class="shift">' + escapeHtml(String(p['シフト'])) + '</span>' : '') + '</div>';
