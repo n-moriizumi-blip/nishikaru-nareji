@@ -16,6 +16,7 @@
     --accent: #EDA23E; --accent-soft: #2E2216; --accent-ink: #F0AC49;
     --alert: #E0533D; --alert-soft: #241A16; --alert-ink: #F2A897;
     --ok: #9BC48A;
+    --info: #7EB6D9;
     --viewfinder-bg: #0C0B09;
     --font-ui: "BIZ UDPGothic", "Noto Sans JP", -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Roboto Mono", Consolas, monospace;
@@ -245,9 +246,17 @@
   .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
   .tool-view-row .t-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 18px; }
   .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
-  .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+  /* 補足情報（シフト・取付方式・取付位置/Y軸位置・突切の方向/刃形等）は白（--ink）で表示し、
+     視認性を上げつつ主要項目（T番・工具種類・品番）とは大きさで差をつける（2026-09-12）。 */
+  .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
   .tool-view-row .d { font-size: 0.85rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
-  .tool-view-row .m { font-size: 0.72rem; color: var(--ink-soft); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
+  .tool-view-row .m { font-size: 0.72rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
+  /* 品番は実際に交換・発注する部品そのものであり最重要のため、T番と同じアクセント色・太字で強調する。 */
+  .tool-view-row .m b { font-size: 0.88rem; font-weight: 700; color: var(--accent-ink); }
+  /* 主軸の正面/背面は色分けして一目で判別できるようにする。危険色の赤（--alert）は「注意」の
+     意味で使っているため避け、緑＝正面（既定側）・青＝背面（対になる側）の組み合わせにする。 */
+  .tool-view-row .spindle-front { color: var(--ok); }
+  .tool-view-row .spindle-back { color: var(--info); }
   .tool-view-spec { flex: none; display: flex; gap: 10px; flex-wrap: wrap; }
   .tool-view-spec .spec-item { flex: 1 1 160px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 0.82rem; color: var(--ink-soft); }
   .tool-view-spec .spec-item b { color: var(--ink); font-weight: 700; white-space: pre-wrap; }
@@ -296,7 +305,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.20.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.21.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1988,9 +1997,16 @@
         // 2026-09-05〜08。クーラントは「クーラント」という項目名（ラベル文字）は出さず、他の項目と同じく
         // 値だけを表示する、2026-09-10）。
         var tLabel = String(p['Tナンバー'] || '') + (p['オフセットNo.'] ? '（' + p['オフセットNo.'] + '）' : '');
-        var spindleTags = [p['主軸'] || '', p['取付方式'] || '', p['取付位置'] || '', p['Y軸位置'] || ''].filter(Boolean).join('　');
+        // 正面/背面は一目で見分けられるよう緑/青で色分けする（2026-09-12）。
+        var spindleTagsParts = [];
+        if (p['主軸']) {
+          var spindleCls = p['主軸'] === '正面' ? 'spindle-front' : (p['主軸'] === '背面' ? 'spindle-back' : '');
+          spindleTagsParts.push('<span class="' + spindleCls + '">' + escapeHtml(p['主軸']) + '</span>');
+        }
+        [p['取付方式'], p['取付位置'], p['Y軸位置']].forEach(function (v) { if (v) spindleTagsParts.push(escapeHtml(v)); });
+        var spindleTagsHtml = spindleTagsParts.join('　');
         var html = '<div class="t-line"><span class="t">' + escapeHtml(tLabel) + '</span>' +
-          (spindleTags ? '<span class="shift">' + escapeHtml(spindleTags) + '</span>' : '') + '</div>';
+          (spindleTagsHtml ? '<span class="shift">' + spindleTagsHtml + '</span>' : '') + '</div>';
         // 方向・刃形（突切専用）は工具種類の右に、シフトと同じ文字サイズ・色で表示する
         // （2026-09-12、ユーザー指摘：主要な項目名(.t)ではなく補足のシフト(.shift)と同じ見た目にする）。
         var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
@@ -2002,8 +2018,11 @@
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var coolantTags = [p['クーラント種別'] || '', p['Mコード'] || ''].filter(Boolean).join('　');
         if (coolantTags) html += '<span class="d">' + escapeHtml(coolantTags) + '</span>';
-        var meta = [p['メーカー'] || '', p['品番'] || ''].filter(Boolean).join('　');
-        if (meta) html += '<span class="m">' + escapeHtml(meta) + '</span>';
+        // 品番は実際に交換・発注する部品そのものであり最重要のため、太字で目立たせる（2026-09-12）。
+        var metaParts = [];
+        if (p['メーカー']) metaParts.push(escapeHtml(p['メーカー']));
+        if (p['品番']) metaParts.push('<b>' + escapeHtml(p['品番']) + '</b>');
+        if (metaParts.length) html += '<span class="m">' + metaParts.join('　') + '</span>';
         row.innerHTML = html;
         colEl.appendChild(row);
       });
