@@ -18,6 +18,7 @@
     --ok: #9BC48A;
     --info: #7EB6D9;
     --mustard: #E0D070;
+    --lavender: #B79FD1;
     --viewfinder-bg: #0C0B09;
     --font-ui: "BIZ UDPGothic", "Noto Sans JP", -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Roboto Mono", Consolas, monospace;
@@ -250,6 +251,9 @@
   /* オフセットNo.はT番（--accent、アンバー）・正面(--ok緑)・背面(--info青)・注意色(--alert赤)と
      被らない黄色・マスタード系にする（2026-09-13、ユーザー選択）。 */
   .tool-view-row .offset-no { color: var(--mustard); font-weight: 400; }
+  /* 工具種類はT番と同じ.tを使うと見分けがつきにくいため、既存の色と被らない薄紫・ラベンダー系に
+     分ける（2026-09-13、ユーザー選択）。 */
+  .tool-view-row .category-label { color: var(--lavender); }
   /* 補足情報（シフト・取付方式・取付位置/Y軸位置・突切の方向/刃形・メーカー・品番等）は白（--ink）で
      表示し、視認性を上げつつ主要項目（T番・工具種類）とは大きさで差をつける（2026-09-12）。 */
   .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
@@ -307,7 +311,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.22.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.23.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -2018,7 +2022,7 @@
         // シフトは一番右にする（2026-09-12、ユーザー指摘）。
         var categorySubTags = [p['突切方向'] || '', p['突切刃形'] || '', p['シフト'] || ''].filter(Boolean).join('　');
         if (categoryLabel || categorySubTags) {
-          html += '<div class="t-line"><span class="t">' + escapeHtml(categoryLabel) + '</span>' +
+          html += '<div class="t-line"><span class="t category-label">' + escapeHtml(categoryLabel) + '</span>' +
             (categorySubTags ? '<span class="shift">' + escapeHtml(categorySubTags) + '</span>' : '') + '</div>';
         }
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
