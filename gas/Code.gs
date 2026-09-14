@@ -1884,6 +1884,8 @@ function findOrCreatePhotoFolder_(zubanFolder) {
  * 図番フォルダ（検査記録／社名／図番／）配下の「{図番} 写真」サブフォルダに保存する。
  * 図番フォルダがまだ存在しない場合は、既存の会社名フォルダが見つかれば自動作成する
  * （createZubanFolderIfCompanyKnown_）。会社名フォルダ自体が見つからない場合はエラーを返す。
+ * mimeType/filenameは呼び出し側の指定をそのまま使う汎用的な作りのため、写真（JPEG）だけでなく
+ * PDFの添付にもそのまま対応できる（2026-09-14、index.html側の写真添付欄をPDF対応にした際に確認）。
  */
 function uploadPhoto_(payload) {
   if (!payload.zuban || !payload.dataBase64) return { error: 'zuban and dataBase64 are required' };

@@ -311,7 +311,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.23.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.24.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -509,8 +509,8 @@
             <input type="file" id="memoOcrCameraInput" accept="image/*" capture="environment" multiple class="hidden">
             <input type="file" id="memoOcrLibraryInput" accept="image/*" multiple class="hidden">
             <div class="status-note" id="memoOcrStatus"></div>
-            <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真を選ぶ</span></button>
-            <input type="file" id="memoPhotoInput" accept="image/*" multiple class="hidden">
+            <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真・PDFを選ぶ</span></button>
+            <input type="file" id="memoPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
             <label class="confirm-row">
               <input type="checkbox" id="memoShareCheck">
               <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
@@ -665,8 +665,8 @@
         </div>
         <div class="field">
           <label>写真（任意）</label>
-          <button type="button" class="photo-btn" id="shiagePhotoBtn"><span id="shiagePhotoIcon">📷</span><span id="shiagePhotoLabel">写真を選ぶ</span></button>
-          <input type="file" id="shiagePhotoInput" accept="image/*" multiple class="hidden">
+          <button type="button" class="photo-btn" id="shiagePhotoBtn"><span id="shiagePhotoIcon">📷</span><span id="shiagePhotoLabel">写真・PDFを選ぶ</span></button>
+          <input type="file" id="shiagePhotoInput" accept="image/*,application/pdf" multiple class="hidden">
         </div>
         <label class="confirm-row">
           <input type="checkbox" id="shiageShareCheck">
@@ -714,8 +714,8 @@
         </div>
         <div class="field">
           <label>写真（任意）</label>
-          <button type="button" class="photo-btn" id="senjouPhotoBtn"><span id="senjouPhotoIcon">📷</span><span id="senjouPhotoLabel">写真を選ぶ</span></button>
-          <input type="file" id="senjouPhotoInput" accept="image/*" multiple class="hidden">
+          <button type="button" class="photo-btn" id="senjouPhotoBtn"><span id="senjouPhotoIcon">📷</span><span id="senjouPhotoLabel">写真・PDFを選ぶ</span></button>
+          <input type="file" id="senjouPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
         </div>
         <label class="confirm-row">
           <input type="checkbox" id="senjouShareCheck">
@@ -743,8 +743,8 @@
         </div>
         <div class="field">
           <label>写真（任意）</label>
-          <button type="button" class="photo-btn" id="qiPhotoBtn"><span id="qiPhotoIcon">📷</span><span id="qiPhotoLabel">写真を選ぶ</span></button>
-          <input type="file" id="qiPhotoInput" accept="image/*" multiple class="hidden">
+          <button type="button" class="photo-btn" id="qiPhotoBtn"><span id="qiPhotoIcon">📷</span><span id="qiPhotoLabel">写真・PDFを選ぶ</span></button>
+          <input type="file" id="qiPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
         </div>
         <label class="confirm-row">
           <input type="checkbox" id="qiShareCheck">
@@ -1924,15 +1924,18 @@
     return m ? ('https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w600') : driveUrl;
   }
 
+  // サムネイルはクリックで元ファイル（Drive上のURL）を新しいタブで開けるようにする。
+  // PDFの場合はサムネイルがPDF1ページ目の見た目だけになるため、本文を読むには開く必要がある
+  // （2026-09-14、写真添付欄にPDFも添付できるようにしたのに合わせて追加）。
+  function buildOnePhotoHtml_(u) {
+    return '<a href="' + escapeAttr(u) + '" target="_blank" rel="noopener">' +
+      '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(u)) + '" alt=""></a>';
+  }
   function buildPhotoHtml_(photoUrlField) {
     var urls = String(photoUrlField || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     if (urls.length === 0) return '';
-    if (urls.length === 1) {
-      return '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(urls[0])) + '" alt="">';
-    }
-    return '<div class="tip-photos">' + urls.map(function (u) {
-      return '<img class="tip-photo" src="' + escapeAttr(toPreviewUrl(u)) + '" alt="">';
-    }).join('') + '</div>';
+    if (urls.length === 1) return buildOnePhotoHtml_(urls[0]);
+    return '<div class="tip-photos">' + urls.map(buildOnePhotoHtml_).join('') + '</div>';
   }
 
   function buildTipCard(m, opts) {
@@ -2626,7 +2629,7 @@
     pendingMemoPhotoUrl = m['写真URL'] || '';
     if (pendingMemoPhotoUrl) {
       document.getElementById('memoPhotoIcon').textContent = '✅';
-      document.getElementById('memoPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('memoPhotoLabel').textContent = '添付しました';
       document.getElementById('memoPhotoBtn').classList.add('has-photo');
     } else {
       resetMemoPhotoBtn();
@@ -2735,7 +2738,10 @@
             : 'アップロード中…');
           return resizeImageForUpload_(file).then(function (uploadBlob) {
             return fileToBase64(uploadBlob).then(function (base64) {
-              var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+              // PDFはresizeImageForUpload_で画像化されず元のFileのまま返ってくるため、
+              // 拡張子も.jpg固定にせず種類に応じて変える（2026-09-14、PDF添付対応）。
+              var ext = uploadBlob.type === 'application/pdf' ? '.pdf' : '.jpg';
+              var filename = (file.name || 'photo').replace(/\.[^.]+$/, '') + ext;
               return fetch(GAS_API_URL, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -2754,18 +2760,18 @@
       chain.then(function () {
         clearLoadingText(label);
         icon.textContent = '✅';
-        label.textContent = urls.length > 1 ? urls.length + '枚 添付しました' : '写真を添付しました';
+        label.textContent = urls.length > 1 ? urls.length + '枚 添付しました' : '添付しました';
         btn.classList.add('has-photo');
         opts.onUploaded(urls.join('\n'));
       }).catch(function (err) {
         clearLoadingText(label);
-        label.textContent = '写真を選ぶ';
+        label.textContent = '写真・PDFを選ぶ';
         alert('写真のアップロードに失敗しました: ' + err.message);
       });
     });
     return function reset() {
       icon.textContent = '📷';
-      label.textContent = '写真を選ぶ';
+      label.textContent = '写真・PDFを選ぶ';
       btn.classList.remove('has-photo');
       input.value = '';
     };
@@ -2970,7 +2976,7 @@
     pendingQiPhotoUrl = row['写真URL'] || '';
     if (pendingQiPhotoUrl) {
       document.getElementById('qiPhotoIcon').textContent = '✅';
-      document.getElementById('qiPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('qiPhotoLabel').textContent = '添付しました';
       document.getElementById('qiPhotoBtn').classList.add('has-photo');
     } else {
       resetQiPhotoBtn();
@@ -3133,7 +3139,7 @@
     pendingShiagePhotoUrl = row['写真URL'] || '';
     if (pendingShiagePhotoUrl) {
       document.getElementById('shiagePhotoIcon').textContent = '✅';
-      document.getElementById('shiagePhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('shiagePhotoLabel').textContent = '添付しました';
       document.getElementById('shiagePhotoBtn').classList.add('has-photo');
     } else {
       resetShiagePhotoBtn();
@@ -3240,7 +3246,7 @@
     pendingSenjouPhotoUrl = row['写真URL'] || '';
     if (pendingSenjouPhotoUrl) {
       document.getElementById('senjouPhotoIcon').textContent = '✅';
-      document.getElementById('senjouPhotoLabel').textContent = '写真を添付しました';
+      document.getElementById('senjouPhotoLabel').textContent = '添付しました';
       document.getElementById('senjouPhotoBtn').classList.add('has-photo');
     } else {
       resetSenjouPhotoBtn();
