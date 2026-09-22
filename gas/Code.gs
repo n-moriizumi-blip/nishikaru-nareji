@@ -14,6 +14,7 @@ var SHEET_TOOL_POSITIONS = 'ツール配置ポジション';
 var SHEET_SHIPPING_SPEC = '出荷仕様';
 var SHEET_ZUBAN_INDEX = '図番インデックス';
 var SHEET_SEIBAN_INDEX = '製番インデックス';
+var SHEET_PROCESS_DEFECTS = '工程内不良ログ';
 
 // 「進捗状況照会」共有スプレッドシート。製造番号・品番(図番)・品名・得意先コード・得意先名が
 // 同じ行に揃っているI-PRO同期データ。以前は見つからない場合に大きい「I-Pro Source」（全件、
@@ -75,6 +76,12 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_SEIBAN_INDEX, [
     '製造番号', '図番', '品名', '得意先コード', '更新日時'
+  ]);
+
+  ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
+    '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '材種名',
+    '加工日', '良品数', '不良数計', '寸法出し', '不良明細JSON', '備考',
+    '投稿者メール', '投稿者名'
   ]);
 
   // デフォルトのSheet1が残っていれば削除（タブ構成を綺麗に保つ）
@@ -159,6 +166,7 @@ function doPost(e) {
     if (action === 'renameToolMachine') return jsonResponse_(renameToolMachine_(payload));
     if (action === 'copyToolMachine') return jsonResponse_(copyToolMachine_(payload));
     if (action === 'deleteToolMachine') return jsonResponse_(deleteToolMachine_(payload));
+    if (action === 'postProcessDefect') return jsonResponse_(postProcessDefect_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -878,6 +886,29 @@ function postToolMemo_(payload) {
       !!payload.shared
     ]);
     invalidateZubanCache_(payload.zuban);
+    return { id: id };
+  });
+}
+
+/**
+ * 工程内不良ログの投稿（一次・二次加工向け）。承認フローなし、送信したら即座に反映。
+ * 不良明細（大分類・詳細・数量の配列）はJSON文字列として1セルに保持する（品番別・大分類別の
+ * 集計はこのJSONをパースして行うため、専用の集計シートは西軽精機ナレッジ側にはまだ無い。
+ * 旧・製造工程不良一覧表のような約38列の固定列方式ではなく、行数が可変な明細を1セルにまとめる方式。
+ * 2026-09-22、[[CLAUDE.md 2026-09-22項]]で合意した方針のPhase 1実装）。
+ */
+function postProcessDefect_(payload) {
+  return withVerifiedIdentity_(payload, function (identity) {
+    if (!payload.zuban) return { error: 'zuban is required' };
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+    var id = Utilities.getUuid();
+    sheet.appendRow([
+      id, new Date(), payload.zuban, payload.hinmei || '', payload.tokuisaki || '',
+      payload.machineName || '', payload.material || '',
+      payload.workDate || '', payload.goodQty || 0, payload.defectQtyTotal || 0,
+      payload.dimensionCheck || '', JSON.stringify(payload.defectDetails || []), payload.note || '',
+      identity.email, identity.name
+    ]);
     return { id: id };
   });
 }

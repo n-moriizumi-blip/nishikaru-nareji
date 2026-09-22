@@ -303,15 +303,29 @@
     flex: none; width: 26px; height: 26px; border: 1px solid var(--line); background: transparent; color: var(--ink-soft); font-size: 0.82rem; cursor: pointer; border-radius: 4px;
   }
   .tool-edit-row .row-remove:hover { background: var(--alert-soft); color: var(--alert); border-color: var(--alert); }
-  .add-col-row-btn {
+  .add-col-row-btn, .dashed-add-btn {
     font-family: inherit; border: 1px dashed var(--ink-soft); background: transparent; border-radius: 4px; padding: 9px; font-size: 0.78rem; font-weight: 700; color: var(--ink-soft); cursor: pointer;
+  }
+  .defect-detail-row {
+    display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px;
+    padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface);
+  }
+  .defect-detail-row .mini-field { flex: 1 1 140px; }
+  .defect-detail-row select {
+    font-family: inherit; font-size: 0.86rem; padding: 10px 11px;
+    border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  }
+  .defect-detail-row input[type="number"] { width: 100%; }
+  .defect-row-remove-btn {
+    font-family: inherit; border: 1px solid var(--alert); background: transparent; border-radius: 4px;
+    padding: 10px 12px; font-size: 0.8rem; font-weight: 700; color: var(--alert); cursor: pointer;
   }
 </style>
 </head>
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.25.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.26.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -397,6 +411,7 @@
 
       <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
         <button class="btn btn-primary hidden" id="goToolsBtn">ツールレイアウトを見る・編集する</button>
+        <button class="btn btn-primary hidden" id="goDefectBtn">工程内不良を入力する</button>
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
@@ -757,6 +772,47 @@
       <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">まとめて保存する</button>
       <div class="status-note" id="qiStatus"></div>
       <button class="btn btn-ghost" id="qiBackBtn">過去情報表示に戻る</button>
+    </section>
+
+    <!-- SCREEN 6: 工程内不良入力 -->
+    <section class="screen" data-screen="processDefect">
+      <div class="field">
+        <label>図番／品名</label>
+        <div class="zuban-inline" id="defectZubanHeader"></div>
+      </div>
+      <div class="mini-grid">
+        <div class="mini-field"><label>得意先（自動）</label><input type="text" id="defectTokuisakiDisplay" disabled></div>
+        <div class="mini-field"><label>機械名</label><input type="text" id="defectMachineInput"></div>
+        <div class="mini-field"><label>材種名</label><input type="text" id="defectMaterialInput" list="defectMaterialList"></div>
+        <div class="mini-field"><label>加工日</label><input type="date" id="defectDateInput"></div>
+      </div>
+      <datalist id="defectMaterialList"></datalist>
+
+      <div class="mini-grid">
+        <div class="mini-field"><label>良品数</label><input type="number" min="0" id="defectGoodQtyInput" value="0"></div>
+        <div class="mini-field"><label>不良数計（自動計算）</label><input type="text" id="defectTotalQtyDisplay" disabled value="0"></div>
+      </div>
+
+      <div class="field">
+        <label>寸法出し</label>
+        <div class="chip-row" data-group="defectDimensionCheck" data-field="寸法出し">
+          <button type="button" class="chip">有</button>
+          <button type="button" class="chip">無</button>
+        </div>
+      </div>
+
+      <div class="section-label">不良明細（種類ごとに追加してください）</div>
+      <div id="defectDetailRows"></div>
+      <button type="button" class="dashed-add-btn" id="defectAddRowBtn">＋ 不良の種類を追加</button>
+
+      <div class="field">
+        <label>備考</label>
+        <textarea id="defectNoteInput" placeholder="状況・対応など自由に記入"></textarea>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="defectSaveBtn">送信する</button>
+      <div class="status-note" id="defectStatus"></div>
+      <button class="btn btn-ghost" id="defectBackBtn">過去情報表示に戻る</button>
     </section>
   </main>
 </div>
@@ -1325,10 +1381,12 @@
   // ==== ②画面：役割・過去トラ確認状況に応じたボタンの出し分け（確認するまで押せない） ====
   function updateActionGate() {
     var goToolsBtn = document.getElementById('goToolsBtn');
+    var goDefectBtn = document.getElementById('goDefectBtn');
     var goQiBtn = document.getElementById('goQiBtn');
     var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
     if (!currentZubanData) {
       goToolsBtn.classList.add('hidden');
+      goDefectBtn.classList.add('hidden');
       goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
       return;
@@ -1338,6 +1396,10 @@
 
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
+
+    // 工程内不良入力は一次・二次加工（seizou）専用（2026-09-22追加）
+    goDefectBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
+    goDefectBtn.disabled = !confirmed;
 
     // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
     var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
@@ -1371,6 +1433,10 @@
   document.getElementById('goToolsBtn').addEventListener('click', function () {
     if (this.disabled) return;
     goToTools();
+  });
+  document.getElementById('goDefectBtn').addEventListener('click', function () {
+    if (this.disabled) return;
+    goToDefect();
   });
   document.getElementById('goQiBtn').addEventListener('click', function () {
     if (this.disabled) return;
@@ -3346,6 +3412,137 @@
       })
       .then(function () { clearLoadingText(qiSaveStatusEl); qiSaveStatusEl.textContent = (isEdit ? '更新' : '記録') + 'しました'; })
       .catch(function (err) { clearLoadingText(qiSaveStatusEl); if (err) qiSaveStatusEl.textContent = '保存に失敗しました: ' + err; });
+  });
+
+  // ==== ⑥ 工程内不良入力（一次・二次加工専用、2026-09-22追加） ====
+  // 旧・製造工程不良一覧表（花里さん管理の月次シート、38種類の不良を横一列の固定列で持つ形式）を
+  // 参考に、大分類→詳細の2段階選択に整理した（[[西軽精機ナレッジ\CLAUDE.md]]2026-09-22項参照）。
+  var DEFECT_CATEGORY_MAP = {
+    '刃物欠け・折れ': ['エンドミル(面取りカッター含む)', '前挽き', '後挽き', 'ドリル(センター含む)', 'タップ', '中ぐり', '内径ネジ・内径ミゾ', '突切', 'ねじ切り', 'ミゾ', 'その他(シェーパー・スレッドミル・キーシードカッターなど)'],
+    '寸法不良': ['外径大', '外径小', '内径大', '内径小', '長さ不良', '2次加工部寸法不良', 'ネジ不良', '穴ズレ', '芯ズレ・振れ大', 'テーパ不良', '面取りの不良', '挽目不良(面粗度)', 'その他の寸法不良'],
+    '外観不良': ['圧痕', '打痕', '溶着', '段差', '外径G/B傷', 'バリ', '曲がり', '変形', '修正不良', 'その他の外観不良'],
+    'その他': ['材料違い', '人為的なミス', '未加工', '該当項目以外の不良']
+  };
+  var DEFECT_CATEGORY_LIST = Object.keys(DEFECT_CATEGORY_MAP);
+
+  function buildDefectDetailRowHtml_(category, detail, qty) {
+    var catOptions = '<option value="">大分類</option>' + DEFECT_CATEGORY_LIST.map(function (c) {
+      return '<option value="' + escapeHtml(c) + '"' + (c === category ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+    }).join('');
+    var detailList = DEFECT_CATEGORY_MAP[category] || [];
+    var detailOptions = '<option value="">詳細</option>' + detailList.map(function (d) {
+      return '<option value="' + escapeHtml(d) + '"' + (d === detail ? ' selected' : '') + '>' + escapeHtml(d) + '</option>';
+    }).join('');
+    return '' +
+      '<div class="defect-detail-row">' +
+      '  <div class="mini-field"><label>大分類</label><select class="ddCategory">' + catOptions + '</select></div>' +
+      '  <div class="mini-field"><label>詳細</label><select class="ddDetail">' + detailOptions + '</select></div>' +
+      '  <div class="mini-field" style="flex:0 0 90px;"><label>数量</label><input type="number" min="0" class="ddQty" value="' + (qty || 0) + '"></div>' +
+      '  <button type="button" class="defect-row-remove-btn">削除</button>' +
+      '</div>';
+  }
+
+  function wireDefectDetailRow_(rowEl) {
+    var catSelect = rowEl.querySelector('.ddCategory');
+    var detailSelect = rowEl.querySelector('.ddDetail');
+    var qtyInput = rowEl.querySelector('.ddQty');
+    var removeBtn = rowEl.querySelector('.defect-row-remove-btn');
+    catSelect.addEventListener('change', function () {
+      var list = DEFECT_CATEGORY_MAP[catSelect.value] || [];
+      detailSelect.innerHTML = '<option value="">詳細</option>' + list.map(function (d) {
+        return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>';
+      }).join('');
+    });
+    qtyInput.addEventListener('input', recalcDefectTotal_);
+    removeBtn.addEventListener('click', function () {
+      rowEl.remove();
+      recalcDefectTotal_();
+    });
+  }
+
+  function addDefectDetailRow_(category, detail, qty) {
+    var wrap = document.getElementById('defectDetailRows');
+    var div = document.createElement('div');
+    div.innerHTML = buildDefectDetailRowHtml_(category || '', detail || '', qty || 0);
+    var rowEl = div.firstElementChild;
+    wrap.appendChild(rowEl);
+    wireDefectDetailRow_(rowEl);
+  }
+
+  function recalcDefectTotal_() {
+    var total = 0;
+    document.querySelectorAll('#defectDetailRows .ddQty').forEach(function (input) {
+      total += parseInt(input.value, 10) || 0;
+    });
+    document.getElementById('defectTotalQtyDisplay').value = total;
+  }
+
+  document.getElementById('defectAddRowBtn').addEventListener('click', function () {
+    addDefectDetailRow_('', '', 0);
+  });
+
+  function resetDefectFormFields_() {
+    document.getElementById('defectMachineInput').value = selectedMachine || '';
+    document.getElementById('defectMaterialInput').value = '';
+    document.getElementById('defectDateInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('defectGoodQtyInput').value = 0;
+    document.getElementById('defectDetailRows').innerHTML = '';
+    addDefectDetailRow_('', '', 0);
+    recalcDefectTotal_();
+    setChipValue('defectDimensionCheck', '');
+    document.getElementById('defectNoteInput').value = '';
+  }
+
+  function goToDefect() {
+    if (!currentZubanData) return;
+    setScreen('processDefect');
+    document.getElementById('defectZubanHeader').textContent = zubanLabel(currentZubanData);
+    document.getElementById('defectTokuisakiDisplay').value = currentZubanData.tokuisaki || '';
+    resetDefectFormFields_();
+    document.getElementById('defectStatus').textContent = '';
+  }
+
+  document.getElementById('defectBackBtn').addEventListener('click', function () {
+    setScreen('history');
+  });
+
+  document.getElementById('defectSaveBtn').addEventListener('click', function () {
+    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
+    if (!currentZubanData) return;
+    var details = [];
+    document.querySelectorAll('#defectDetailRows .defect-detail-row').forEach(function (rowEl) {
+      var category = rowEl.querySelector('.ddCategory').value;
+      var detail = rowEl.querySelector('.ddDetail').value;
+      var qty = parseInt(rowEl.querySelector('.ddQty').value, 10) || 0;
+      if (category && detail && qty > 0) details.push({ category: category, detail: detail, qty: qty });
+    });
+    var totalQty = details.reduce(function (sum, d) { return sum + d.qty; }, 0);
+    var payload = {
+      action: 'postProcessDefect',
+      zuban: currentZubanData.zuban,
+      hinmei: currentZubanData.hinmei || '',
+      tokuisaki: currentZubanData.tokuisaki || '',
+      idToken: currentUser.idToken,
+      machineName: document.getElementById('defectMachineInput').value.trim(),
+      material: document.getElementById('defectMaterialInput').value.trim(),
+      workDate: document.getElementById('defectDateInput').value,
+      goodQty: parseInt(document.getElementById('defectGoodQtyInput').value, 10) || 0,
+      defectQtyTotal: totalQty,
+      dimensionCheck: getChipValue('defectDimensionCheck'),
+      defectDetails: details,
+      note: document.getElementById('defectNoteInput').value.trim()
+    };
+    var statusEl = document.getElementById('defectStatus');
+    setLoadingText(statusEl, '送信しています…');
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error) { clearLoadingText(statusEl); statusEl.textContent = '送信に失敗しました: ' + res.error; return; }
+        clearLoadingText(statusEl);
+        resetDefectFormFields_();
+        statusEl.textContent = '送信しました';
+      })
+      .catch(function (err) { clearLoadingText(statusEl); if (err) statusEl.textContent = '送信に失敗しました: ' + err; });
   });
 
   renderRecentList();
