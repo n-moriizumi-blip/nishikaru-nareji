@@ -79,8 +79,8 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
-    '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '材種名',
-    '加工日', '良品数', '不良数計', '寸法出し数', '不良明細', '備考',
+    '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '機番', '材種名',
+    '加工日', '良品数', '不良数計', '寸法出し数', '大分類', '詳細', '個数', '備考',
     '投稿者メール', '投稿者名'
   ]);
 
@@ -319,6 +319,48 @@ function resolveZubanFromSeiban_(seiban) {
 }
 
 /**
+ * 材質名の生値（「進捗状況照会」の「品名・型格」列）から材質そのものだけを取り出す。
+ * 品質不具合管理システムの同名関数と同じロジック（カッコと中身を除去→ハイフン/×より
+ * 後ろを切り捨て→前後・内部の余分なスペースを除去。「SUS303-G」のように末尾に加工方法等の
+ * 付随情報が付いていることがあり、材質そのものだけを欲しいため）。2026-09-22追加。
+ */
+function cleanMaterialName_(raw) {
+  var s = (raw || '').toString();
+  s = s.replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '');
+  var cutIndex = s.length;
+  var hyphenIdx = s.indexOf('-');
+  if (hyphenIdx !== -1) cutIndex = Math.min(cutIndex, hyphenIdx);
+  var xIdx = s.indexOf('×');
+  if (xIdx !== -1) cutIndex = Math.min(cutIndex, xIdx);
+  s = s.slice(0, cutIndex);
+  s = s.replace(/[\s　]/g, '');
+  return s;
+}
+
+/**
+ * 工程内不良入力画面の機械名・機番・材種名の初期値を、製造番号から「進捗状況照会」を検索して
+ * 求める（品質不具合管理システムのlookupByMfgNo_と同じ考え方。2026-09-22追加、
+ * 「機械名と材種名も品質不具合管理システムと同じように自動で入るようにしたい」との要望）。
+ * 同じ製造番号は工程ごとに複数行あるため、機種名(設備名)・設備No.は工程順=1の行、
+ * 材質(品名・型格)はどの行でも同じ想定のため最初に見つかった行を採用する。
+ */
+function lookupProcessAutofillBySeiban_(seiban) {
+  if (!seiban) return { machine: '', machineNo: '', material: '' };
+  var rows = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, '製造番号', seiban);
+  if (rows.length === 0) return { machine: '', machineNo: '', material: '' };
+  var firstProcessRow = null;
+  rows.forEach(function (row) {
+    if (Number(row['工程順']) === 1 && !firstProcessRow) firstProcessRow = row;
+  });
+  var machineRow = firstProcessRow || rows[0];
+  return {
+    machine: String(machineRow['設備名'] || '').trim(),
+    machineNo: String(machineRow['設備No.'] || '').replace(/^No\.?\s*/i, '').trim(),
+    material: cleanMaterialName_(rows[0]['品名・型格'])
+  };
+}
+
+/**
  * QRスキャン専用の統合エンドポイント。①製番→図番変換と②その図番の情報一式取得を1回のリクエストに
  * まとめる。resolveZuban→zubanInfoを別々に呼ぶと、どちらも内部でI-PRO同期データ（大きいスプレッドシート）
  * をスキャンするため、QRスキャン1回あたりの待ち時間がほぼ倍になっていた（2026-08-29発見）。
@@ -338,6 +380,11 @@ function scanZuban_(seiban) {
   info.seiban = seiban;
   info.found = true;
   info.multiple = false;
+  // 工程内不良入力画面の機械名・機番・材種名の初期値（2026-09-22追加）
+  var autofill = lookupProcessAutofillBySeiban_(seiban);
+  info.suggestedMachine = autofill.machine;
+  info.suggestedMachineNo = autofill.machineNo;
+  info.suggestedMaterial = autofill.material;
   return info;
 }
 
@@ -897,10 +944,12 @@ function postToolMemo_(payload) {
 
 /**
  * 工程内不良ログの投稿（一次・二次加工向け）。承認フローなし、送信したら即座に反映。
- * 不良明細（大分類・詳細・数量の配列）は、シートを直接見た人が読める1行1件のテキストとして
- * 1セルにまとめて保持する（JSON文字列だと人が見て分かりにくいとの指摘を受け、2026-09-22変更）。
- * 行数が可変な明細を固定列ではなく1セルにまとめる方式自体は変更なし（旧・製造工程不良一覧表の
- * ような約38列の固定列方式は踏襲しない、[[CLAUDE.md 2026-09-22項]]で合意した方針）。
+ * 不良明細（大分類・詳細・個数）は品質不具合管理システムの「不良〇月」シートと同じ考え方で、
+ * 大分類・詳細・個数をそれぞれ独立した列に持ち、1件の投稿で複数種類の不良があった場合は
+ * 2件目以降を追加の行として書き込む（1行目＝メイン行に共通項目一式＋1件目の明細、
+ * 2行目以降＝投稿IDと明細（大分類・詳細・個数）のみ、他の列は空欄）。
+ * 2026-09-22、JSON文字列や1セルへのテキストまとめ書きを廃止しこの方式に変更
+ * （列を分けた方が集計・フィルタしやすいとの指摘を受けて）。
  */
 function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
@@ -908,36 +957,40 @@ function postProcessDefect_(payload) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
     var id = Utilities.getUuid();
     var details = payload.defectDetails || [];
-    var detailText = details.map(function (d) {
-      return d.category + '／' + d.detail + '：' + d.qty;
-    }).join('\n');
+    var first = details[0] || {};
     sheet.appendRow([
       id, new Date(), payload.zuban, payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
-      payload.machineName || '', payload.material || '',
+      payload.machineName || '', payload.machineNo || '', payload.material || '',
       payload.workDate || '', payload.goodQty || 0, payload.defectQtyTotal || 0,
-      payload.dimensionCheckQty || 0, detailText, payload.note || '',
-      identity.email, identity.name
+      payload.dimensionCheckQty || 0,
+      first.category || '', first.detail || '', (first.qty === undefined ? '' : first.qty),
+      payload.note || '', identity.email, identity.name
     ]);
+    for (var i = 1; i < details.length; i++) {
+      var d = details[i];
+      sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
+    }
     return { id: id };
   });
 }
 
 /**
- * 工程内不良ログの列を新方式に修正する移行スクリプト（2026-09-22追加、既存シート用・GASエディタで実行要）。
- * ①「不良明細JSON」列を「不良明細」に改名（JSON文字列ではなく人が読めるテキストに変更したため）。
- * ②「寸法出し」列を「寸法出し数」に改名（有/無の選択から数量入力に変更したため）。
- * 既に新しい列名になっている場合は何もしない（複数回実行しても安全）。
+ * 工程内不良ログを新しい列構成で作り直す（2026-09-22、実機テストのフィードバックを受けた設計変更）。
+ * ①機械名から機番を分離（機械名＝機種のみ、機番＝号機のみの別列に）。
+ * ②不良明細（大分類・詳細・個数）をテキストの1セルまとめ書きから独立した3列に変更。
+ * 列の意味そのものが変わるため単純な改名では対応できず、既存の行（テスト投稿分）は消去される。
+ * GASエディタで1回だけ手動実行すること。
  */
-function renameProcessDefectColumns() {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
-  if (!sheet) { Logger.log('「' + SHEET_PROCESS_DEFECTS + '」シートが見つかりません。先にsetupSheets()を実行してください'); return; }
-  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var renamed = [];
-  var jsonCol = header.indexOf('不良明細JSON');
-  if (jsonCol !== -1) { sheet.getRange(1, jsonCol + 1).setValue('不良明細'); renamed.push('不良明細JSON→不良明細'); }
-  var dimCol = header.indexOf('寸法出し');
-  if (dimCol !== -1) { sheet.getRange(1, dimCol + 1).setValue('寸法出し数'); renamed.push('寸法出し→寸法出し数'); }
-  Logger.log(renamed.length ? ('改名しました: ' + renamed.join(', ')) : '改名対象の列はありませんでした（既に新しい列名の可能性）');
+function rebuildProcessDefectSheetV2() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var old = ss.getSheetByName(SHEET_PROCESS_DEFECTS);
+  if (old) ss.deleteSheet(old);
+  ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
+    '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '機番', '材種名',
+    '加工日', '良品数', '不良数計', '寸法出し数', '大分類', '詳細', '個数', '備考',
+    '投稿者メール', '投稿者名'
+  ]);
+  Logger.log('「' + SHEET_PROCESS_DEFECTS + '」を新しい列構成で作り直しました');
 }
 
 /**

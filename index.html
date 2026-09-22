@@ -315,6 +315,7 @@
     font-family: inherit; font-size: 0.86rem; padding: 10px 11px;
     border-radius: 4px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
+  .defect-detail-row select.is-placeholder { color: var(--ink-soft); }
   .defect-detail-row input[type="number"] { width: 100%; }
   .defect-row-remove-btn {
     font-family: inherit; border: 1px solid var(--alert); background: transparent; border-radius: 4px;
@@ -325,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.26.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.27.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -782,10 +783,12 @@
       </div>
       <div class="mini-grid">
         <div class="mini-field"><label>得意先（自動）</label><input type="text" id="defectTokuisakiDisplay" disabled></div>
-        <div class="mini-field"><label>機械名</label><input type="text" id="defectMachineInput" list="machineNameList"></div>
-        <div class="mini-field"><label>材種名</label><input type="text" id="defectMaterialInput" list="defectMaterialList"></div>
+        <div class="mini-field"><label>機械名（自動・修正可）</label><input type="text" id="defectMachineInput" list="defectMachineTypeList"></div>
+        <div class="mini-field"><label>機番（自動・修正可）</label><input type="text" id="defectMachineNoInput"></div>
+        <div class="mini-field"><label>材種名（自動・修正可）</label><input type="text" id="defectMaterialInput" list="defectMaterialList"></div>
         <div class="mini-field"><label>加工日</label><input type="date" id="defectDateInput"></div>
       </div>
+      <datalist id="defectMachineTypeList"></datalist>
       <datalist id="defectMaterialList"></datalist>
 
       <div class="mini-grid">
@@ -1940,6 +1943,17 @@
         });
         partNumberComboMap = res['品番組み合わせ'] || {};
         refreshAllPartNumberDatalists_();
+        // 工程内不良入力の「機械名」は機種のみ（機番は別欄）のため、既存の機械名候補
+        // （「M12 No.82」のような機種＋機番の文字列）から機種部分だけを取り出して候補にする
+        // （2026-09-22追加）。
+        var machineTypes = {};
+        (res['機械名'] || []).forEach(function (v) {
+          var type = String(v).split(/\s+No\./i)[0].trim();
+          if (type) machineTypes[type] = true;
+        });
+        document.getElementById('defectMachineTypeList').innerHTML = Object.keys(machineTypes).map(function (v) {
+          return '<option value="' + escapeAttr(v) + '">';
+        }).join('');
       })
       .catch(function () { toolFieldSuggestionsLoaded = false; });
   }
@@ -3428,11 +3442,18 @@
     }).join('');
     return '' +
       '<div class="defect-detail-row">' +
-      '  <div class="mini-field"><label>大分類</label><select class="ddCategory">' + catOptions + '</select></div>' +
-      '  <div class="mini-field"><label>詳細</label><select class="ddDetail">' + detailOptions + '</select></div>' +
+      '  <div class="mini-field"><label>大分類</label><select class="ddCategory' + (category ? '' : ' is-placeholder') + '">' + catOptions + '</select></div>' +
+      '  <div class="mini-field"><label>詳細</label><select class="ddDetail' + (detail ? '' : ' is-placeholder') + '">' + detailOptions + '</select></div>' +
       '  <div class="mini-field" style="flex:0 0 90px;"><label>数量</label><input type="number" min="0" class="ddQty" value="' + (qty || 0) + '"></div>' +
       '  <button type="button" class="defect-row-remove-btn">削除</button>' +
       '</div>';
+  }
+
+  // 大分類・詳細のselectは未選択の間プレースホルダー文字（「大分類」「詳細」自体）が
+  // 表示されるため、他の入力欄のプレースホルダーと同じ薄い色にする（2026-09-22、
+  // 「選んだときの字は今のままでよい」との指摘を受けてselect自体ではなくis-placeholderで判定）。
+  function updateDefectSelectPlaceholder_(selectEl) {
+    selectEl.classList.toggle('is-placeholder', selectEl.value === '');
   }
 
   function wireDefectDetailRow_(rowEl) {
@@ -3445,7 +3466,10 @@
       detailSelect.innerHTML = '<option value="">詳細</option>' + list.map(function (d) {
         return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>';
       }).join('');
+      updateDefectSelectPlaceholder_(catSelect);
+      updateDefectSelectPlaceholder_(detailSelect);
     });
+    detailSelect.addEventListener('change', function () { updateDefectSelectPlaceholder_(detailSelect); });
     qtyInput.addEventListener('input', recalcDefectTotal_);
     removeBtn.addEventListener('click', function () {
       rowEl.remove();
@@ -3475,8 +3499,12 @@
   });
 
   function resetDefectFormFields_() {
-    document.getElementById('defectMachineInput').value = selectedMachine || '';
-    document.getElementById('defectMaterialInput').value = '';
+    // 機械名・機番・材種名は、QRスキャン時に製造番号から「進捗状況照会」を検索して取れた値を
+    // 初期値にする（品質不具合管理システムと同じ仕組み、2026-09-22追加）。手入力の図番等で
+    // 取れなかった場合は空欄のまま（引き続き手入力・候補からの選択は可能）。
+    document.getElementById('defectMachineInput').value = currentZubanData.suggestedMachine || '';
+    document.getElementById('defectMachineNoInput').value = currentZubanData.suggestedMachineNo || '';
+    document.getElementById('defectMaterialInput').value = currentZubanData.suggestedMaterial || '';
     document.getElementById('defectDateInput').value = new Date().toISOString().slice(0, 10);
     document.getElementById('defectGoodQtyInput').value = 0;
     document.getElementById('defectDimensionQtyInput').value = 0;
@@ -3519,6 +3547,7 @@
       tokuisakiName: currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '',
       idToken: currentUser.idToken,
       machineName: document.getElementById('defectMachineInput').value.trim(),
+      machineNo: document.getElementById('defectMachineNoInput').value.trim(),
       material: document.getElementById('defectMaterialInput').value.trim(),
       workDate: document.getElementById('defectDateInput').value,
       goodQty: parseInt(document.getElementById('defectGoodQtyInput').value, 10) || 0,
