@@ -65,7 +65,7 @@ function setupSheets() {
     '図番',
     '検査記録の添付', 'ミルシート', 'トレー梱包', 'NG限度見本', 'キーエンス測定', 'キーエンスプログラム名',
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
-    '梱包方法', 'その他必要事項',
+    '梱包方法', 'その他必要事項', '梱包写真URL',
     '仕上専用メモ', '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー',
     '最終更新者メール', '最終更新日時'
   ]);
@@ -2912,6 +2912,21 @@ function addToolMemoMachineColumn() {
 }
 
 /** SHEET_TOOL_MEMOに「タイトル」列を追加する（既存シート用、初回のみ手動実行）。 */
+/**
+ * SHEET_SHIPPING_SPECに「梱包写真URL」列を追加する（既存シート用、初回のみ手動実行）。
+ * 出荷｜梱包・その他にも他のセクションと同じく写真・PDFを添付できるようにした（2026-09-22追加）。
+ */
+function addShukkaPhotoColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SHIPPING_SPEC);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('梱包写真URL') !== -1) { Logger.log('「梱包写真URL」は追加済みです'); return; }
+  var otherCol = header.indexOf('その他必要事項');
+  var insertAt = otherCol !== -1 ? otherCol + 2 : sheet.getLastColumn() + 1; // その他必要事項の直後
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('梱包写真URL');
+  Logger.log('「梱包写真URL」列を追加しました');
+}
+
 function addToolMemoTitleColumn() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TOOL_MEMO);
   var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];

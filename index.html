@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.27.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.27.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -669,6 +669,12 @@
         <div class="field">
           <label>その他必要事項</label>
           <textarea id="shipOtherInput" placeholder="例：納品書に検査成績書を同封、等"></textarea>
+        </div>
+        <div class="field">
+          <label>写真・PDF</label>
+          <div id="shukkaPhotoPreview"></div>
+          <button type="button" class="photo-btn" id="shukkaPhotoBtn"><span id="shukkaPhotoIcon">📷</span><span id="shukkaPhotoLabel">写真・PDFを選ぶ</span></button>
+          <input type="file" id="shukkaPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
         </div>
         <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
       </div>
@@ -3014,6 +3020,15 @@
     if (showShukka) {
       document.getElementById('packMethodInput').value = spec['梱包方法'] || '';
       document.getElementById('shipOtherInput').value = spec['その他必要事項'] || '';
+      pendingShukkaPhotoUrl = spec['梱包写真URL'] || '';
+      document.getElementById('shukkaPhotoPreview').innerHTML = buildPhotoHtml_(pendingShukkaPhotoUrl);
+      if (pendingShukkaPhotoUrl) {
+        document.getElementById('shukkaPhotoIcon').textContent = '✅';
+        document.getElementById('shukkaPhotoLabel').textContent = '添付しました';
+        document.getElementById('shukkaPhotoBtn').classList.add('has-photo');
+      } else {
+        resetShukkaPhotoBtn();
+      }
     }
     if (showShiage) {
       cancelEditShiageLog();
@@ -3153,6 +3168,7 @@
     if (!document.getElementById('specShukkaSection').classList.contains('hidden')) {
       fields['梱包方法'] = document.getElementById('packMethodInput').value;
       fields['その他必要事項'] = document.getElementById('shipOtherInput').value;
+      fields['梱包写真URL'] = pendingShukkaPhotoUrl;
       hasSpecFields = true;
     }
     if (hasSpecFields) saveShippingSpecFields(fields, '共通・品証・出荷情報', 'specSaveBtn');
@@ -3189,10 +3205,16 @@
       '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
     }, '共通情報', 'specCommonSaveBtn');
   });
+  var pendingShukkaPhotoUrl = '';
+  var resetShukkaPhotoBtn = wirePhotoUpload({
+    btnId: 'shukkaPhotoBtn', iconId: 'shukkaPhotoIcon', labelId: 'shukkaPhotoLabel', inputId: 'shukkaPhotoInput',
+    onUploaded: function (url) { pendingShukkaPhotoUrl = url; }
+  });
   document.getElementById('specShukkaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       '梱包方法': document.getElementById('packMethodInput').value,
-      'その他必要事項': document.getElementById('shipOtherInput').value
+      'その他必要事項': document.getElementById('shipOtherInput').value,
+      '梱包写真URL': pendingShukkaPhotoUrl
     }, '出荷（梱包・その他）', 'specShukkaSaveBtn');
   });
   // ==== 仕上専用｜品質情報を記録する（品証の品質情報ログと同じ仕組み、部署='仕上げ'） ====
