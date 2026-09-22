@@ -80,7 +80,7 @@ function setupSheets() {
 
   ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
     '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '材種名',
-    '加工日', '良品数', '不良数計', '寸法出し', '不良明細JSON', '備考',
+    '加工日', '良品数', '不良数計', '寸法出し数', '不良明細', '備考',
     '投稿者メール', '投稿者名'
   ]);
 
@@ -209,10 +209,15 @@ function getZubanInfo_(zuban, knownMaster) {
     Logger.log('getZubanInfo_が遅延（図番:' + zuban + '）: 品名等取得=' + (t1 - t0) + 'ms, 過去トラ検索=' + (t2 - t1) + 'ms, その他読み取り=' + (t3 - t2) + 'ms, 合計=' + (t3 - t0) + 'ms');
   }
 
+  // 得意先はコード（例:"1234"）で持っているため、画面表示用に名前も引いておく
+  // （2026-09-22追加。工程内不良入力画面で「コードじゃなくて名前にしたい」との指摘を受けて追加）。
+  var tokuisakiName = master.tokuisaki ? lookupTokuisakiName_(master.tokuisaki) : null;
+
   var result = {
     zuban: zuban,
     hinmei: master.hinmei,
     tokuisaki: master.tokuisaki,
+    tokuisakiName: tokuisakiName,
     pastTrouble: pastTrouble,       // 品質情報／不具合改善計画書（都度Drive検索）＋共有された品質情報記録／ツール配置メモ
     qualityLog: qualityLog,         // 自部署の品質情報（共有フラグOFFのもの）
     toolMemo: toolMemo,             // ツール配置メモ（一次・二次加工向け）
@@ -892,25 +897,47 @@ function postToolMemo_(payload) {
 
 /**
  * 工程内不良ログの投稿（一次・二次加工向け）。承認フローなし、送信したら即座に反映。
- * 不良明細（大分類・詳細・数量の配列）はJSON文字列として1セルに保持する（品番別・大分類別の
- * 集計はこのJSONをパースして行うため、専用の集計シートは西軽精機ナレッジ側にはまだ無い。
- * 旧・製造工程不良一覧表のような約38列の固定列方式ではなく、行数が可変な明細を1セルにまとめる方式。
- * 2026-09-22、[[CLAUDE.md 2026-09-22項]]で合意した方針のPhase 1実装）。
+ * 不良明細（大分類・詳細・数量の配列）は、シートを直接見た人が読める1行1件のテキストとして
+ * 1セルにまとめて保持する（JSON文字列だと人が見て分かりにくいとの指摘を受け、2026-09-22変更）。
+ * 行数が可変な明細を固定列ではなく1セルにまとめる方式自体は変更なし（旧・製造工程不良一覧表の
+ * ような約38列の固定列方式は踏襲しない、[[CLAUDE.md 2026-09-22項]]で合意した方針）。
  */
 function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     if (!payload.zuban) return { error: 'zuban is required' };
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
     var id = Utilities.getUuid();
+    var details = payload.defectDetails || [];
+    var detailText = details.map(function (d) {
+      return d.category + '／' + d.detail + '：' + d.qty;
+    }).join('\n');
     sheet.appendRow([
-      id, new Date(), payload.zuban, payload.hinmei || '', payload.tokuisaki || '',
+      id, new Date(), payload.zuban, payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
       payload.machineName || '', payload.material || '',
       payload.workDate || '', payload.goodQty || 0, payload.defectQtyTotal || 0,
-      payload.dimensionCheck || '', JSON.stringify(payload.defectDetails || []), payload.note || '',
+      payload.dimensionCheckQty || 0, detailText, payload.note || '',
       identity.email, identity.name
     ]);
     return { id: id };
   });
+}
+
+/**
+ * 工程内不良ログの列を新方式に修正する移行スクリプト（2026-09-22追加、既存シート用・GASエディタで実行要）。
+ * ①「不良明細JSON」列を「不良明細」に改名（JSON文字列ではなく人が読めるテキストに変更したため）。
+ * ②「寸法出し」列を「寸法出し数」に改名（有/無の選択から数量入力に変更したため）。
+ * 既に新しい列名になっている場合は何もしない（複数回実行しても安全）。
+ */
+function renameProcessDefectColumns() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  if (!sheet) { Logger.log('「' + SHEET_PROCESS_DEFECTS + '」シートが見つかりません。先にsetupSheets()を実行してください'); return; }
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var renamed = [];
+  var jsonCol = header.indexOf('不良明細JSON');
+  if (jsonCol !== -1) { sheet.getRange(1, jsonCol + 1).setValue('不良明細'); renamed.push('不良明細JSON→不良明細'); }
+  var dimCol = header.indexOf('寸法出し');
+  if (dimCol !== -1) { sheet.getRange(1, dimCol + 1).setValue('寸法出し数'); renamed.push('寸法出し→寸法出し数'); }
+  Logger.log(renamed.length ? ('改名しました: ' + renamed.join(', ')) : '改名対象の列はありませんでした（既に新しい列名の可能性）');
 }
 
 /**

@@ -325,7 +325,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.26.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.26.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -782,7 +782,7 @@
       </div>
       <div class="mini-grid">
         <div class="mini-field"><label>得意先（自動）</label><input type="text" id="defectTokuisakiDisplay" disabled></div>
-        <div class="mini-field"><label>機械名</label><input type="text" id="defectMachineInput"></div>
+        <div class="mini-field"><label>機械名</label><input type="text" id="defectMachineInput" list="machineNameList"></div>
         <div class="mini-field"><label>材種名</label><input type="text" id="defectMaterialInput" list="defectMaterialList"></div>
         <div class="mini-field"><label>加工日</label><input type="date" id="defectDateInput"></div>
       </div>
@@ -793,15 +793,8 @@
         <div class="mini-field"><label>不良数計（自動計算）</label><input type="text" id="defectTotalQtyDisplay" disabled value="0"></div>
       </div>
 
-      <div class="field">
-        <label>寸法出し</label>
-        <div class="chip-row" data-group="defectDimensionCheck" data-field="寸法出し">
-          <button type="button" class="chip">有</button>
-          <button type="button" class="chip">無</button>
-        </div>
-      </div>
-
       <div class="section-label">不良明細（種類ごとに追加してください）</div>
+      <div class="mini-field" style="max-width:180px;"><label>寸法出しした数</label><input type="number" min="0" id="defectDimensionQtyInput" value="0"></div>
       <div id="defectDetailRows"></div>
       <button type="button" class="dashed-add-btn" id="defectAddRowBtn">＋ 不良の種類を追加</button>
 
@@ -3486,10 +3479,10 @@
     document.getElementById('defectMaterialInput').value = '';
     document.getElementById('defectDateInput').value = new Date().toISOString().slice(0, 10);
     document.getElementById('defectGoodQtyInput').value = 0;
+    document.getElementById('defectDimensionQtyInput').value = 0;
     document.getElementById('defectDetailRows').innerHTML = '';
     addDefectDetailRow_('', '', 0);
     recalcDefectTotal_();
-    setChipValue('defectDimensionCheck', '');
     document.getElementById('defectNoteInput').value = '';
   }
 
@@ -3497,7 +3490,8 @@
     if (!currentZubanData) return;
     setScreen('processDefect');
     document.getElementById('defectZubanHeader').textContent = zubanLabel(currentZubanData);
-    document.getElementById('defectTokuisakiDisplay').value = currentZubanData.tokuisaki || '';
+    document.getElementById('defectTokuisakiDisplay').value = currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '';
+    loadToolFieldSuggestions_();
     resetDefectFormFields_();
     document.getElementById('defectStatus').textContent = '';
   }
@@ -3522,13 +3516,14 @@
       zuban: currentZubanData.zuban,
       hinmei: currentZubanData.hinmei || '',
       tokuisaki: currentZubanData.tokuisaki || '',
+      tokuisakiName: currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '',
       idToken: currentUser.idToken,
       machineName: document.getElementById('defectMachineInput').value.trim(),
       material: document.getElementById('defectMaterialInput').value.trim(),
       workDate: document.getElementById('defectDateInput').value,
       goodQty: parseInt(document.getElementById('defectGoodQtyInput').value, 10) || 0,
       defectQtyTotal: totalQty,
-      dimensionCheck: getChipValue('defectDimensionCheck'),
+      dimensionCheckQty: parseInt(document.getElementById('defectDimensionQtyInput').value, 10) || 0,
       defectDetails: details,
       note: document.getElementById('defectNoteInput').value.trim()
     };
