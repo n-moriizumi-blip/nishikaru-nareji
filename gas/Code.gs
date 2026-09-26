@@ -2032,6 +2032,37 @@ function diagnoseZubanIndexRow() {
  * 編集して共有をOFFにすると、部署が空欄のままこの状態に陥る。GASエディタでこの関数を選んで
  * 実行し、実行数ログを確認すること。書き換えは行わない（対応方針をユーザーと相談してから行う）。
  */
+/**
+ * 【診断用・手動実行・2026-09-27】投稿者メールはあるのに投稿者名が空欄の行を探す（書き込みなし）。
+ * ユーザーから「投稿者が表示されない、DBにはアドレスがあるのに」との報告を受けて追加。
+ * postQualityLog_のidentity.nameはverifyIdToken_で`claims.name || claims.email`と必ず
+ * 何か入る作りのため、理屈上は空欄になるはずがない。実際のデータを見て真因を切り分ける。
+ */
+function diagnoseBlankPosterName() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idCol = header.indexOf('投稿ID');
+  var zubanCol = header.indexOf('図番');
+  var tsCol = header.indexOf('タイムスタンプ');
+  var emailCol = header.indexOf('投稿者メール');
+  var nameCol = header.indexOf('投稿者名');
+  var contentCol = header.indexOf('内容');
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var hits = 0;
+  for (var i = 0; i < values.length; i++) {
+    var email = String(values[i][emailCol] || '').trim();
+    var name = String(values[i][nameCol] || '').trim();
+    if (email && !name) {
+      hits++;
+      var content = String(values[i][contentCol] || '');
+      Logger.log('行' + (i + 2) + ' 投稿ID=' + values[i][idCol] + ' 図番=[' + values[i][zubanCol] + ']' +
+        ' タイムスタンプ=' + values[i][tsCol] + ' 投稿者メール=[' + email + ']' +
+        ' 内容(先頭40文字)=[' + content.substring(0, 40) + ']');
+    }
+  }
+  Logger.log('該当（投稿者メールはあるが投稿者名が空欄）行数: ' + hits);
+}
+
 function diagnoseOrphanedQualityLog() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
   var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
