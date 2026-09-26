@@ -1008,8 +1008,8 @@ function addProcessDefectMfgNoColumn() {
  * 実行し続けることで、I-PROのローリングウィンドウの外に出ても自社側に履歴が残る。
  * 同じ製造番号は工程が進むにつれ完了数量が更新されることがあるため、既存の製造番号は
  * 最新値に上書き、新しい製造番号は追加するupsert方式（図番インデックスのupsertZubanIndex_と
- * 同じ考え方）。品質不具合管理システムのlookupByMfgNo_と同じく、完了数量は「値が入っている
- * 工程順の中で一番大きい行」を採用する。
+ * 同じ考え方）。完了数量は「値が入っている工程順の中で一番小さい行」を採用する
+ * （2026-09-26、ユーザー指示により一番大きい行から変更）。
  * setupDailyProcessQtySnapshotTriggerで毎日自動実行される想定。手動実行して結果を
  * ログで確認することもできる（末尾に_を付けていないのは、GASエディタの「実行」プルダウンで
  * 手動実行できるようにするため）。
@@ -1043,7 +1043,7 @@ function snapshotProductionQty() {
       if (qty === '' || qty === null) continue;
       var order = orderCol !== -1 ? Number(row[orderCol]) : 0;
       var existing = latestByMfgNo[mfgNo];
-      if (!existing || order > existing.order) {
+      if (!existing || order < existing.order) {
         latestByMfgNo[mfgNo] = {
           order: order,
           qty: Number(qty) || 0,
