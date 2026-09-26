@@ -1014,6 +1014,30 @@ function addProcessDefectMfgNoColumn() {
  * ログで確認することもできる（末尾に_を付けていないのは、GASエディタの「実行」プルダウンで
  * 手動実行できるようにするため）。
  */
+/**
+ * 【診断用・手動実行・2026-09-27】「進捗状況照会」の完了数量に、実際の完了日時に相当する列が
+ * あるかを確認する（書き込みなし）。加工数スナップショットは今のところ「自社が取得した日」しか
+ * 記録しておらず、実際の作業終了時刻と無関係なため月別集計に使えないという指摘を受けて追加。
+ * 製造番号・完了数量の両方を持つタブについて、ヘッダー全列と先頭3件のデータ行をログ出力する。
+ */
+function diagnoseProgressSheetColumns() {
+  var srcSs = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  srcSs.getSheets().forEach(function (s) {
+    var lastRow = s.getLastRow(), lastCol = s.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+    var header = s.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (header.indexOf('製造番号') === -1 || header.indexOf('完了数量') === -1) return;
+    Logger.log('=== タブ「' + s.getName() + '」ヘッダー（全' + lastCol + '列） ===');
+    header.forEach(function (h, i) { Logger.log((i + 1) + ': ' + h); });
+    var sampleCount = Math.min(3, lastRow - 1);
+    var sample = s.getRange(2, 1, sampleCount, lastCol).getValues();
+    sample.forEach(function (row, i) {
+      Logger.log('--- サンプル行' + (i + 2) + ' ---');
+      header.forEach(function (h, c) { if (row[c] !== '') Logger.log('  ' + h + ': ' + row[c]); });
+    });
+  });
+}
+
 function snapshotProductionQty() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
