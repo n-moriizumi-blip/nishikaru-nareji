@@ -15,6 +15,7 @@ var SHEET_SHIPPING_SPEC = '出荷仕様';
 var SHEET_ZUBAN_INDEX = '図番インデックス';
 var SHEET_SEIBAN_INDEX = '製番インデックス';
 var SHEET_PROCESS_DEFECTS = '工程内不良ログ';
+var SHEET_PROCESS_QTY_SNAPSHOT = '加工数スナップショット';
 
 // 「進捗状況照会」共有スプレッドシート。製造番号・品番(図番)・品名・得意先コード・得意先名が
 // 同じ行に揃っているI-PRO同期データ。以前は見つからない場合に大きい「I-Pro Source」（全件、
@@ -79,9 +80,13 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
-    '投稿ID', 'タイムスタンプ', '図番', '品名', '得意先', '機械名', '機番', '材種名',
+    '投稿ID', 'タイムスタンプ', '図番', '製造番号', '品名', '得意先', '機械名', '機番', '材種名',
     '加工日', '良品数', '不良数計', '寸法出し数', '大分類', '詳細', '個数', '備考',
     '投稿者メール', '投稿者名'
+  ]);
+
+  ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
+    '製造番号', '図番', '得意先', '完了数量', '初回取得日', '最終更新日'
   ]);
 
   // デフォルトのSheet1が残っていれば削除（タブ構成を綺麗に保つ）
@@ -950,6 +955,10 @@ function postToolMemo_(payload) {
  * 2行目以降＝投稿IDと明細（大分類・詳細・個数）のみ、他の列は空欄）。
  * 2026-09-22、JSON文字列や1セルへのテキストまとめ書きを廃止しこの方式に変更
  * （列を分けた方が集計・フィルタしやすいとの指摘を受けて）。
+ * 製造番号（2026-09-26追加、Phase 2）：QRスキャン時に取得済みの製造番号(seiban)を保存し、
+ * 「加工数スナップショット」（同じ製造番号の完了数量を定期取得して蓄積するシート）と
+ * 突き合わせてロット単位の不良率を出せるようにする（品質不具合管理システムが製造番号を
+ * 後から追加したのと同じ理由）。手入力等で製造番号が無い経路では空欄のまま。
  */
 function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
@@ -959,7 +968,7 @@ function postProcessDefect_(payload) {
     var details = payload.defectDetails || [];
     var first = details[0] || {};
     sheet.appendRow([
-      id, new Date(), payload.zuban, payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
+      id, new Date(), payload.zuban, payload.seiban || '', payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
       payload.machineName || '', payload.machineNo || '', payload.material || '',
       payload.workDate || '', payload.goodQty || 0, payload.defectQtyTotal || 0,
       payload.dimensionCheckQty || 0,
@@ -968,10 +977,118 @@ function postProcessDefect_(payload) {
     ]);
     for (var i = 1; i < details.length; i++) {
       var d = details[i];
-      sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
+      sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
     }
     return { id: id };
   });
+}
+
+/**
+ * SHEET_PROCESS_DEFECTSに「製造番号」列を追加する（既存シート用、初回のみ手動実行。2026-09-26追加）。
+ * 図番の直後に挿入する（品質不具合管理システムの「不良〇月」で得意先名の左に置いたのと同じ考え方、
+ * 識別子系の列をまとめる）。
+ */
+function addProcessDefectMfgNoColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  if (!sheet) { Logger.log('「' + SHEET_PROCESS_DEFECTS + '」シートが見つかりません'); return; }
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('製造番号') !== -1) { Logger.log('「製造番号」は追加済みです'); return; }
+  var zubanCol = header.indexOf('図番');
+  var insertAt = zubanCol !== -1 ? zubanCol + 2 : sheet.getLastColumn() + 1; // 図番の直後
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('製造番号');
+  Logger.log('「製造番号」列を追加しました');
+}
+
+/**
+ * 「進捗状況照会」（I-PRO同期データ）の完了数量を定期的にスナップショットし、自社側の
+ * 「加工数スナップショット」シートに蓄積する（Phase 2、2026-09-26追加）。
+ * 進捗状況照会は直近数ヶ月分しか保持しないため、そのままでは過去の月に遡って
+ * 不良率（工程内不良ログの不良数計÷ここの完了数量）を計算できない。定期的に（毎日想定）
+ * 実行し続けることで、I-PROのローリングウィンドウの外に出ても自社側に履歴が残る。
+ * 同じ製造番号は工程が進むにつれ完了数量が更新されることがあるため、既存の製造番号は
+ * 最新値に上書き、新しい製造番号は追加するupsert方式（図番インデックスのupsertZubanIndex_と
+ * 同じ考え方）。品質不具合管理システムのlookupByMfgNo_と同じく、完了数量は「値が入っている
+ * 工程順の中で一番大きい行」を採用する。
+ * setupDailyProcessQtySnapshotTriggerで毎日自動実行される想定。手動実行して結果を
+ * ログで確認することもできる（末尾に_を付けていないのは、GASエディタの「実行」プルダウンで
+ * 手動実行できるようにするため）。
+ */
+function snapshotProductionQty() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
+    '製造番号', '図番', '得意先', '完了数量', '初回取得日', '最終更新日'
+  ]);
+
+  var srcSs = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
+  var srcSheets = srcSs.getSheets();
+  var latestByMfgNo = {}; // 製造番号 -> {order, qty, drawing, customer}
+  srcSheets.forEach(function (s) {
+    var lastRow = s.getLastRow(), lastCol = s.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+    var header = s.getRange(1, 1, 1, lastCol).getValues()[0];
+    var mfgCol = header.indexOf('製造番号');
+    var qtyCol = header.indexOf('完了数量');
+    if (mfgCol === -1 || qtyCol === -1) return; // 対象列を持たないタブはスキップ
+    var orderCol = header.indexOf('工程順');
+    var drawingCol = header.indexOf('品番(図番)');
+    if (drawingCol === -1) drawingCol = header.indexOf('品番(図番）');
+    var customerCol = header.indexOf('得意先名');
+    var values = s.getRange(1, 1, lastRow, lastCol).getValues();
+    for (var i = 1; i < values.length; i++) {
+      var row = values[i];
+      var mfgNo = String(row[mfgCol] || '').trim();
+      if (!mfgNo) continue;
+      var qty = row[qtyCol];
+      if (qty === '' || qty === null) continue;
+      var order = orderCol !== -1 ? Number(row[orderCol]) : 0;
+      var existing = latestByMfgNo[mfgNo];
+      if (!existing || order > existing.order) {
+        latestByMfgNo[mfgNo] = {
+          order: order,
+          qty: Number(qty) || 0,
+          drawing: drawingCol !== -1 ? stripZubanPrefix_(row[drawingCol]) : '',
+          customer: customerCol !== -1 ? row[customerCol] : ''
+        };
+      }
+    }
+  });
+
+  var lastRow = sheet.getLastRow();
+  var rowByMfgNo = {};
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function (r, i) {
+      if (r[0]) rowByMfgNo[String(r[0])] = i + 2;
+    });
+  }
+
+  var now = new Date();
+  var added = 0, updated = 0;
+  Object.keys(latestByMfgNo).forEach(function (mfgNo) {
+    var data = latestByMfgNo[mfgNo];
+    var rowNum = rowByMfgNo[mfgNo];
+    if (rowNum) {
+      var currentQty = sheet.getRange(rowNum, 4).getValue();
+      if (Number(currentQty) !== data.qty) {
+        sheet.getRange(rowNum, 4).setValue(data.qty);
+        sheet.getRange(rowNum, 6).setValue(now);
+        updated++;
+      }
+    } else {
+      sheet.appendRow([mfgNo, data.drawing, data.customer, data.qty, now, now]);
+      added++;
+    }
+  });
+  Logger.log('加工数スナップショット: 新規' + added + '件、更新' + updated + '件（進捗状況照会に完了数量ありの製造番号' + Object.keys(latestByMfgNo).length + '件中）');
+}
+
+/** 加工数スナップショットを毎日自動実行するトリガーを設定する（初回のみ手動実行）。 */
+function setupDailyProcessQtySnapshotTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'snapshotProductionQty') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('snapshotProductionQty').timeBased().everyDays(1).atHour(3).create();
+  Logger.log('毎日3時に加工数スナップショットを取得するトリガーを設定しました');
 }
 
 /**
