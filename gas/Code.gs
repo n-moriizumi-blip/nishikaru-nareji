@@ -86,7 +86,7 @@ function setupSheets() {
   ]);
 
   ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
-    '製造番号', '図番', '得意先', '完了数量', '初回取得日', '最終更新日'
+    '製造番号', '図番', '得意先', '完了数量', '完了日時', '初回取得日', '最終更新日'
   ]);
 
   // デフォルトのSheet1が残っていれば削除（タブ構成を綺麗に保つ）
@@ -1041,12 +1041,12 @@ function diagnoseProgressSheetColumns() {
 function snapshotProductionQty() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
-    '製造番号', '図番', '得意先', '完了数量', '初回取得日', '最終更新日'
+    '製造番号', '図番', '得意先', '完了数量', '完了日時', '初回取得日', '最終更新日'
   ]);
 
   var srcSs = SpreadsheetApp.openById(IPRO_PROGRESS_SPREADSHEET_ID);
   var srcSheets = srcSs.getSheets();
-  var latestByMfgNo = {}; // 製造番号 -> {order, qty, drawing, customer}
+  var latestByMfgNo = {}; // 製造番号 -> {order, qty, drawing, customer, completedAt}
   srcSheets.forEach(function (s) {
     var lastRow = s.getLastRow(), lastCol = s.getLastColumn();
     if (lastRow < 2 || lastCol < 1) return;
@@ -1058,6 +1058,10 @@ function snapshotProductionQty() {
     var drawingCol = header.indexOf('品番(図番)');
     if (drawingCol === -1) drawingCol = header.indexOf('品番(図番）');
     var customerCol = header.indexOf('得意先名');
+    // 「作業終了時刻」＝その工程の実際の完了日時（月別集計に使う。「予定作業終了時刻」とは別物で、
+    // 完了フラグが「完了」になった行にだけ値が入る想定。2026-09-27追加、diagnoseProgressSheetColumns
+    // で実際のヘッダーを確認した上で列名を確定した）。
+    var completedAtCol = header.indexOf('作業終了時刻');
     var values = s.getRange(1, 1, lastRow, lastCol).getValues();
     for (var i = 1; i < values.length; i++) {
       var row = values[i];
@@ -1072,7 +1076,8 @@ function snapshotProductionQty() {
           order: order,
           qty: Number(qty) || 0,
           drawing: drawingCol !== -1 ? stripZubanPrefix_(row[drawingCol]) : '',
-          customer: customerCol !== -1 ? row[customerCol] : ''
+          customer: customerCol !== -1 ? row[customerCol] : '',
+          completedAt: completedAtCol !== -1 ? row[completedAtCol] : ''
         };
       }
     }
@@ -1092,18 +1097,39 @@ function snapshotProductionQty() {
     var data = latestByMfgNo[mfgNo];
     var rowNum = rowByMfgNo[mfgNo];
     if (rowNum) {
-      var currentQty = sheet.getRange(rowNum, 4).getValue();
-      if (Number(currentQty) !== data.qty) {
-        sheet.getRange(rowNum, 4).setValue(data.qty);
-        sheet.getRange(rowNum, 6).setValue(now);
+      var currentValues = sheet.getRange(rowNum, 4, 1, 2).getValues()[0]; // [完了数量, 完了日時]
+      var qtyChanged = Number(currentValues[0]) !== data.qty;
+      // 完了日時列は後から追加したため、既存行は数量が変わっていなくても空欄のままのことがある。
+      // その場合も埋められるようにする（2026-09-27）。
+      var completedAtMissing = !currentValues[1] && !!data.completedAt;
+      if (qtyChanged || completedAtMissing) {
+        sheet.getRange(rowNum, 4, 1, 2).setValues([[data.qty, data.completedAt || '']]);
+        sheet.getRange(rowNum, 7).setValue(now);
         updated++;
       }
     } else {
-      sheet.appendRow([mfgNo, data.drawing, data.customer, data.qty, now, now]);
+      sheet.appendRow([mfgNo, data.drawing, data.customer, data.qty, data.completedAt || '', now, now]);
       added++;
     }
   });
   Logger.log('加工数スナップショット: 新規' + added + '件、更新' + updated + '件（進捗状況照会に完了数量ありの製造番号' + Object.keys(latestByMfgNo).length + '件中）');
+}
+
+/**
+ * SHEET_PROCESS_QTY_SNAPSHOTに「完了日時」列を追加する（既存シート用、初回のみ手動実行。2026-09-27追加）。
+ * 「進捗状況照会」の「作業終了時刻」（実際の完了日時）を記録し、月別集計に使えるようにする
+ * （それまでは自社が取得した日しか記録しておらず、いつ実際に完了したかと無関係だった）。
+ */
+function addProcessQtySnapshotCompletedAtColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_QTY_SNAPSHOT);
+  if (!sheet) { Logger.log('「' + SHEET_PROCESS_QTY_SNAPSHOT + '」シートが見つかりません'); return; }
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (header.indexOf('完了日時') !== -1) { Logger.log('「完了日時」は追加済みです'); return; }
+  var qtyCol = header.indexOf('完了数量');
+  var insertAt = qtyCol !== -1 ? qtyCol + 2 : sheet.getLastColumn() + 1; // 完了数量の直後
+  sheet.insertColumnAfter(insertAt - 1);
+  sheet.getRange(1, insertAt).setValue('完了日時');
+  Logger.log('「完了日時」列を追加しました。続けてsnapshotProductionQtyを実行すると、既存行の完了日時が空欄の分もまとめて埋まります');
 }
 
 /** 加工数スナップショットを毎日自動実行するトリガーを設定する（初回のみ手動実行）。 */
