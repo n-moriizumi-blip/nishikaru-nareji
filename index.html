@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.3</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1461,16 +1461,22 @@
         return;
       }
       if (!currentUser) { alert('フォルダ作成にはGoogleログインが必要です'); return; }
+      // ポップアップブロック対策：fetchのthen内（非同期処理の後）でwindow.openすると、
+      // クリック操作の文脈が切れてブラウザにポップアップとしてブロックされ、「作成されたのに
+      // 自動で開かない」という不具合になる。クリックの流れの中（非同期処理の前）で先に空タブを
+      // 開いておき、フォルダ作成が終わったらそのタブのURLを差し替える（2026-09-27修正）。
+      var newTab = window.open('', '_blank');
       fetch(GAS_API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'createInspectionFolder', zuban: zubanForCreate, idToken: currentUser.idToken })
       }).then(function (r) { return r.json(); })
         .then(function (res) {
-          if (res.error) { alert('フォルダの作成に失敗しました: ' + res.error); return; }
+          if (res.error) { if (newTab) newTab.close(); alert('フォルダの作成に失敗しました: ' + res.error); return; }
           currentInspectionFolderUrl = res.url;
-          window.open(res.url, '_blank');
+          if (newTab) newTab.location.href = res.url;
+          else window.open(res.url, '_blank');
         })
-        .catch(function (err) { alert('フォルダの作成に失敗しました: ' + err.message); });
+        .catch(function (err) { if (newTab) newTab.close(); alert('フォルダの作成に失敗しました: ' + err.message); });
     } else {
       alert('確認中です。少し待ってからもう一度お試しください');
     }
