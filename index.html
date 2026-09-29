@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.3</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.4</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -416,6 +416,7 @@
         <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
+      <div class="status-note" id="inspectionFolderStatus"></div>
       <div id="folderCandidateSelect" class="candidate-select hidden">
         <p class="section-label sub">同じ名前のフォルダが複数見つかりました。開きたい方を選んでください</p>
         <div id="folderCandidateList"></div>
@@ -1201,6 +1202,7 @@
     currentInspectionFolderCanCreate = false;
     currentInspectionFolderCompanyName = '';
     document.getElementById('folderCandidateSelect').classList.add('hidden');
+    document.getElementById('inspectionFolderStatus').innerHTML = '';
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
     renderPastTroubleDisplay(data);
@@ -1461,22 +1463,40 @@
         return;
       }
       if (!currentUser) { alert('フォルダ作成にはGoogleログインが必要です'); return; }
+      var folderStatusEl = document.getElementById('inspectionFolderStatus');
+      folderStatusEl.innerHTML = '';
+      setLoadingText(folderStatusEl, 'フォルダを作成しています…');
       // ポップアップブロック対策：fetchのthen内（非同期処理の後）でwindow.openすると、
       // クリック操作の文脈が切れてブラウザにポップアップとしてブロックされ、「作成されたのに
       // 自動で開かない」という不具合になる。クリックの流れの中（非同期処理の前）で先に空タブを
-      // 開いておき、フォルダ作成が終わったらそのタブのURLを差し替える（2026-09-27修正）。
+      // 開いておく（2026-09-27修正）。ただしタブレットのPWA（ホーム画面アイコン）表示だと
+      // window.open自体が機能しない・無反応になることがあり、それだけに頼ると「完了通知も無く
+      // 自動でも開かない」という不具合になる（2026-09-29、実機報告を受けて発覚）。そのため
+      // 自動オープンは試みつつ、成功・失敗どちらの場合も画面上にタップして開けるリンクを
+      // 必ず表示するようにした（PWAでもアンカータグの直接タップなら確実に開ける）。
       var newTab = window.open('', '_blank');
       fetch(GAS_API_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'createInspectionFolder', zuban: zubanForCreate, idToken: currentUser.idToken })
       }).then(function (r) { return r.json(); })
         .then(function (res) {
-          if (res.error) { if (newTab) newTab.close(); alert('フォルダの作成に失敗しました: ' + res.error); return; }
+          if (res.error) {
+            if (newTab) newTab.close();
+            clearLoadingText(folderStatusEl);
+            folderStatusEl.textContent = 'フォルダの作成に失敗しました: ' + res.error;
+            return;
+          }
           currentInspectionFolderUrl = res.url;
-          if (newTab) newTab.location.href = res.url;
-          else window.open(res.url, '_blank');
+          if (newTab) { try { newTab.location.href = res.url; } catch (e) {} }
+          clearLoadingText(folderStatusEl);
+          folderStatusEl.innerHTML = 'フォルダを作成しました。自動で開かない場合は ' +
+            '<a href="' + escapeAttr(res.url) + '" target="_blank" rel="noopener">こちらをタップして開いてください</a>';
         })
-        .catch(function (err) { if (newTab) newTab.close(); alert('フォルダの作成に失敗しました: ' + err.message); });
+        .catch(function (err) {
+          if (newTab) newTab.close();
+          clearLoadingText(folderStatusEl);
+          folderStatusEl.textContent = 'フォルダの作成に失敗しました: ' + err.message;
+        });
     } else {
       alert('確認中です。少し待ってからもう一度お試しください');
     }
