@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.5</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.6</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1332,21 +1332,25 @@
     });
 
     // 加工（seizou）はSHEET_QUALITY_LOGではなく、③のツール配置メモ（SHEET_TOOL_MEMO）が本人の記録先。
-    var rows, onEdit, onDelete;
+    var rows, onEdit, onDelete, isToolMemo;
     if (selectedDeptView === '加工') {
       rows = data.toolMemo || [];
       onEdit = startEditMemoFromHistory;
       onDelete = deleteMemoFromHistory;
+      isToolMemo = true;
     } else {
       rows = (data.qualityLog || []).filter(function (row) { return row['部署'] === selectedDeptView; });
       onEdit = startEditQualityLog;
       onDelete = deleteQualityLogEntry;
+      isToolMemo = false;
     }
     if (rows.length === 0) {
       if (!anySpec) logList.innerHTML = '<p class="status-note">まだ記録がありません</p>';
     } else {
       rows.forEach(function (row) {
-        logList.appendChild(buildTipCard(row, { editable: isOwnDept, onEdit: onEdit, onDelete: onDelete }));
+        // ②画面の「部署別の情報を見る」でも、ツール配置メモの「内容」（加工者の自由入力欄）は
+        // 表示しない（2026-10-22、過去トラ・共有情報リストと同じ方針）。
+        logList.appendChild(buildTipCard(row, { editable: isOwnDept, onEdit: onEdit, onDelete: onDelete, hideContent: isToolMemo }));
       });
     }
   }
