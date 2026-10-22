@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.4</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.5</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1238,7 +1238,8 @@
           var card = buildTipCard(item.row, {
             editable: true,
             onEdit: isQualityLog ? startEditQualityLog : startEditMemoFromHistory,
-            onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory
+            onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory,
+            hideContent: item.source === 'ツール配置メモ'
           });
           var tagsEl = card.querySelector('.tags');
           if (tagsEl) {
@@ -2068,10 +2069,14 @@
     ].filter(Boolean).join('　');
     var barrelHtml = barrelInfo ? '<p class="tip-sub">' + escapeHtml(barrelInfo) + '</p>' : '';
     var titleHtml = m['タイトル'] ? '<strong class="tip-title">' + escapeHtml(m['タイトル']) + '</strong>' : '';
+    // ②過去トラ・共有情報画面では、ツール配置メモの「内容」（加工者の自由入力欄）を表示しない
+    // （2026-10-22、ユーザー要望。③ツール配置画面自体のメモ欄では引き続き表示する必要があるため、
+    // buildTipCardは共用のまま呼び出し側でopts.hideContentを指定する方式にした）。
+    var contentHtml = opts.hideContent ? '' : '<p>' + escapeHtml(m['内容'] || '') + '</p>';
     div.innerHTML =
       '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + titleHtml + deptTag + rankTag + sharedTag + '</div>' +
       photoHtml +
-      '<p>' + escapeHtml(m['内容'] || '') + '</p>' +
+      contentHtml +
       barrelHtml +
       '<div class="meta"><span>投稿：' + escapeHtml(m['投稿者名'] || '') + '</span>' + actionsHtml + '</div>';
     if (canEdit) {
