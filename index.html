@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.6</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.7</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1239,7 +1239,8 @@
             editable: true,
             onEdit: isQualityLog ? startEditQualityLog : startEditMemoFromHistory,
             onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory,
-            hideContent: item.source === 'ツール配置メモ'
+            hideContent: item.source === 'ツール配置メモ',
+            hideTitle: item.source === 'ツール配置メモ'
           });
           var tagsEl = card.querySelector('.tags');
           if (tagsEl) {
@@ -1332,9 +1333,11 @@
     });
 
     // 加工（seizou）はSHEET_QUALITY_LOGではなく、③のツール配置メモ（SHEET_TOOL_MEMO）が本人の記録先。
+    // 加工自身の記録は③ツール配置画面で見る・編集するため、ここ（部署別の情報を見る）では
+    // 他部署へ「共有する」を選んだ投稿だけに絞る（2026-10-22、ユーザー要望）。
     var rows, onEdit, onDelete, isToolMemo;
     if (selectedDeptView === '加工') {
-      rows = data.toolMemo || [];
+      rows = (data.toolMemo || []).filter(function (row) { return row['共有フラグ'] === true; });
       onEdit = startEditMemoFromHistory;
       onDelete = deleteMemoFromHistory;
       isToolMemo = true;
@@ -1348,9 +1351,9 @@
       if (!anySpec) logList.innerHTML = '<p class="status-note">まだ記録がありません</p>';
     } else {
       rows.forEach(function (row) {
-        // ②画面の「部署別の情報を見る」でも、ツール配置メモの「内容」（加工者の自由入力欄）は
-        // 表示しない（2026-10-22、過去トラ・共有情報リストと同じ方針）。
-        logList.appendChild(buildTipCard(row, { editable: isOwnDept, onEdit: onEdit, onDelete: onDelete, hideContent: isToolMemo }));
+        // ②画面の「部署別の情報を見る」でも、ツール配置メモの「タイトル」「内容」（加工者の
+        // 自由入力欄）は表示しない（2026-10-22、過去トラ・共有情報リストと同じ方針）。
+        logList.appendChild(buildTipCard(row, { editable: isOwnDept, onEdit: onEdit, onDelete: onDelete, hideContent: isToolMemo, hideTitle: isToolMemo }));
       });
     }
   }
@@ -2072,10 +2075,11 @@
       m['バレルワイヤー'] ? 'ワイヤー: ' + m['バレルワイヤー'] : ''
     ].filter(Boolean).join('　');
     var barrelHtml = barrelInfo ? '<p class="tip-sub">' + escapeHtml(barrelInfo) + '</p>' : '';
-    var titleHtml = m['タイトル'] ? '<strong class="tip-title">' + escapeHtml(m['タイトル']) + '</strong>' : '';
-    // ②過去トラ・共有情報画面では、ツール配置メモの「内容」（加工者の自由入力欄）を表示しない
-    // （2026-10-22、ユーザー要望。③ツール配置画面自体のメモ欄では引き続き表示する必要があるため、
-    // buildTipCardは共用のまま呼び出し側でopts.hideContentを指定する方式にした）。
+    // ②画面（過去トラ・共有情報／部署別の情報を見る）では、ツール配置メモの「タイトル」「内容」
+    // （どちらも加工者の自由入力欄）を表示しない（2026-10-22、ユーザー要望。③ツール配置画面自体の
+    // メモ欄では引き続き表示する必要があるため、buildTipCardは共用のまま呼び出し側で
+    // opts.hideContent/opts.hideTitleを指定する方式にした）。
+    var titleHtml = (!opts.hideTitle && m['タイトル']) ? '<strong class="tip-title">' + escapeHtml(m['タイトル']) + '</strong>' : '';
     var contentHtml = opts.hideContent ? '' : '<p>' + escapeHtml(m['内容'] || '') + '</p>';
     div.innerHTML =
       '<div class="tags"><span class="tag">' + formatDate(m['タイムスタンプ']) + '</span>' + titleHtml + deptTag + rankTag + sharedTag + '</div>' +
