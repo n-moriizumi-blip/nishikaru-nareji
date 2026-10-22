@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.7</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.8</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -1234,13 +1234,15 @@
         if (item.row) {
           // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ。
           // 写真・編集/削除ボタンも他の一覧と同じtip-card形式で表示する。
+          // 【2026-10-22訂正】ここ（過去トラ・共有情報）は「共有する」を選んだ投稿を他の人に
+          // 読んでもらうための一覧のため、ツール配置メモでも内容・タイトルは表示する
+          // （一度hideContent/hideTitleを付けたが、ユーザー指摘「共有にしたら内容が表示されない」
+          // を受けて撤回。内容を隠すのは下の「部署別の情報を見る→加工」タブ限定の方針にした）。
           var isQualityLog = item.source === '品質情報記録ログ';
           var card = buildTipCard(item.row, {
             editable: true,
             onEdit: isQualityLog ? startEditQualityLog : startEditMemoFromHistory,
-            onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory,
-            hideContent: item.source === 'ツール配置メモ',
-            hideTitle: item.source === 'ツール配置メモ'
+            onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory
           });
           var tagsEl = card.querySelector('.tags');
           if (tagsEl) {
