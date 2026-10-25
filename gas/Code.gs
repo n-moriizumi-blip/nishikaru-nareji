@@ -350,9 +350,9 @@ function cleanMaterialName_(raw) {
  * 材質(品名・型格)はどの行でも同じ想定のため最初に見つかった行を採用する。
  */
 function lookupProcessAutofillBySeiban_(seiban) {
-  if (!seiban) return { machine: '', machineNo: '', material: '' };
+  if (!seiban) return { machine: '', machineNo: '', material: '', customer: '' };
   var rows = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, '製造番号', seiban);
-  if (rows.length === 0) return { machine: '', machineNo: '', material: '' };
+  if (rows.length === 0) return { machine: '', machineNo: '', material: '', customer: '' };
   var firstProcessRow = null;
   rows.forEach(function (row) {
     if (Number(row['工程順']) === 1 && !firstProcessRow) firstProcessRow = row;
@@ -361,7 +361,12 @@ function lookupProcessAutofillBySeiban_(seiban) {
   return {
     machine: String(machineRow['設備名'] || '').trim(),
     machineNo: String(machineRow['設備No.'] || '').replace(/^No\.?\s*/i, '').trim(),
-    material: cleanMaterialName_(rows[0]['品名・型格'])
+    material: cleanMaterialName_(rows[0]['品名・型格']),
+    // 得意先名（2026-10-25追加）：既存のtokuisakiName（得意先コード経由でlookupTokuisakiName_を
+    // 再検索する方式）は、図番インデックスの得意先コードが進捗状況照会の該当行と一致しない等の
+    // 理由でコードのまま表示されてしまう指摘があったため、machine/materialと同じく既にこの
+    // 製造番号で見つかっている行の「得意先名」列をそのまま使う、より直接的な経路を追加した。
+    customer: String(rows[0]['得意先名'] || '').trim()
   };
 }
 
@@ -390,6 +395,7 @@ function scanZuban_(seiban) {
   info.suggestedMachine = autofill.machine;
   info.suggestedMachineNo = autofill.machineNo;
   info.suggestedMaterial = autofill.material;
+  info.suggestedCustomerName = autofill.customer;
   return info;
 }
 
@@ -964,6 +970,35 @@ function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     if (!payload.zuban) return { error: 'zuban is required' };
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+
+    // 同じ図番・同じ加工日の既存投稿があれば、新規追加ではなく上書きする（2026-10-25、ユーザー要望）。
+    // メイン行だけが図番・加工日を持つため（明細の追加行は空欄）、このキーでの検索はメイン行にしか
+    // 一致しない。一致したら、その投稿ID（メイン行＋明細の追加行すべて）をまとめて削除してから
+    // 新しい内容で書き直す。
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var idCol = header.indexOf('投稿ID');
+    var zubanCol = header.indexOf('図番');
+    var dateCol = header.indexOf('加工日');
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2 && idCol !== -1 && zubanCol !== -1 && dateCol !== -1) {
+      var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+      var existingId = null;
+      for (var i = 0; i < values.length; i++) {
+        if (String(values[i][zubanCol]) === String(payload.zuban) && String(values[i][dateCol]) === String(payload.workDate || '')) {
+          existingId = values[i][idCol];
+          break;
+        }
+      }
+      if (existingId) {
+        var rowsToDelete = [];
+        for (var j = 0; j < values.length; j++) {
+          if (String(values[j][idCol]) === String(existingId)) rowsToDelete.push(j + 2);
+        }
+        rowsToDelete.sort(function (a, b) { return b - a; }); // 大きい行番号から削除（インデックスずれ防止）
+        rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+      }
+    }
+
     var id = Utilities.getUuid();
     var details = payload.defectDetails || [];
     var first = details[0] || {};

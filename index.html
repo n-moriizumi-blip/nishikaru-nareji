@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.28.8</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.29.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -793,7 +793,7 @@
         <div class="mini-field"><label>機械名（自動・修正可）</label><input type="text" id="defectMachineInput" list="defectMachineTypeList"></div>
         <div class="mini-field"><label>機番（自動・修正可）</label><input type="text" id="defectMachineNoInput"></div>
         <div class="mini-field"><label>材種名（自動・修正可）</label><input type="text" id="defectMaterialInput" list="defectMaterialList"></div>
-        <div class="mini-field"><label>加工日</label><input type="date" id="defectDateInput"></div>
+        <div class="mini-field" style="grid-column:1 / -1;"><label>加工日</label><input type="date" id="defectDateInput"></div>
       </div>
       <datalist id="defectMachineTypeList"></datalist>
       <datalist id="defectMaterialList"></datalist>
@@ -3581,7 +3581,7 @@
     if (!currentZubanData) return;
     setScreen('processDefect');
     document.getElementById('defectZubanHeader').textContent = zubanLabel(currentZubanData);
-    document.getElementById('defectTokuisakiDisplay').value = currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '';
+    document.getElementById('defectTokuisakiDisplay').value = currentZubanData.suggestedCustomerName || currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '';
     loadToolFieldSuggestions_();
     resetDefectFormFields_();
     document.getElementById('defectStatus').textContent = '';
@@ -3608,7 +3608,7 @@
       seiban: currentZubanData.seiban || '',
       hinmei: currentZubanData.hinmei || '',
       tokuisaki: currentZubanData.tokuisaki || '',
-      tokuisakiName: currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '',
+      tokuisakiName: currentZubanData.suggestedCustomerName || currentZubanData.tokuisakiName || currentZubanData.tokuisaki || '',
       idToken: currentUser.idToken,
       machineName: document.getElementById('defectMachineInput').value.trim(),
       machineNo: document.getElementById('defectMachineNoInput').value.trim(),
