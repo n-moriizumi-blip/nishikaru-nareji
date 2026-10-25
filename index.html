@@ -26,6 +26,10 @@
   * { box-sizing: border-box; }
   .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
+  /* 画面一番上でさらに上にスクロールするとブラウザの「引っ張って更新」が働いてリロードされてしまう
+     不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
+     （更新・戻る等）に伝わらないようにする。 */
+  html, body { overscroll-behavior-y: none; }
   #app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
   /* ③ツール配置画面はT番の一覧を横に並べるため、他の画面より横幅を広く使う（2026-10-25追加）。
      タブレット横向き等、画面の空いている左右の余白を目いっぱい使う。 */
@@ -347,7 +351,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.3</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.4</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
