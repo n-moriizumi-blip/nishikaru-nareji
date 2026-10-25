@@ -971,6 +971,21 @@ function postToolMemo_(payload) {
  */
 
 /**
+ * 「加工日」セルの値をyyyy-MM-dd形式の文字列に揃えて比較できるようにする（2026-10-25追加）。
+ * 書き込んだ時は"2026-10-14"のような文字列でも、Google Sheets側がセルを日付型として自動認識し、
+ * GASの getValues() では文字列ではなくDateオブジェクトとして返ってくることがある（スプレッドシート上の
+ * 表示は文字列に見えても内部的には日付型という、このプロジェクトでT番号・図番の頭0落ちで
+ * 繰り返し踏んできたのと同じ種類の問題）。Dateのまま String() 比較すると曜日付きの文字列になり
+ * 一致しなくなるため、比較前に必ずこの関数を通す。
+ */
+function normalizeDateForCompare_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  return String(value || '').trim();
+}
+
+/**
  * 図番・加工日が一致する既存の工程内不良投稿を1件返す（2026-10-25追加）。
  * postProcessDefect_の上書き判定と同じキー（図番・加工日）で検索し、見つかれば⑥画面で
  * 「前回入力した内容」として編集画面に事前表示するために使う（送信すると上書きされるため、
@@ -987,8 +1002,9 @@ function getProcessDefectByZubanDate_(zuban, workDate) {
   var dateCol = header.indexOf('加工日');
   var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
   var mainRow = null;
+  var targetDate = normalizeDateForCompare_(workDate);
   for (var i = 0; i < values.length; i++) {
-    if (String(values[i][zubanCol]) === String(zuban) && String(values[i][dateCol]) === String(workDate)) {
+    if (String(values[i][zubanCol]) === String(zuban) && normalizeDateForCompare_(values[i][dateCol]) === targetDate) {
       mainRow = rowToObject_(header, values[i]);
       break;
     }
@@ -1030,8 +1046,9 @@ function postProcessDefect_(payload) {
     if (lastRow >= 2 && idCol !== -1 && zubanCol !== -1 && dateCol !== -1) {
       var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
       var existingId = null;
+      var targetDate = normalizeDateForCompare_(payload.workDate || '');
       for (var i = 0; i < values.length; i++) {
-        if (String(values[i][zubanCol]) === String(payload.zuban) && String(values[i][dateCol]) === String(payload.workDate || '')) {
+        if (String(values[i][zubanCol]) === String(payload.zuban) && normalizeDateForCompare_(values[i][dateCol]) === targetDate) {
           existingId = values[i][idCol];
           break;
         }
@@ -1049,6 +1066,10 @@ function postProcessDefect_(payload) {
     var id = Utilities.getUuid();
     var details = payload.defectDetails || [];
     var first = details[0] || {};
+    // 加工日セルがGoogle Sheets側で日付型に自動変換されると、上書き判定・前回内容の事前表示の
+    // どちらも文字列比較が一致しなくなる（normalizeDateForCompare_で読み取り側は対応済みだが、
+    // そもそも変換させない方が確実なため書き込み列をテキスト形式に固定する。T番号等と同じ対策）。
+    if (dateCol !== -1) sheet.getRange(sheet.getLastRow() + 1, dateCol + 1).setNumberFormat('@');
     sheet.appendRow([
       id, new Date(), payload.zuban, payload.seiban || '', payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
       payload.machineName || '', payload.machineNo || '', payload.material || '',
@@ -1063,6 +1084,33 @@ function postProcessDefect_(payload) {
     }
     return { id: id };
   });
+}
+
+/**
+ * 既存の工程内不良ログの「加工日」列を、日付型に自動変換されてしまった行も含めて
+ * yyyy-MM-dd形式のテキストに揃える（既存シート用、初回のみ手動実行。2026-10-25追加）。
+ * 上書き保存・前回内容の事前表示がどちらも「加工日が一致しない」として機能していなかった
+ * 不具合（normalizeDateForCompare_参照）の修正に伴う、過去データの整合。
+ */
+function fixProcessDefectDateColumn() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  if (!sheet) { Logger.log('「' + SHEET_PROCESS_DEFECTS + '」シートが見つかりません'); return; }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('データがありません'); return; }
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var dateCol = header.indexOf('加工日');
+  if (dateCol === -1) { Logger.log('「加工日」列が見つかりません'); return; }
+  var range = sheet.getRange(2, dateCol + 1, lastRow - 1, 1);
+  var values = range.getValues();
+  var fixed = 0;
+  var newValues = values.map(function (row) {
+    var v = row[0];
+    if (v instanceof Date) { fixed++; return [Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd')]; }
+    return [v];
+  });
+  range.setNumberFormat('@');
+  range.setValues(newValues);
+  Logger.log('加工日列をテキスト形式に修正しました（日付型だった行: ' + fixed + '件）');
 }
 
 /**
