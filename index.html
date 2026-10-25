@@ -252,11 +252,15 @@
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1px; align-content: start;
     background: var(--line); border: 1px solid var(--line);
   }
+  /* 閲覧モードは正面/背面/サイクルタイムの3枠をはっきり区切り、枠の中だけ項目を2列に並べる
+     （2026-10-25修正：CSS columnsだと3枠の区切りと項目の区切りが同じ見た目になり「5列」に
+     見えてしまったため、外枠は広い余白、枠の中はgridで区別する）。 */
+  .tool-view-grid { gap: 8px; background: transparent; border: none; }
+  .tool-view-col { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
   .tool-view-col, .tool-edit-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; background: var(--line); }
-  /* T番の件数が多い列は、広げた横幅を使って2段組みにし、縦に長くなりすぎないようにする（2026-10-25追加、閲覧のみ対応）。 */
-  .tool-view-col.multi-col { display: block; column-count: 2; column-gap: 1px; }
-  .tool-view-col.multi-col .col-head { column-span: all; }
-  .tool-view-row { break-inside: avoid; }
+  /* T番の件数が多い列は、広げた横幅を使って枠内で項目を2列に並べ、縦に長くなりすぎないようにする（2026-10-25追加、閲覧のみ対応）。 */
+  .tool-view-col.multi-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; }
+  .tool-view-col.multi-col .col-head { grid-column: 1 / -1; }
   .tool-view-col .col-head {
     font-size: 0.74rem; font-weight: 700; color: var(--accent); background: var(--surface);
     padding: 10px 7px; text-align: center; font-family: var(--font-mono); line-height: 1.4;
@@ -342,7 +346,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.1</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.2</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
