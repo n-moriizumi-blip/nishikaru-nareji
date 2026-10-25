@@ -326,7 +326,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.29.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.29.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -3561,14 +3561,15 @@
     addDefectDetailRow_('', '', 0);
   });
 
-  function resetDefectFormFields_() {
-    // 機械名・機番・材種名は、QRスキャン時に製造番号から「進捗状況照会」を検索して取れた値を
-    // 初期値にする（品質不具合管理システムと同じ仕組み、2026-09-22追加）。手入力の図番等で
-    // 取れなかった場合は空欄のまま（引き続き手入力・候補からの選択は可能）。
+  // 機械名・機番・材種名は、QRスキャン時に製造番号から「進捗状況照会」を検索して取れた値を
+  // 初期値にする（品質不具合管理システムと同じ仕組み、2026-09-22追加）。手入力の図番等で
+  // 取れなかった場合は空欄のまま（引き続き手入力・候補からの選択は可能）。日付は含めない
+  // （日付を変更した直後にもこの関数を呼ぶため、呼ぶたびに今日の日付へ戻ってしまわないように
+  // defectDateInput自体はresetDefectFormFields_側だけで設定する、2026-10-25）。
+  function resetDefectFormFieldsExceptDate_() {
     document.getElementById('defectMachineInput').value = currentZubanData.suggestedMachine || '';
     document.getElementById('defectMachineNoInput').value = currentZubanData.suggestedMachineNo || '';
     document.getElementById('defectMaterialInput').value = currentZubanData.suggestedMaterial || '';
-    document.getElementById('defectDateInput').value = new Date().toISOString().slice(0, 10);
     document.getElementById('defectGoodQtyInput').value = 0;
     document.getElementById('defectDimensionQtyInput').value = 0;
     document.getElementById('defectDetailRows').innerHTML = '';
@@ -3576,6 +3577,48 @@
     recalcDefectTotal_();
     document.getElementById('defectNoteInput').value = '';
   }
+
+  function resetDefectFormFields_() {
+    document.getElementById('defectDateInput').value = new Date().toISOString().slice(0, 10);
+    resetDefectFormFieldsExceptDate_();
+  }
+
+  // 図番・加工日が同じ既存の投稿があれば、送信すると上書きされてしまうため、事前にその内容を
+  // 読み込んで表示する（2026-10-25追加、ユーザー要望）。無ければ何もしない（直前にリセットした
+  // QR由来の初期値のまま）。
+  function loadExistingDefectForDate_() {
+    if (!currentZubanData) return;
+    var workDate = document.getElementById('defectDateInput').value;
+    var statusEl = document.getElementById('defectStatus');
+    if (!workDate) { statusEl.textContent = ''; return; }
+    fetch(GAS_API_URL + '?action=lookupProcessDefect&zuban=' + encodeURIComponent(currentZubanData.zuban) + '&workDate=' + encodeURIComponent(workDate))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        // 応答が返る前に加工日が変更されていたら、古い結果なので無視する
+        if (document.getElementById('defectDateInput').value !== workDate) return;
+        if (res.found) {
+          document.getElementById('defectMachineInput').value = res.machineName || '';
+          document.getElementById('defectMachineNoInput').value = res.machineNo || '';
+          document.getElementById('defectMaterialInput').value = res.material || '';
+          document.getElementById('defectGoodQtyInput').value = res.goodQty || 0;
+          document.getElementById('defectDimensionQtyInput').value = res.dimensionCheckQty || 0;
+          document.getElementById('defectNoteInput').value = res.note || '';
+          document.getElementById('defectDetailRows').innerHTML = '';
+          var details = res.defectDetails || [];
+          if (details.length === 0) addDefectDetailRow_('', '', 0);
+          else details.forEach(function (d) { addDefectDetailRow_(d.category, d.detail, d.qty); });
+          recalcDefectTotal_();
+          statusEl.textContent = 'この図番・この日付の入力が既にあります（前回の内容を表示中。送信すると上書きされます）';
+        } else {
+          statusEl.textContent = '';
+        }
+      })
+      .catch(function () {});
+  }
+  document.getElementById('defectDateInput').addEventListener('change', function () {
+    resetDefectFormFieldsExceptDate_();
+    loadExistingDefectForDate_();
+  });
 
   function goToDefect() {
     if (!currentZubanData) return;
@@ -3585,6 +3628,7 @@
     loadToolFieldSuggestions_();
     resetDefectFormFields_();
     document.getElementById('defectStatus').textContent = '';
+    loadExistingDefectForDate_();
   }
 
   document.getElementById('defectBackBtn').addEventListener('click', function () {

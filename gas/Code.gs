@@ -141,6 +141,9 @@ function doGet(e) {
     if (action === 'searchZuban') {
       return jsonResponse_(searchZubanCandidates_(e.parameter.query));
     }
+    if (action === 'lookupProcessDefect') {
+      return jsonResponse_(getProcessDefectByZubanDate_(e.parameter.zuban, e.parameter.workDate));
+    }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -966,6 +969,50 @@ function postToolMemo_(payload) {
  * 突き合わせてロット単位の不良率を出せるようにする（品質不具合管理システムが製造番号を
  * 後から追加したのと同じ理由）。手入力等で製造番号が無い経路では空欄のまま。
  */
+
+/**
+ * 図番・加工日が一致する既存の工程内不良投稿を1件返す（2026-10-25追加）。
+ * postProcessDefect_の上書き判定と同じキー（図番・加工日）で検索し、見つかれば⑥画面で
+ * 「前回入力した内容」として編集画面に事前表示するために使う（送信すると上書きされるため、
+ * 何が上書きされるのか事前に見えるようにする）。メイン行＋同じ投稿IDの明細行（大分類・
+ * 詳細・個数）をまとめて返す。
+ */
+function getProcessDefectByZubanDate_(zuban, workDate) {
+  if (!zuban || !workDate) return { found: false };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { found: false };
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var zubanCol = header.indexOf('図番');
+  var dateCol = header.indexOf('加工日');
+  var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+  var mainRow = null;
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][zubanCol]) === String(zuban) && String(values[i][dateCol]) === String(workDate)) {
+      mainRow = rowToObject_(header, values[i]);
+      break;
+    }
+  }
+  if (!mainRow) return { found: false };
+  var id = mainRow['投稿ID'];
+  var details = [];
+  values.forEach(function (row) {
+    var obj = rowToObject_(header, row);
+    if (String(obj['投稿ID']) === String(id) && obj['大分類'] && obj['詳細'] && obj['個数'] !== '') {
+      details.push({ category: obj['大分類'], detail: obj['詳細'], qty: obj['個数'] });
+    }
+  });
+  return {
+    found: true,
+    machineName: mainRow['機械名'] || '',
+    machineNo: mainRow['機番'] || '',
+    material: mainRow['材種名'] || '',
+    goodQty: mainRow['良品数'] || 0,
+    dimensionCheckQty: mainRow['寸法出し数'] || 0,
+    note: mainRow['備考'] || '',
+    defectDetails: details
+  };
+}
 function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     if (!payload.zuban) return { error: 'zuban is required' };
