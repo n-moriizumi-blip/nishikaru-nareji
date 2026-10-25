@@ -982,7 +982,15 @@ function normalizeDateForCompare_(value) {
   if (value instanceof Date) {
     return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM-dd');
   }
-  return String(value || '').trim();
+  // 保存形式を"2026-10-14"（HTMLのdate入力そのまま）から"2026/10/14"
+  // （シート内の他の日付欄と同じ区切り、2026-10-25変更）に変えたため、
+  // どちらの区切りで来ても同じ形に揃えてから比較する。
+  return String(value || '').trim().replace(/\//g, '-');
+}
+
+/** 加工日の保存形式。"2026-10-14"（HTMLのdate入力）を"2026/10/14"（シート内の他の日付欄と同じ区切り）にする。 */
+function formatWorkDateForSheet_(isoDateStr) {
+  return String(isoDateStr || '').trim().replace(/-/g, '/');
 }
 
 /**
@@ -1073,7 +1081,7 @@ function postProcessDefect_(payload) {
     sheet.appendRow([
       id, new Date(), payload.zuban, payload.seiban || '', payload.hinmei || '', payload.tokuisakiName || payload.tokuisaki || '',
       payload.machineName || '', payload.machineNo || '', payload.material || '',
-      payload.workDate || '', payload.goodQty || 0, payload.defectQtyTotal || 0,
+      formatWorkDateForSheet_(payload.workDate), payload.goodQty || 0, payload.defectQtyTotal || 0,
       payload.dimensionCheckQty || 0,
       first.category || '', first.detail || '', (first.qty === undefined ? '' : first.qty),
       payload.note || '', identity.email, identity.name
@@ -1105,12 +1113,20 @@ function fixProcessDefectDateColumn() {
   var fixed = 0;
   var newValues = values.map(function (row) {
     var v = row[0];
-    if (v instanceof Date) { fixed++; return [Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy-MM-dd')]; }
+    if (v instanceof Date) {
+      fixed++;
+      return [Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy/MM/dd')];
+    }
+    if (v && String(v).indexOf('-') !== -1) {
+      // "2026-10-14"形式（旧保存形式）を他の日付欄と同じ"2026/10/14"に揃える（2026-10-25）
+      fixed++;
+      return [String(v).replace(/-/g, '/')];
+    }
     return [v];
   });
   range.setNumberFormat('@');
   range.setValues(newValues);
-  Logger.log('加工日列をテキスト形式に修正しました（日付型だった行: ' + fixed + '件）');
+  Logger.log('加工日列を"yyyy/MM/dd"のテキスト形式に修正しました（修正した行: ' + fixed + '件）');
 }
 
 /**
