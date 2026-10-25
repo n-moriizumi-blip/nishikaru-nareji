@@ -155,9 +155,9 @@
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>品番別 不良個数ランキング</h2>
+        <h2><span class="bar"></span><span id="currentMonthRankingTitle">当月分 製造工程不良グラフ</span></h2>
       </div>
-      <div id="zubanRanking"></div>
+      <div id="currentMonthRanking"></div>
     </div>
 
     <div class="section">
@@ -557,9 +557,19 @@
     document.getElementById('kpiIncidentCount').innerHTML = data.kpi.totalIncidentCount + '<span class="unit">件</span>';
     document.getElementById('kpiZubanCount').innerHTML = data.kpi.zubanCount + '<span class="unit">品番</span>';
 
-    buildBarRanking(document.getElementById('zubanRanking'),
-      data.byZuban.slice(0, 10).map(function (r) { return { label: r.zuban + (r.hinmei ? '　' + r.hinmei : ''), qty: r.defectQty, sub: r.incidentCount + '件' }; }),
-      { color: 'var(--series-blade)' });
+    // 当月分 製造工程不良グラフ：月別推移の最新月だけを取り出し、不良内容（詳細）ごとにランキング
+    var latestMonth = data.monthly.length ? data.monthly[data.monthly.length - 1] : null;
+    document.getElementById('currentMonthRankingTitle').textContent =
+      (latestMonth ? latestMonth.month.replace('-', '年') + '月分' : '当月分') + ' 製造工程不良グラフ';
+    var currentMonthRows = [];
+    if (latestMonth) {
+      data.detailColumns.forEach(function (c) {
+        var v = (latestMonth.details && latestMonth.details[c.key]) || 0;
+        if (v > 0) currentMonthRows.push({ label: c.detail, qty: v, sub: c.category });
+      });
+      currentMonthRows.sort(function (a, b) { return b.qty - a.qty; });
+    }
+    buildBarRanking(document.getElementById('currentMonthRanking'), currentMonthRows, { color: 'var(--series-dim)' });
 
     buildDonut(document.getElementById('categoryDonut'), data.byCategory);
 
