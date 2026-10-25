@@ -221,7 +221,16 @@
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
   .tools-header .zuban-inline { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 1rem; }
+  /* 自由入力／ツールレイアウトのタブ切替（2026-10-25追加）。 */
+  .tool-tab-row { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; width: fit-content; }
+  .tool-tab-btn {
+    font-family: inherit; font-size: 0.86rem; font-weight: 700; padding: 10px 20px; border: none; cursor: pointer;
+    background: transparent; color: var(--ink-soft); border-right: 1px solid var(--line);
+  }
+  .tool-tab-btn:last-child { border-right: none; }
+  .tool-tab-btn.active { background: var(--accent-soft); color: var(--accent-ink); }
   .tool-view-wrap, #toolEditWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
+  #toolTabMemoView, #toolTabLayoutView, #toolTabMemoEdit, #toolTabLayoutEdit { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
   #toolEditWrap { position: relative; }
   /* 機械名が未選択の間、編集入力を触れなくして注意を表示する（2026-09-07追加）。 */
   .machine-required-overlay {
@@ -326,7 +335,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.30.3</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -492,14 +501,23 @@
         <datalist id="machineNameList"></datalist>
       </div>
 
+      <div class="tool-tab-row" id="toolTabRow">
+        <button type="button" class="tool-tab-btn" data-tab="memo">自由入力</button>
+        <button type="button" class="tool-tab-btn" data-tab="layout">ツールレイアウト</button>
+      </div>
+
       <div class="tool-view-wrap" id="toolViewWrap">
-        <div class="memo-zone" id="memoZone"></div>
-        <div class="tool-view-grid">
-          <div class="tool-view-col" id="toolViewFront"><div class="col-head" id="toolViewFrontHead">正面チャック径</div></div>
-          <div class="tool-view-col" id="toolViewBack"><div class="col-head" id="toolViewBackHead">背面チャック径</div></div>
-          <div class="tool-view-col" id="toolViewCycle"><div class="col-head" id="toolViewCycleHead">サイクルタイム</div></div>
+        <div id="toolTabMemoView">
+          <div class="memo-zone" id="memoZone"></div>
         </div>
-        <div class="tool-view-spec" id="toolViewSpec"></div>
+        <div id="toolTabLayoutView">
+          <div class="tool-view-grid">
+            <div class="tool-view-col" id="toolViewFront"><div class="col-head" id="toolViewFrontHead">正面チャック径</div></div>
+            <div class="tool-view-col" id="toolViewBack"><div class="col-head" id="toolViewBackHead">背面チャック径</div></div>
+            <div class="tool-view-col" id="toolViewCycle"><div class="col-head" id="toolViewCycleHead">サイクルタイム</div></div>
+          </div>
+          <div class="tool-view-spec" id="toolViewSpec"></div>
+        </div>
       </div>
 
       <div id="toolEditWrap" class="hidden">
@@ -514,57 +532,61 @@
             <span>原本の写真と1件ずつ照合しました</span>
           </label>
         </div>
-        <div class="memo-edit-wrap">
-          <div class="memo-zone" id="memoEditList"></div>
-          <div class="memo-new-form">
-            <input type="text" id="toolMemoTitleNew" placeholder="タイトル（任意）">
-            <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
-            <div style="display:flex; gap:8px;">
-              <button type="button" class="btn btn-ghost" id="memoOcrCameraBtn" style="flex:1;">📝 写真を撮って文字起こし</button>
-              <button type="button" class="btn btn-ghost" id="memoOcrLibraryBtn" style="flex:1;">📝 アルバムから文字起こし</button>
+        <div id="toolTabMemoEdit">
+          <div class="memo-edit-wrap">
+            <div class="memo-zone" id="memoEditList"></div>
+            <div class="memo-new-form">
+              <input type="text" id="toolMemoTitleNew" placeholder="タイトル（任意）">
+              <textarea id="toolMemoNew" placeholder="新しく記録する内容（日付は自動で付きます）"></textarea>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-ghost" id="memoOcrCameraBtn" style="flex:1;">📝 写真を撮って文字起こし</button>
+                <button type="button" class="btn btn-ghost" id="memoOcrLibraryBtn" style="flex:1;">📝 アルバムから文字起こし</button>
+              </div>
+              <input type="file" id="memoOcrCameraInput" accept="image/*" capture="environment" multiple class="hidden">
+              <input type="file" id="memoOcrLibraryInput" accept="image/*" multiple class="hidden">
+              <div class="status-note" id="memoOcrStatus"></div>
+              <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真・PDFを選ぶ</span></button>
+              <input type="file" id="memoPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
+              <label class="confirm-row">
+                <input type="checkbox" id="memoShareCheck">
+                <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
+              </label>
+              <button type="button" class="btn btn-secondary" id="memoAddBtn">この内容を記録する</button>
+              <button type="button" class="btn btn-ghost hidden" id="memoEditCancelBtn">編集をキャンセル</button>
             </div>
-            <input type="file" id="memoOcrCameraInput" accept="image/*" capture="environment" multiple class="hidden">
-            <input type="file" id="memoOcrLibraryInput" accept="image/*" multiple class="hidden">
-            <div class="status-note" id="memoOcrStatus"></div>
-            <button type="button" class="photo-btn" id="memoPhotoBtn"><span id="memoPhotoIcon">📷</span><span id="memoPhotoLabel">写真・PDFを選ぶ</span></button>
-            <input type="file" id="memoPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
-            <label class="confirm-row">
-              <input type="checkbox" id="memoShareCheck">
-              <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
-            </label>
-            <button type="button" class="btn btn-secondary" id="memoAddBtn">この内容を記録する</button>
-            <button type="button" class="btn btn-ghost hidden" id="memoEditCancelBtn">編集をキャンセル</button>
           </div>
         </div>
 
         <datalist id="toolCategoryList"></datalist>
         <datalist id="toolPartNumberList"></datalist>
-        <div class="tool-edit-grid" id="toolEditGrid">
-          <div class="tool-edit-col" id="editColFront">
-            <div class="col-head-edit"><span class="label">正面チャック径</span><input type="text" id="frontChuckInput"></div>
-            <div class="edit-rows" id="editRowsFront"></div>
-            <button type="button" class="add-col-row-btn" data-col="front">＋ 追加</button>
+        <div id="toolTabLayoutEdit">
+          <div class="tool-edit-grid" id="toolEditGrid">
+            <div class="tool-edit-col" id="editColFront">
+              <div class="col-head-edit"><span class="label">正面チャック径</span><input type="text" id="frontChuckInput"></div>
+              <div class="edit-rows" id="editRowsFront"></div>
+              <button type="button" class="add-col-row-btn" data-col="front">＋ 追加</button>
+            </div>
+            <div class="tool-edit-col" id="editColBack">
+              <div class="col-head-edit"><span class="label">背面チャック径</span><input type="text" id="backChuckInput"></div>
+              <div class="edit-rows" id="editRowsBack"></div>
+              <button type="button" class="add-col-row-btn" data-col="back">＋ 追加</button>
+            </div>
+            <div class="tool-edit-col" id="editColCycle">
+              <div class="col-head-edit"><span class="label">サイクルタイム</span><input type="text" id="cycleTimeInput"></div>
+              <div class="edit-rows" id="editRowsCycle"></div>
+              <button type="button" class="add-col-row-btn" data-col="cycle">＋ 追加</button>
+            </div>
           </div>
-          <div class="tool-edit-col" id="editColBack">
-            <div class="col-head-edit"><span class="label">背面チャック径</span><input type="text" id="backChuckInput"></div>
-            <div class="edit-rows" id="editRowsBack"></div>
-            <button type="button" class="add-col-row-btn" data-col="back">＋ 追加</button>
-          </div>
-          <div class="tool-edit-col" id="editColCycle">
-            <div class="col-head-edit"><span class="label">サイクルタイム</span><input type="text" id="cycleTimeInput"></div>
-            <div class="edit-rows" id="editRowsCycle"></div>
-            <button type="button" class="add-col-row-btn" data-col="cycle">＋ 追加</button>
-          </div>
-        </div>
 
-        <div class="mini-grid" style="margin-top:10px;">
-          <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
-          <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
-          <div class="mini-field"><label>プログラム番号（メイン）</label><input type="text" id="programNumberInput"></div>
-          <div class="mini-field"><label>プログラム番号（サブ）</label><textarea id="programNumberSubInput" placeholder="複数ある場合は1行に1つずつ入力"></textarea></div>
-        </div>
+          <div class="mini-grid" style="margin-top:10px;">
+            <div class="mini-field"><label>専用ツール保管</label><input type="text" id="toolStorageInput"></div>
+            <div class="mini-field"><label>前進端位置</label><input type="text" id="forwardPositionInput"></div>
+            <div class="mini-field"><label>プログラム番号（メイン）</label><input type="text" id="programNumberInput"></div>
+            <div class="mini-field"><label>プログラム番号（サブ）</label><textarea id="programNumberSubInput" placeholder="複数ある場合は1行に1つずつ入力"></textarea></div>
+          </div>
 
-        <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
+          <button type="button" class="btn btn-secondary" id="toolSaveBtn" style="margin-top:10px;">ツールレイアウトを保存する</button>
+        </div>
       </div>
 
       <div class="status-note" id="toolsStatus"></div>
@@ -1761,6 +1783,29 @@
   var pendingMemoPhotoUrl = '';
   var COL_LABELS = { front: '正面チャック径', back: '背面チャック径', cycle: 'サイクルタイム' };
 
+  // 自由入力／ツールレイアウトのタブ切替（2026-10-25追加）。OCR読み取りレビュー中（原本写真との
+  // 照合が必要な場面）だけは、メモ・レイアウト両方の内容を見落とさないよう両タブを強制的に表示する。
+  var currentToolTab = 'memo';
+  function applyToolTabVisibility_() {
+    var ocrMode = document.getElementById('toolEditWrap').classList.contains('ocr-review-mode');
+    var showMemo = ocrMode || currentToolTab === 'memo';
+    var showLayout = ocrMode || currentToolTab === 'layout';
+    document.getElementById('toolTabMemoView').classList.toggle('hidden', !showMemo);
+    document.getElementById('toolTabLayoutView').classList.toggle('hidden', !showLayout);
+    document.getElementById('toolTabMemoEdit').classList.toggle('hidden', !showMemo);
+    document.getElementById('toolTabLayoutEdit').classList.toggle('hidden', !showLayout);
+    document.getElementById('toolTabRow').classList.toggle('hidden', ocrMode);
+    Array.prototype.forEach.call(document.querySelectorAll('.tool-tab-btn'), function (b) {
+      b.classList.toggle('active', b.dataset.tab === currentToolTab);
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tool-tab-btn'), function (btn) {
+    btn.addEventListener('click', function () {
+      currentToolTab = btn.dataset.tab;
+      applyToolTabVisibility_();
+    });
+  });
+
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function escapeAttr(s) { return escapeHtml(String(s || '')); }
 
@@ -1952,6 +1997,7 @@
     document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
     document.getElementById('toolsStatus').textContent = '';
     toolEditMode = false;
+    currentToolTab = 'memo';
     document.getElementById('toolViewToggle').textContent = '編集する';
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
@@ -1962,6 +2008,7 @@
     }
     renderMachinePicker_();
     renderToolView(currentZubanData);
+    applyToolTabVisibility_();
     loadToolFieldSuggestions_();
   }
 
@@ -2256,6 +2303,7 @@
       saveBtn.disabled = false;
     }
 
+    applyToolTabVisibility_();
     renderEditColumn('front');
     renderEditColumn('back');
     renderEditColumn('cycle');
@@ -2274,12 +2322,15 @@
     document.getElementById('toolViewToggle').textContent = '編集する';
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
+    document.getElementById('toolEditWrap').classList.remove('ocr-review-mode');
     document.getElementById('ocrReviewBanner').classList.add('hidden');
     document.getElementById('toolSaveBtn').disabled = false;
     availableMachines = computeAvailableMachines_(currentZubanData);
     if (selectedMachine && availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
     renderMachinePicker_();
     renderToolView(currentZubanData);
+    currentToolTab = 'memo';
+    applyToolTabVisibility_();
   }
 
   // ツール配置1行内の主軸・取付方式・Y軸位置チップ（2026-09-05追加）。
