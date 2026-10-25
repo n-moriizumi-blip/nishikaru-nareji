@@ -144,6 +144,9 @@ function doGet(e) {
     if (action === 'lookupProcessDefect') {
       return jsonResponse_(getProcessDefectByZubanDate_(e.parameter.zuban, e.parameter.workDate));
     }
+    if (action === 'processDefectDashboard') {
+      return jsonResponse_(buildProcessDefectDashboardData_());
+    }
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1037,6 +1040,145 @@ function getProcessDefectByZubanDate_(zuban, workDate) {
     defectDetails: details
   };
 }
+
+/**
+ * ⑥工程内不良入力のダッシュボード（Webページ版、2026-10-25追加、Phase 2）用の集計データを返す。
+ * ログイン不要（品質不具合管理システムのdashboard.htmlと同じ、読み取り専用のため）。
+ * 「工程内不良ログ」（投稿IDでグループ化し、メイン行の共通項目を同じ投稿の明細行にも適用してから
+ * 集計。継続行は図番・加工日等が空欄のため、そのままでは集計できない）と「加工数スナップショット」
+ * （完了数量、不良率の分母。進捗状況照会を定期取得して蓄積している、Phase 2の仕組み）の両方を参照する。
+ * 「不良発生時だけ入力」の運用のため、全体の加工数（不良率の分母）は工程内不良ログ単体からは
+ * 出せない、という2026-09-22の設計方針メモに基づく。
+ */
+function buildProcessDefectDashboardData_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var lastRow = sheet.getLastRow();
+  var submissions = {}; // 投稿ID -> {zuban, hinmei, workDate(yyyy-MM-dd), details:[{category,detail,qty}]}
+  if (lastRow >= 2) {
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var idCol = header.indexOf('投稿ID');
+    var zubanCol = header.indexOf('図番');
+    var hinmeiCol = header.indexOf('品名');
+    var dateCol = header.indexOf('加工日');
+    var categoryCol = header.indexOf('大分類');
+    var detailCol = header.indexOf('詳細');
+    var qtyCol = header.indexOf('個数');
+    var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+    values.forEach(function (row) {
+      var id = row[idCol];
+      if (!id) return;
+      if (!submissions[id]) submissions[id] = { zuban: '', hinmei: '', workDate: '', details: [] };
+      var sub = submissions[id];
+      if (row[zubanCol]) sub.zuban = row[zubanCol];
+      if (row[hinmeiCol]) sub.hinmei = row[hinmeiCol];
+      if (row[dateCol]) sub.workDate = normalizeDateForCompare_(row[dateCol]); // "yyyy-MM-dd"に統一
+      var category = row[categoryCol], detail = row[detailCol], qty = row[qtyCol];
+      if (category && detail && qty !== '') {
+        sub.details.push({ category: category, detail: detail, qty: Number(qty) || 0 });
+      }
+    });
+  }
+
+  // 加工数スナップショット（完了数量、不良率の分母）
+  var qtySheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_QTY_SNAPSHOT);
+  var qtyByZuban = {};
+  var qtyByMonth = {};
+  var qLastRow = qtySheet ? qtySheet.getLastRow() : 0;
+  if (qLastRow >= 2) {
+    var qHeader = qtySheet.getRange(1, 1, 1, qtySheet.getLastColumn()).getValues()[0];
+    var qZubanCol = qHeader.indexOf('図番');
+    var qQtyCol = qHeader.indexOf('完了数量');
+    var qDateCol = qHeader.indexOf('完了日時');
+    var qValues = qtySheet.getRange(2, 1, qLastRow - 1, qHeader.length).getValues();
+    qValues.forEach(function (row) {
+      var z = row[qZubanCol];
+      var qty = Number(row[qQtyCol]) || 0;
+      if (z) qtyByZuban[z] = (qtyByZuban[z] || 0) + qty;
+      var d = row[qDateCol];
+      if (d instanceof Date) {
+        var ym = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM');
+        qtyByMonth[ym] = (qtyByMonth[ym] || 0) + qty;
+      }
+    });
+  }
+
+  var byZuban = {};     // zuban -> {zuban, hinmei, defectQty, incidentCount}
+  var byCategory = {};  // category -> qty
+  var byDetail = {};    // "category|||detail" -> {category, detail, qty}
+  var byMonth = {};     // yyyy-MM -> {defectQty, incidentCount}
+  var totalDefectQty = 0, totalIncidentCount = 0;
+
+  Object.keys(submissions).forEach(function (id) {
+    var sub = submissions[id];
+    if (!sub.zuban) return;
+    sub.details.forEach(function (d) {
+      totalDefectQty += d.qty;
+      totalIncidentCount++;
+
+      if (!byZuban[sub.zuban]) byZuban[sub.zuban] = { zuban: sub.zuban, hinmei: sub.hinmei, defectQty: 0, incidentCount: 0 };
+      byZuban[sub.zuban].defectQty += d.qty;
+      byZuban[sub.zuban].incidentCount++;
+
+      byCategory[d.category] = (byCategory[d.category] || 0) + d.qty;
+
+      var dKey = d.category + '|||' + d.detail;
+      if (!byDetail[dKey]) byDetail[dKey] = { category: d.category, detail: d.detail, qty: 0 };
+      byDetail[dKey].qty += d.qty;
+
+      if (sub.workDate) {
+        var ym = sub.workDate.slice(0, 7); // "yyyy-MM-dd" -> "yyyy-MM"
+        if (!byMonth[ym]) byMonth[ym] = { defectQty: 0, incidentCount: 0 };
+        byMonth[ym].defectQty += d.qty;
+        byMonth[ym].incidentCount++;
+      }
+    });
+  });
+
+  var monthKeys = {};
+  Object.keys(byMonth).forEach(function (k) { monthKeys[k] = true; });
+  Object.keys(qtyByMonth).forEach(function (k) { monthKeys[k] = true; });
+  var monthly = Object.keys(monthKeys).sort().map(function (ym) {
+    var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0 };
+    var completedQty = qtyByMonth[ym] || 0;
+    return {
+      month: ym,
+      defectQty: defect.defectQty,
+      incidentCount: defect.incidentCount,
+      completedQty: completedQty,
+      rate: completedQty > 0 ? defect.defectQty / completedQty : null
+    };
+  });
+
+  var zubanRate = Object.keys(byZuban).map(function (z) {
+    var row = byZuban[z];
+    var completedQty = qtyByZuban[z] || 0;
+    return {
+      zuban: row.zuban,
+      hinmei: row.hinmei,
+      defectQty: row.defectQty,
+      incidentCount: row.incidentCount,
+      completedQty: completedQty,
+      rate: completedQty > 0 ? row.defectQty / completedQty : null
+    };
+  }).sort(function (a, b) { return b.defectQty - a.defectQty; });
+
+  return {
+    generatedAt: new Date(),
+    kpi: {
+      totalDefectQty: totalDefectQty,
+      totalIncidentCount: totalIncidentCount,
+      zubanCount: Object.keys(byZuban).length
+    },
+    byZuban: zubanRate.slice(),
+    byCategory: Object.keys(byCategory).map(function (c) { return { category: c, qty: byCategory[c] }; })
+      .sort(function (a, b) { return b.qty - a.qty; }),
+    byDetail: Object.keys(byDetail).map(function (k) { return byDetail[k]; })
+      .sort(function (a, b) { return b.qty - a.qty; }),
+    monthly: monthly,
+    zubanRate: zubanRate
+  };
+}
+
 function postProcessDefect_(payload) {
   return withVerifiedIdentity_(payload, function (identity) {
     if (!payload.zuban) return { error: 'zuban is required' };
