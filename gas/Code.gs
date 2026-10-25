@@ -1128,9 +1128,10 @@ function buildProcessDefectDashboardData_() {
 
       if (sub.workDate) {
         var ym = sub.workDate.slice(0, 7); // "yyyy-MM-dd" -> "yyyy-MM"
-        if (!byMonth[ym]) byMonth[ym] = { defectQty: 0, incidentCount: 0 };
+        if (!byMonth[ym]) byMonth[ym] = { defectQty: 0, incidentCount: 0, details: {} };
         byMonth[ym].defectQty += d.qty;
         byMonth[ym].incidentCount++;
+        byMonth[ym].details[dKey] = (byMonth[ym].details[dKey] || 0) + d.qty;
       }
     });
   });
@@ -1139,14 +1140,15 @@ function buildProcessDefectDashboardData_() {
   Object.keys(byMonth).forEach(function (k) { monthKeys[k] = true; });
   Object.keys(qtyByMonth).forEach(function (k) { monthKeys[k] = true; });
   var monthly = Object.keys(monthKeys).sort().map(function (ym) {
-    var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0 };
+    var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0, details: {} };
     var completedQty = qtyByMonth[ym] || 0;
     return {
       month: ym,
       defectQty: defect.defectQty,
       incidentCount: defect.incidentCount,
       completedQty: completedQty,
-      rate: completedQty > 0 ? defect.defectQty / completedQty : null
+      rate: completedQty > 0 ? defect.defectQty / completedQty : null,
+      details: defect.details
     };
   });
 
@@ -1175,6 +1177,8 @@ function buildProcessDefectDashboardData_() {
     byCategory: Object.keys(byCategory).map(function (c) { return { category: c, qty: byCategory[c] }; })
       .sort(function (a, b) { return b.qty - a.qty; }),
     byDetail: Object.keys(byDetail).map(function (k) { return byDetail[k]; })
+      .sort(function (a, b) { return b.qty - a.qty; }),
+    detailColumns: Object.keys(byDetail).map(function (k) { return { key: k, category: byDetail[k].category, detail: byDetail[k].detail, qty: byDetail[k].qty }; })
       .sort(function (a, b) { return b.qty - a.qty; }),
     monthly: monthly,
     zubanRate: zubanRate

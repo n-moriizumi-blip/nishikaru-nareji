@@ -109,11 +109,11 @@
   /* テーブル */
   table.data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   table.data-table th, table.data-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; }
-  table.data-table th:first-child, table.data-table td:first-child,
-  table.data-table th:nth-child(2), table.data-table td:nth-child(2) { text-align: left; }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
   table.data-table th { color: var(--ink-soft); font-weight: 700; font-size: 0.72rem; }
   table.data-table td.zuban { font-weight: 700; color: var(--accent-ink); }
   table.data-table td.rate-high { color: var(--alert); font-weight: 700; }
+  table.data-table tr.total-row td { font-weight: 700; background: var(--surface-2); }
 
   .tooltip {
     position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-fg);
@@ -181,6 +181,14 @@
       </div>
       <p class="empty-note" style="padding-top:0;">左軸＝完了数量・不良個数（バー）、右軸＝不良率（線）。</p>
       <div id="monthlyChart"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <h2><span class="bar"></span>月別集計表</h2>
+      </div>
+      <p class="empty-note" style="padding-top:0;">各月の完了数量・不良個数・不良率と、不良内容（詳細）ごとの個数内訳。</p>
+      <div id="monthlyDetailTable"></div>
     </div>
 
     <div class="section">
@@ -485,13 +493,13 @@
     container.innerHTML = '';
     var withRate = rows.filter(function (r) { return r.completedQty > 0; });
     if (!rows.length) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
-    var html = '<table class="data-table" style="min-width:720px;"><thead><tr><th>図番</th><th>品名</th>';
+    var html = '<table class="data-table" style="min-width:640px;"><thead><tr><th>図番</th>';
     CATEGORY_ORDER.forEach(function (c) { html += '<th>' + escapeHtml(c) + '</th>'; });
     html += '<th>不良個数計</th><th>完了数量</th><th>不良率</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
       var rateClass = (r.rate != null && r.rate >= 0.1) ? ' rate-high' : '';
-      html += '<tr><td class="zuban">' + escapeHtml(r.zuban) + '</td><td>' + escapeHtml(r.hinmei || '') + '</td>';
+      html += '<tr><td class="zuban">' + escapeHtml(r.zuban) + '</td>';
       CATEGORY_ORDER.forEach(function (c) {
         var v = (r.categories && r.categories[c]) || 0;
         html += '<td class="mono">' + (v || '―') + '</td>';
@@ -504,6 +512,40 @@
     if (!withRate.length) {
       container.insertAdjacentHTML('afterbegin', '<p class="empty-note">完了数量のデータがまだ無いため、不良率は計算できていません。</p>');
     }
+  }
+
+  // ==== 月別集計表（完了数量・不良個数・不良率＋詳細項目ごとの内訳、合計行つき） ====
+  function buildMonthlyDetailTable(container, monthly, detailColumns) {
+    container.innerHTML = '';
+    if (!monthly.length) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
+    var minWidth = 480 + detailColumns.length * 70;
+    var html = '<table class="data-table" style="min-width:' + minWidth + 'px;"><thead><tr><th>月</th><th>完了数量</th><th>不良個数計</th><th>不良率</th>';
+    detailColumns.forEach(function (c) { html += '<th>' + escapeHtml(c.detail) + '</th>'; });
+    html += '</tr></thead><tbody>';
+
+    var totals = { completedQty: 0, defectQty: 0 };
+    var detailTotals = {};
+    detailColumns.forEach(function (c) { detailTotals[c.key] = 0; });
+
+    monthly.forEach(function (r) {
+      var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
+      html += '<tr><td>' + escapeHtml(r.month.replace('-', '/')) + '</td><td class="mono">' + formatNum(r.completedQty) + '</td><td class="mono">' + formatNum(r.defectQty) + '</td><td class="mono">' + ratePct + '</td>';
+      detailColumns.forEach(function (c) {
+        var v = (r.details && r.details[c.key]) || 0;
+        detailTotals[c.key] += v;
+        html += '<td class="mono">' + (v || '―') + '</td>';
+      });
+      totals.completedQty += r.completedQty;
+      totals.defectQty += r.defectQty;
+      html += '</tr>';
+    });
+
+    var totalRate = totals.completedQty > 0 ? (Math.round((totals.defectQty / totals.completedQty) * 1000) / 10) + '%' : '―';
+    html += '<tr class="total-row"><td>合計</td><td class="mono">' + formatNum(totals.completedQty) + '</td><td class="mono">' + formatNum(totals.defectQty) + '</td><td class="mono">' + totalRate + '</td>';
+    detailColumns.forEach(function (c) { html += '<td class="mono">' + (detailTotals[c.key] || '―') + '</td>'; });
+    html += '</tr></tbody></table>';
+
+    container.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
   }
 
   function render(data) {
@@ -542,6 +584,8 @@
       lineSeries: { label: '不良率', color: 'var(--accent-ink)', values: data.monthly.map(function (r) { return r.rate == null ? null : r.rate * 100; }) },
       leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100
     });
+
+    buildMonthlyDetailTable(document.getElementById('monthlyDetailTable'), data.monthly, data.detailColumns);
 
     buildRateTable(document.getElementById('rateTable'), data.zubanRate);
   }
