@@ -252,21 +252,22 @@
     display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 1px; align-content: start;
     background: var(--line); border: 1px solid var(--line);
   }
-  /* 閲覧モードは正面/背面/サイクルタイムの3枠をはっきり区切り、枠の中だけ項目を2列に並べる
-     （2026-10-25修正：CSS columnsだと3枠の区切りと項目の区切りが同じ見た目になり「5列」に
-     見えてしまったため、外枠は広い余白、枠の中はgridで区別する）。 */
+  /* 閲覧モードは正面/背面/サイクルタイムの3枠をはっきり区切る（枠自体は常に1列、2026-10-25修正：
+     枠の中を2列に割ると「枠の横幅が1列ぶんに見えない」と指摘があり撤回。枠の高さは代わりに、
+     各項目を複数行カードではなく1行の横並びにすることで抑える）。 */
   .tool-view-grid { gap: 8px; background: transparent; border: none; }
   .tool-view-col { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
   .tool-view-col, .tool-edit-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; background: var(--line); }
-  /* T番の件数が多い列は、広げた横幅を使って枠内で項目を2列に並べ、縦に長くなりすぎないようにする（2026-10-25追加、閲覧のみ対応）。 */
-  .tool-view-col.multi-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; }
-  .tool-view-col.multi-col .col-head { grid-column: 1 / -1; }
   .tool-view-col .col-head {
     font-size: 0.74rem; font-weight: 700; color: var(--accent); background: var(--surface);
     padding: 10px 7px; text-align: center; font-family: var(--font-mono); line-height: 1.4;
   }
-  .tool-view-row { background: var(--surface); padding: 10px 9px; min-width: 0; overflow-wrap: anywhere; }
-  .tool-view-row .t-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 18px; }
+  /* 項目1件＝1行の横並び（PDFの段取り表と同じ形）。枠の横幅が足りない時だけ折り返す
+     （2026-10-25変更、旧.t-lineによる複数行カードから変更）。 */
+  .tool-view-row {
+    background: var(--surface); padding: 8px 10px; min-width: 0; overflow-wrap: anywhere;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 14px;
+  }
   .tool-view-row .t { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
   /* オフセットNo.はT番（--accent、アンバー）・正面(--ok緑)・背面(--info青)・注意色(--alert赤)と
      被らない黄色・マスタード系にする（2026-09-13、ユーザー選択）。 */
@@ -277,8 +278,8 @@
   /* 補足情報（シフト・取付方式・取付位置/Y軸位置・突切の方向/刃形・メーカー・品番等）は白（--ink）で
      表示し、視認性を上げつつ主要項目（T番・工具種類）とは大きさで差をつける（2026-09-12）。 */
   .tool-view-row .shift { font-family: var(--font-mono); font-size: 0.76rem; font-weight: 700; color: var(--ink); white-space: nowrap; }
-  .tool-view-row .d { font-size: 0.85rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
-  .tool-view-row .m { font-size: 0.72rem; color: var(--ink); display: block; margin-top: 4px; line-height: 1.5; overflow-wrap: anywhere; }
+  .tool-view-row .d { font-size: 0.82rem; color: var(--ink); overflow-wrap: anywhere; }
+  .tool-view-row .m { font-size: 0.72rem; color: var(--ink); overflow-wrap: anywhere; }
   /* 主軸の正面/背面は色分けして一目で判別できるようにする。危険色の赤（--alert）は「注意」の
      意味で使っているため避け、緑＝正面（既定側）・青＝背面（対になる側）の組み合わせにする。 */
   .tool-view-row .spindle-front { color: var(--ok); }
@@ -346,7 +347,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.2</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.3</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -2197,17 +2198,17 @@
         }
         [p['取付方式'], p['取付位置'], p['Y軸位置']].forEach(function (v) { if (v) spindleTagsParts.push(escapeHtml(v)); });
         var spindleTagsHtml = spindleTagsParts.join('　');
-        var html = '<div class="t-line"><span class="t">' + tLabel + '</span>' +
-          (spindleTagsHtml ? '<span class="shift">' + spindleTagsHtml + '</span>' : '') + '</div>';
+        // 枠の高さを抑えるため、項目は複数行のカードではなく1行の横並び（PDFの段取り表と同じ形）
+        // で並べる（2026-10-25変更）。各項目はspanのまま.tool-view-row自体のflex-wrapで折り返す。
+        var html = '<span class="t">' + tLabel + '</span>';
+        if (spindleTagsHtml) html += '<span class="shift">' + spindleTagsHtml + '</span>';
         // 方向・刃形（突切専用）は工具種類の右に、シフトと同じ文字サイズ・色で表示する
         // （2026-09-12、ユーザー指摘：主要な項目名(.t)ではなく補足のシフト(.shift)と同じ見た目にする）。
         var categoryLabel = [p['工具種類'] || '', p['工具種類詳細'] || ''].filter(Boolean).join('　');
         // シフトは一番右にする（2026-09-12、ユーザー指摘）。
         var categorySubTags = [p['突切方向'] || '', p['突切刃形'] || '', p['シフト'] || ''].filter(Boolean).join('　');
-        if (categoryLabel || categorySubTags) {
-          html += '<div class="t-line"><span class="t category-label">' + escapeHtml(categoryLabel) + '</span>' +
-            (categorySubTags ? '<span class="shift">' + escapeHtml(categorySubTags) + '</span>' : '') + '</div>';
-        }
+        if (categoryLabel) html += '<span class="t category-label">' + escapeHtml(categoryLabel) + '</span>';
+        if (categorySubTags) html += '<span class="shift">' + escapeHtml(categorySubTags) + '</span>';
         if (p['詳細情報']) html += '<span class="d">' + escapeHtml(p['詳細情報']) + '</span>';
         var coolantTags = [p['クーラント種別'] || '', p['Mコード'] || ''].filter(Boolean).join('　');
         if (coolantTags) html += '<span class="d">' + escapeHtml(coolantTags) + '</span>';
@@ -2216,8 +2217,6 @@
         row.innerHTML = html;
         colEl.appendChild(row);
       });
-      // 件数が多い列は2段組みにして縦に長くなりすぎないようにする（2026-10-25追加）。
-      colEl.classList.toggle('multi-col', grouped[colKey].length > 4);
     });
 
     var specWrap = document.getElementById('toolViewSpec');
