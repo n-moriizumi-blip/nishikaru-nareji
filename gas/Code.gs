@@ -1115,9 +1115,10 @@ function buildProcessDefectDashboardData_() {
       totalDefectQty += d.qty;
       totalIncidentCount++;
 
-      if (!byZuban[sub.zuban]) byZuban[sub.zuban] = { zuban: sub.zuban, hinmei: sub.hinmei, defectQty: 0, incidentCount: 0 };
+      if (!byZuban[sub.zuban]) byZuban[sub.zuban] = { zuban: sub.zuban, hinmei: sub.hinmei, defectQty: 0, incidentCount: 0, categories: {} };
       byZuban[sub.zuban].defectQty += d.qty;
       byZuban[sub.zuban].incidentCount++;
+      byZuban[sub.zuban].categories[d.category] = (byZuban[sub.zuban].categories[d.category] || 0) + d.qty;
 
       byCategory[d.category] = (byCategory[d.category] || 0) + d.qty;
 
@@ -1158,7 +1159,8 @@ function buildProcessDefectDashboardData_() {
       defectQty: row.defectQty,
       incidentCount: row.incidentCount,
       completedQty: completedQty,
-      rate: completedQty > 0 ? row.defectQty / completedQty : null
+      rate: completedQty > 0 ? row.defectQty / completedQty : null,
+      categories: row.categories
     };
   }).sort(function (a, b) { return b.defectQty - a.defectQty; });
 

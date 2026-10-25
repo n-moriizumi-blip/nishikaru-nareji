@@ -93,13 +93,9 @@
   .bar-row .bar-fill:hover { filter: brightness(1.18); }
   .bar-row .bar-value { flex: 0 0 44px; text-align: right; font-size: 0.8rem; font-weight: 700; color: var(--ink); }
 
-  /* 月別推移バー */
-  .month-chart { display: flex; align-items: flex-end; gap: 10px; height: 180px; padding: 0 4px 24px; position: relative; }
-  .month-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 28px; }
-  .month-col .val { font-size: 0.72rem; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
-  .month-col .bar { width: 60%; border-radius: 3px 3px 0 0; min-height: 2px; transition: filter .15s; }
-  .month-col .bar:hover { filter: brightness(1.18); }
-  .month-col .label { position: absolute; bottom: 0; font-size: 0.68rem; color: var(--ink-soft); transform: translateY(20px); }
+  /* 二軸コンボチャート（バー＋線、左右で別の軸） */
+  .combo-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; font-size: 0.78rem; color: var(--ink-soft); }
+  .combo-legend-item { display: flex; align-items: center; gap: 6px; }
 
   /* 円グラフ＋凡例 */
   .donut-wrap { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
@@ -173,21 +169,23 @@
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>不良内容ランキング（詳細）</h2>
+        <h2><span class="bar"></span>不良内容パレート図</h2>
       </div>
-      <div id="detailRanking"></div>
+      <p class="empty-note" style="padding-top:0;">左軸＝個数（バー）、右軸＝累積比率（線）。個数の多い順に並べ、上位項目が全体の何割を占めるかを見る図。</p>
+      <div id="detailPareto"></div>
     </div>
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>月別 不良個数の推移</h2>
+        <h2><span class="bar"></span>月別 製造工程不良の推移</h2>
       </div>
+      <p class="empty-note" style="padding-top:0;">左軸＝完了数量・不良個数（バー）、右軸＝不良率（線）。</p>
       <div id="monthlyChart"></div>
     </div>
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>品番別 不良率</h2>
+        <h2><span class="bar"></span>品番別 不良率（内訳つき）</h2>
       </div>
       <p class="empty-note" style="padding-top:0;">不良率＝不良個数 ÷ 加工数スナップショットの完了数量。完了数量のデータが無い品番は「―」。</p>
       <div id="rateTable"></div>
@@ -332,46 +330,177 @@
     });
   }
 
-  // ==== 月別推移（単一系列バー、直接ラベル常時表示） ====
-  function buildMonthlyChart(container, rows) {
+  function niceMax(v) {
+    if (!v || v <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v)));
+    var n = v / p;
+    var step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return step * p;
+  }
+  function formatNum(v) { return Number(v || 0).toLocaleString('ja-JP'); }
+
+  // ==== 二軸コンボチャート（バー1〜2系列＋線1系列、左軸=個数系、右軸=%系、表切替つき） ====
+  function buildDualAxisCombo(container, opts) {
     container.innerHTML = '';
-    if (!rows.length) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
-    var max = Math.max.apply(null, rows.map(function (r) { return r.defectQty; })) || 1;
-    var chart = document.createElement('div');
-    chart.className = 'month-chart';
-    rows.forEach(function (r) {
-      var h = Math.max((r.defectQty / max) * 100, r.defectQty > 0 ? 4 : 1);
-      var col = document.createElement('div');
-      col.className = 'month-col';
-      var rateText = r.rate != null ? '（不良率 ' + (Math.round(r.rate * 1000) / 10) + '%）' : '';
-      col.innerHTML =
-        '<div class="val mono">' + r.defectQty + '</div>' +
-        '<div class="bar" style="height:' + h + '%;background:var(--series-look);"></div>' +
-        '<div class="label mono">' + r.month.slice(5) + '</div>';
-      var bar = col.querySelector('.bar');
-      bar.addEventListener('mouseenter', function (e) { showTooltip(e, r.month + '：不良' + r.defectQty + '個 / ' + r.incidentCount + '件' + rateText); });
-      bar.addEventListener('mousemove', moveTooltip);
-      bar.addEventListener('mouseleave', hideTooltip);
-      chart.appendChild(col);
+    var categories = opts.categories;
+    if (!categories.length) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
+
+    var leftMaxRaw = 0;
+    opts.barSeries.forEach(function (s) { s.values.forEach(function (v) { if (v > leftMaxRaw) leftMaxRaw = v; }); });
+    var leftMax = niceMax(leftMaxRaw * 1.15);
+    var rightMax = opts.rightMax || 100;
+
+    var marginLeft = 56, marginRight = 50, marginTop = 24, marginBottom = 92;
+    var groupWidth = 96;
+    var plotWidth = Math.max(categories.length * groupWidth, 240);
+    var plotHeight = 230;
+    var svgW = marginLeft + plotWidth + marginRight;
+    var svgH = marginTop + plotHeight + marginBottom;
+
+    var svgParts = [];
+    var ticks = 4;
+    for (var t = 0; t <= ticks; t++) {
+      var ly = marginTop + plotHeight - (plotHeight * t / ticks);
+      var leftVal = Math.round(leftMax * t / ticks);
+      var rightVal = Math.round(rightMax * t / ticks);
+      svgParts.push('<line x1="' + marginLeft + '" y1="' + ly + '" x2="' + (marginLeft + plotWidth) + '" y2="' + ly + '" stroke="var(--line)" stroke-width="1" opacity="' + (t === 0 ? '0.9' : '0.4') + '"></line>');
+      svgParts.push('<text x="' + (marginLeft - 8) + '" y="' + (ly + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + formatNum(leftVal) + '</text>');
+      svgParts.push('<text x="' + (marginLeft + plotWidth + 8) + '" y="' + (ly + 4) + '" text-anchor="start" font-size="10" fill="var(--ink-soft)">' + rightVal + '%</text>');
+    }
+    svgParts.push('<text x="' + marginLeft + '" y="14" font-size="10" fill="var(--ink-soft)">←' + escapeHtml(opts.leftUnitLabel) + '（左軸）</text>');
+    svgParts.push('<text x="' + (marginLeft + plotWidth) + '" y="14" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + escapeHtml(opts.rightUnitLabel) + '（右軸）→</text>');
+
+    var barInteractive = [];
+    var lineInteractive = [];
+    var numSeries = opts.barSeries.length;
+
+    categories.forEach(function (cat, i) {
+      var groupX0 = marginLeft + i * groupWidth;
+      var centerX = groupX0 + groupWidth / 2;
+      var totalBarsW = groupWidth * 0.56;
+      var barW = totalBarsW / numSeries;
+      var startX = centerX - totalBarsW / 2;
+
+      opts.barSeries.forEach(function (s, si) {
+        var v = s.values[i] || 0;
+        var h = leftMax > 0 ? (v / leftMax) * plotHeight : 0;
+        h = v > 0 ? Math.max(h, 2) : 0;
+        var x = startX + si * barW;
+        var y = marginTop + plotHeight - h;
+        var bw = barW - 3;
+        svgParts.push('<rect class="combo-bar" x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" fill="' + s.color + '" rx="2"></rect>');
+        barInteractive.push({ x: x, y: y, w: bw, h: h, text: cat + '　' + s.label + '：' + formatNum(v) + opts.leftUnitLabel });
+        if (bw >= 16 && v > 0) {
+          svgParts.push('<text x="' + (x + bw / 2) + '" y="' + (y - 4) + '" text-anchor="middle" font-size="9" fill="var(--ink)">' + formatNum(v) + '</text>');
+        }
+      });
+
+      var lv = opts.lineSeries.values[i];
+      var lvForPlot = lv == null ? 0 : lv;
+      var ly2 = marginTop + plotHeight - (lvForPlot / rightMax) * plotHeight;
+      lineInteractive.push({ x: centerX, y: ly2, v: lv, text: cat + '　' + opts.lineSeries.label + '：' + (lv == null ? '―' : (Math.round(lv * 10) / 10) + '%') });
+
+      var label = String(cat).length > 16 ? String(cat).slice(0, 15) + '…' : String(cat);
+      var lx = marginTop + plotHeight + 16;
+      svgParts.push('<text x="' + centerX + '" y="' + lx + '" font-size="10" fill="var(--ink-soft)" text-anchor="end" transform="rotate(-38 ' + centerX + ' ' + lx + ')">' + escapeHtml(label) + '</text>');
     });
-    container.appendChild(chart);
+
+    var linePts = lineInteractive.map(function (p) { return p.x + ',' + p.y; }).join(' ');
+    svgParts.push('<polyline points="' + linePts + '" fill="none" stroke="' + opts.lineSeries.color + '" stroke-width="2.5" stroke-dasharray="5,3"></polyline>');
+    lineInteractive.forEach(function (p) {
+      svgParts.push('<circle class="combo-point" cx="' + p.x + '" cy="' + p.y + '" r="4" fill="' + opts.lineSeries.color + '" stroke="var(--surface)" stroke-width="1.5"></circle>');
+      if (p.v != null) {
+        svgParts.push('<text x="' + p.x + '" y="' + (p.y - 9) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + opts.lineSeries.color + '">' + (Math.round(p.v * 10) / 10) + '%</text>');
+      }
+    });
+
+    svgParts.push('<line x1="' + marginLeft + '" y1="' + marginTop + '" x2="' + marginLeft + '" y2="' + (marginTop + plotHeight) + '" stroke="var(--ink-soft)" stroke-width="1"></line>');
+    svgParts.push('<line x1="' + (marginLeft + plotWidth) + '" y1="' + marginTop + '" x2="' + (marginLeft + plotWidth) + '" y2="' + (marginTop + plotHeight) + '" stroke="var(--ink-soft)" stroke-width="1"></line>');
+    svgParts.push('<line x1="' + marginLeft + '" y1="' + (marginTop + plotHeight) + '" x2="' + (marginLeft + plotWidth) + '" y2="' + (marginTop + plotHeight) + '" stroke="var(--ink-soft)" stroke-width="1"></line>');
+
+    var legend = document.createElement('div');
+    legend.className = 'combo-legend';
+    var legendHtml = '';
+    opts.barSeries.forEach(function (s) {
+      legendHtml += '<span class="combo-legend-item"><span class="legend-swatch" style="background:' + s.color + ';"></span>' + escapeHtml(s.label) + '（左軸・' + escapeHtml(opts.leftUnitLabel) + '）</span>';
+    });
+    legendHtml += '<span class="combo-legend-item"><span class="legend-swatch" style="background:' + opts.lineSeries.color + ';border-radius:50%;"></span>' + escapeHtml(opts.lineSeries.label) + '（右軸・' + escapeHtml(opts.rightUnitLabel) + '）</span>';
+    legend.innerHTML = legendHtml;
+
+    var scrollWrap = document.createElement('div');
+    scrollWrap.style.overflowX = 'auto';
+    scrollWrap.innerHTML = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" width="' + svgW + '" height="' + svgH + '" style="display:block;min-width:' + Math.min(svgW, 1000) + 'px;">' + svgParts.join('') + '</svg>';
+
+    var chartDiv = document.createElement('div');
+    chartDiv.appendChild(legend);
+    chartDiv.appendChild(scrollWrap);
+
+    var tableDiv = document.createElement('div');
+    tableDiv.style.display = 'none';
+    var tableHtml = '<table class="data-table"><thead><tr><th>項目</th>';
+    opts.barSeries.forEach(function (s) { tableHtml += '<th>' + escapeHtml(s.label) + '</th>'; });
+    tableHtml += '<th>' + escapeHtml(opts.lineSeries.label) + '</th></tr></thead><tbody>';
+    categories.forEach(function (cat, i) {
+      tableHtml += '<tr><td>' + escapeHtml(cat) + '</td>';
+      opts.barSeries.forEach(function (s) { tableHtml += '<td class="mono">' + formatNum(s.values[i] || 0) + '</td>'; });
+      var lv = opts.lineSeries.values[i];
+      tableHtml += '<td class="mono">' + (lv == null ? '―' : (Math.round(lv * 10) / 10) + '%') + '</td></tr>';
+    });
+    tableHtml += '</tbody></table>';
+    tableDiv.innerHTML = tableHtml;
+
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'toggle-btn';
+    toggle.textContent = '表で見る';
+    toggle.style.marginBottom = '10px';
+    toggle.addEventListener('click', function () {
+      var showingTable = tableDiv.style.display !== 'none';
+      tableDiv.style.display = showingTable ? 'none' : 'block';
+      chartDiv.style.display = showingTable ? 'block' : 'none';
+      toggle.textContent = showingTable ? '表で見る' : 'グラフで見る';
+    });
+
+    container.appendChild(toggle);
+    container.appendChild(chartDiv);
+    container.appendChild(tableDiv);
+
+    var svg = scrollWrap.querySelector('svg');
+    svg.querySelectorAll('.combo-bar').forEach(function (el, idx) {
+      var info = barInteractive[idx];
+      el.addEventListener('mouseenter', function (e) { showTooltip(e, info.text); el.style.filter = 'brightness(1.2)'; });
+      el.addEventListener('mousemove', moveTooltip);
+      el.addEventListener('mouseleave', function () { hideTooltip(); el.style.filter = ''; });
+    });
+    svg.querySelectorAll('.combo-point').forEach(function (el, idx) {
+      var info = lineInteractive[idx];
+      el.addEventListener('mouseenter', function (e) { showTooltip(e, info.text); });
+      el.addEventListener('mousemove', moveTooltip);
+      el.addEventListener('mouseleave', hideTooltip);
+    });
   }
 
-  // ==== 品番別不良率テーブル ====
+  // ==== 品番別不良率テーブル（大分類別の内訳つき） ====
   function buildRateTable(container, rows) {
     container.innerHTML = '';
     var withRate = rows.filter(function (r) { return r.completedQty > 0; });
     if (!rows.length) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
-    var html = '<table class="data-table"><thead><tr><th>図番</th><th>品名</th><th>不良個数</th><th>完了数量</th><th>不良率</th></tr></thead><tbody>';
+    var html = '<table class="data-table" style="min-width:720px;"><thead><tr><th>図番</th><th>品名</th>';
+    CATEGORY_ORDER.forEach(function (c) { html += '<th>' + escapeHtml(c) + '</th>'; });
+    html += '<th>不良個数計</th><th>完了数量</th><th>不良率</th></tr></thead><tbody>';
     rows.forEach(function (r) {
       var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
       var rateClass = (r.rate != null && r.rate >= 0.1) ? ' rate-high' : '';
-      html += '<tr><td class="zuban">' + escapeHtml(r.zuban) + '</td><td>' + escapeHtml(r.hinmei || '') + '</td>' +
-        '<td class="mono">' + r.defectQty + '</td><td class="mono">' + (r.completedQty || '―') + '</td>' +
+      html += '<tr><td class="zuban">' + escapeHtml(r.zuban) + '</td><td>' + escapeHtml(r.hinmei || '') + '</td>';
+      CATEGORY_ORDER.forEach(function (c) {
+        var v = (r.categories && r.categories[c]) || 0;
+        html += '<td class="mono">' + (v || '―') + '</td>';
+      });
+      html += '<td class="mono">' + r.defectQty + '</td><td class="mono">' + (r.completedQty || '―') + '</td>' +
         '<td class="mono' + rateClass + '">' + ratePct + '</td></tr>';
     });
     html += '</tbody></table>';
-    container.innerHTML = html;
+    container.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
     if (!withRate.length) {
       container.insertAdjacentHTML('afterbegin', '<p class="empty-note">完了数量のデータがまだ無いため、不良率は計算できていません。</p>');
     }
@@ -392,11 +521,27 @@
 
     buildDonut(document.getElementById('categoryDonut'), data.byCategory);
 
-    buildBarRanking(document.getElementById('detailRanking'),
-      data.byDetail.slice(0, 10).map(function (r) { return { label: r.detail, qty: r.qty, sub: r.category }; }),
-      { color: 'var(--series-dim)' });
+    // パレート図：個数の多い順（byDetailは既に降順）に累積%を計算
+    var paretoRows = data.byDetail.slice(0, 10);
+    var paretoTotal = data.byDetail.reduce(function (s, r) { return s + r.qty; }, 0) || 1;
+    var cum = 0;
+    var cumPct = paretoRows.map(function (r) { cum += r.qty; return (cum / paretoTotal) * 100; });
+    buildDualAxisCombo(document.getElementById('detailPareto'), {
+      categories: paretoRows.map(function (r) { return r.detail; }),
+      barSeries: [{ label: '個数', color: 'var(--series-dim)', values: paretoRows.map(function (r) { return r.qty; }) }],
+      lineSeries: { label: '累積比率', color: 'var(--accent-ink)', values: cumPct },
+      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100
+    });
 
-    buildMonthlyChart(document.getElementById('monthlyChart'), data.monthly);
+    buildDualAxisCombo(document.getElementById('monthlyChart'), {
+      categories: data.monthly.map(function (r) { return r.month.replace('-', '/'); }),
+      barSeries: [
+        { label: '完了数量', color: 'var(--series-blade)', values: data.monthly.map(function (r) { return r.completedQty; }) },
+        { label: '不良個数', color: 'var(--series-dim)', values: data.monthly.map(function (r) { return r.defectQty; }) }
+      ],
+      lineSeries: { label: '不良率', color: 'var(--accent-ink)', values: data.monthly.map(function (r) { return r.rate == null ? null : r.rate * 100; }) },
+      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100
+    });
 
     buildRateTable(document.getElementById('rateTable'), data.zubanRate);
   }
