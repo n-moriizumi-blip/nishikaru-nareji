@@ -27,6 +27,9 @@
   .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
   #app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
+  /* ③ツール配置画面はT番の一覧を横に並べるため、他の画面より横幅を広く使う（2026-10-25追加）。
+     タブレット横向き等、画面の空いている左右の余白を目いっぱい使う。 */
+  #app.wide-app { max-width: min(1400px, 96vw); }
   header.appbar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
@@ -250,6 +253,10 @@
     background: var(--line); border: 1px solid var(--line);
   }
   .tool-view-col, .tool-edit-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; background: var(--line); }
+  /* T番の件数が多い列は、広げた横幅を使って2段組みにし、縦に長くなりすぎないようにする（2026-10-25追加、閲覧のみ対応）。 */
+  .tool-view-col.multi-col { display: block; column-count: 2; column-gap: 1px; }
+  .tool-view-col.multi-col .col-head { column-span: all; }
+  .tool-view-row { break-inside: avoid; }
   .tool-view-col .col-head {
     font-size: 0.74rem; font-weight: 700; color: var(--accent); background: var(--surface);
     padding: 10px 7px; text-align: center; font-family: var(--font-mono); line-height: 1.4;
@@ -335,7 +342,7 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.0</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.1</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
@@ -859,6 +866,7 @@
     document.querySelectorAll('.screen').forEach(function (el) {
       el.classList.toggle('active', el.dataset.screen === name);
     });
+    document.getElementById('app').classList.toggle('wide-app', name === 'tools');
     // 画面切り替えは同じページ内でのdisplay切り替えのため、前の画面でスクロールしていた位置が
     // そのまま残ってしまう（新しい画面がいきなり下の方から表示される）。切り替えるたびに先頭に戻す。
     window.scrollTo(0, 0);
@@ -2204,6 +2212,8 @@
         row.innerHTML = html;
         colEl.appendChild(row);
       });
+      // 件数が多い列は2段組みにして縦に長くなりすぎないようにする（2026-10-25追加）。
+      colEl.classList.toggle('multi-col', grouped[colKey].length > 4);
     });
 
     var specWrap = document.getElementById('toolViewSpec');
