@@ -2509,6 +2509,72 @@ function uploadPhoto_(payload) {
 }
 
 /**
+ * 品質情報記録ログ（uploadPhoto_でアップロードした写真）の共有設定を一括で
+ * 「リンクを知っていれば誰でも閲覧可」に変更する準備として、対象件数だけを確認する
+ * （2026-10-31、検査記録ポータル側からサムネイル表示しようとすると「アクセスが拒否されました:
+ * DriveApp」になる件への対応。検査記録ポータル側はこの写真の所有者ではないため共有設定を
+ * 変更できず、所有者である西軽精機ナレッジ側のGASプロジェクトから実行する必要がある）。
+ * 共有設定はまだ一切変更しない（ドライラン）。実行結果はログに出力される。
+ */
+function previewQualityPhotoSharing() {
+  var result = processQualityPhotoSharing_(false);
+  Logger.log('【プレビューのみ・共有設定は未変更】対象URL数: ' + result.totalUrls +
+    ' / 変更が必要: ' + result.needsFixCount + ' / 既にリンク共有済み: ' + result.alreadyOkCount +
+    ' / エラー: ' + result.errorCount);
+  if (result.errors.length) Logger.log('エラー詳細:\n' + result.errors.join('\n'));
+}
+
+/**
+ * 品質情報記録ログの写真URL全件の共有設定を実際に「リンクを知っていれば誰でも閲覧可」に変更する。
+ * 共有範囲を広げる変更のため、実行前に必ずユーザーに確認すること。GASエディタで手動実行。
+ */
+function fixQualityPhotoSharing() {
+  var result = processQualityPhotoSharing_(true);
+  Logger.log('対象URL数: ' + result.totalUrls + ' / 変更: ' + result.fixedCount +
+    ' / 既にリンク共有済み: ' + result.alreadyOkCount + ' / エラー: ' + result.errorCount);
+  if (result.errors.length) Logger.log('エラー詳細:\n' + result.errors.join('\n'));
+}
+
+function processQualityPhotoSharing_(apply) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_QUALITY_LOG);
+  var result = { totalUrls: 0, needsFixCount: 0, fixedCount: 0, alreadyOkCount: 0, errorCount: 0, errors: [] };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return result;
+
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var photoCol = header.indexOf('写真URL');
+  if (photoCol === -1) { result.errors.push('写真URL列が見つかりません'); result.errorCount++; return result; }
+
+  var values = sheet.getRange(2, photoCol + 1, lastRow - 1, 1).getValues();
+  values.forEach(function (row, idx) {
+    var cell = row[0];
+    if (!cell) return;
+    String(cell).split('\n').map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (url) {
+      result.totalUrls++;
+      var m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      var fileId = m ? m[1] : null;
+      if (!fileId) { result.errorCount++; result.errors.push('行' + (idx + 2) + ': IDを取り出せません: ' + url); return; }
+      try {
+        var file = DriveApp.getFileById(fileId);
+        var access = file.getSharingAccess();
+        if (access === DriveApp.Access.ANYONE_WITH_LINK || access === DriveApp.Access.ANYONE) {
+          result.alreadyOkCount++;
+        } else if (apply) {
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          result.fixedCount++;
+        } else {
+          result.needsFixCount++;
+        }
+      } catch (e) {
+        result.errorCount++;
+        result.errors.push('行' + (idx + 2) + ': ' + fileId + ' - ' + e.message);
+      }
+    });
+  });
+  return result;
+}
+
+/**
  * ocrToolLayout_のプロンプトで使う閉じた選択肢一覧。index.html側のCATEGORY_LIST／
  * SUBTYPES_BY_CATEGORY／mountのoptionsと完全一致させること（値を変えたら両方直す）。
  * 表記ゆれのままだと、アプリの選択式欄（工具種類・工具種類詳細・取付方式）に自動で
