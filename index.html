@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.2</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -520,8 +520,14 @@
       </div>
 
       <div id="shippingSpecWrap" style="display:none;">
-        <div class="section-label">共通情報</div>
-        <div id="shippingSpecList" class="tool-view-spec"></div>
+        <div id="shippingSpecKensaGroup" style="display:none;">
+          <div class="section-label">品証項目</div>
+          <div id="shippingSpecKensaList" class="tool-view-spec"></div>
+        </div>
+        <div id="shippingSpecSeisanGroup" style="display:none;">
+          <div class="section-label">生産管理項目</div>
+          <div id="shippingSpecSeisanList" class="tool-view-spec"></div>
+        </div>
       </div>
 
       <div id="deptViewSection" style="display:none;">
@@ -1508,34 +1514,44 @@
     }
   }
 
-  // 共通情報（検査・生産管理共通項目）は図番ごとに1件の固定仕様情報のため、
-  // 過去トラの確認有無に関わらず②画面に常に表示する。
-  // 検査記録の添付・ミルシート（検査専用）、梱包方法・その他必要事項（出荷専用）は部署ボタン
+  // 図番ごとに1件の固定仕様情報は、過去トラの確認有無に関わらず②画面に常に表示する。
+  // 検査記録の添付・ミルシート（品証専用）、梱包方法・その他必要事項（出荷専用）は部署ボタン
   // （renderDeptView_）側でのみ表示し、ここでは対象外（2026-09-01、部署ごとの閲覧に変更）。
   // 3つ目の要素（onlyValue）を指定した項目は、その値のとき（＝「有」「要」等）だけ表示する
   // （「無」「不要」は情報として意味が薄いため出さない、2026-09-02変更）。
-  var SHIPPING_SPEC_LABELS = [
+  // 2026-11-09：編集画面側で「共通情報」区分を廃止し品証専用／生産管理専用に分けたのに合わせ、
+  // この常時表示サマリーも「共通情報」と一括りにせず、同じ2区分で見出しを分けて表示する。
+  var SHIPPING_SPEC_LABELS_KENSA = [
     ['トレー梱包', 'トレー梱包'],
     ['NG限度見本', 'NG・限度見本', '有'],
-    ['キーエンスプログラム名', 'キーエンス測定プログラム名'],
+    ['キーエンスプログラム名', 'キーエンス測定プログラム名']
+  ];
+  var SHIPPING_SPEC_LABELS_SEISAN = [
     ['カット品', 'カット品', '要'],
     ['テストピース', 'テストピース', '要'],
     ['借用ゲージ種類', 'ゲージの種類']
   ];
-  function renderShippingSpecDisplay(spec) {
-    var wrap = document.getElementById('shippingSpecWrap');
-    var list = document.getElementById('shippingSpecList');
+  function renderShippingSpecGroup_(spec, labels, groupId, listId) {
+    var group = document.getElementById(groupId);
+    var list = document.getElementById(listId);
     list.innerHTML = '';
-    if (!spec) { wrap.style.display = 'none'; return; }
     var any = false;
-    SHIPPING_SPEC_LABELS.forEach(function (pair) {
+    labels.forEach(function (pair) {
       var val = spec[pair[0]];
       if (!val) return;
       if (pair[2] && val !== pair[2]) return;
       any = true;
       list.insertAdjacentHTML('beforeend', '<div class="spec-item">' + escapeHtml(pair[1]) + '　<b>' + escapeHtml(String(val)) + '</b></div>');
     });
-    wrap.style.display = any ? 'block' : 'none';
+    group.style.display = any ? 'block' : 'none';
+    return any;
+  }
+  function renderShippingSpecDisplay(spec) {
+    var wrap = document.getElementById('shippingSpecWrap');
+    if (!spec) { wrap.style.display = 'none'; return; }
+    var anyKensa = renderShippingSpecGroup_(spec, SHIPPING_SPEC_LABELS_KENSA, 'shippingSpecKensaGroup', 'shippingSpecKensaList');
+    var anySeisan = renderShippingSpecGroup_(spec, SHIPPING_SPEC_LABELS_SEISAN, 'shippingSpecSeisanGroup', 'shippingSpecSeisanList');
+    wrap.style.display = (anyKensa || anySeisan) ? 'block' : 'none';
   }
 
   document.getElementById('confirmCheck').addEventListener('change', updateActionGate);
