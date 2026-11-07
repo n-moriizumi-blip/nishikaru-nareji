@@ -34,14 +34,18 @@
      不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
      （更新・戻る等）に伝わらないようにする。 */
   html, body { overscroll-behavior-y: none; }
-  #app { display: flex; flex-direction: column; min-height: 100vh; width: 100%; }
+  /* 2026-11-09：min-heightだけだと中身が多い画面で#app自体が縦に伸びてbody側がスクロールしてしまい、
+     レール（.rail）もメイン領域と一緒に流れてしまっていた。height指定で#appをビューポートぴったりに
+     固定し、<main>側のoverflow-y:autoだけが内部スクロールするようにする（dvhはモバイルブラウザの
+     アドレスバー分のズレ対策、非対応ブラウザはvhにフォールバック）。 */
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; width: 100%; }
 
   /* ==== 左アイコンレール（2026-11-07新設、2026-11-08改修：触れる/ポイントで開くタイプに、
      ヘッダーのブランド・ユーザー情報もレール内へ移設、左右の余白を無くしフルサイズ化） ==== */
   .app-shell { flex: 1; min-height: 0; display: flex; overflow: hidden; }
   .rail {
     width: 76px; flex: none; background: var(--rail); display: flex; flex-direction: column;
-    padding: 14px 0 10px; transition: width .18s; overflow: hidden;
+    padding: 14px 0 10px; transition: width .18s; overflow-x: hidden; overflow-y: auto;
   }
   .rail.expanded, .rail:hover, .rail:focus-within { width: 232px; }
 
@@ -78,9 +82,17 @@
   .screen { display: none; flex-direction: column; gap: 18px; }
   .screen.active { display: flex; }
 
-  .scan-copy { text-align: center; }
-  .scan-copy h2 { font-size: 1.15rem; margin: 0 0 6px; }
-  .scan-copy p { color: var(--ink-soft); font-size: 0.92rem; margin: 0; }
+  /* 2026-11-09：QR読み取り／図番検索の選択カード（検査記録ポータルの新規作成画面と同じ考え方）。 */
+  .start-choice-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .start-choice {
+    flex: 1 1 200px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px 16px;
+    text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+  }
+  .start-choice:hover { border-color: var(--accent); }
+  .start-choice .ic { width: 26px; height: 26px; color: var(--accent-ink); margin-bottom: 4px; }
+  .start-choice b { font-size: 0.98rem; font-weight: 900; }
+  .start-choice span { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; }
   #camWrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
   #camWrap.hidden { display: none; }
   .viewfinder {
@@ -387,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -438,11 +450,21 @@
   <main>
     <!-- SCREEN 1: 図番読み取り -->
     <section class="screen active" data-screen="scan">
-      <div class="pagehead"><h1>図番検索</h1></div>
-      <div class="scan-copy">
-        <h2>作業票のQRを読み取る</h2>
-        <p>I-PROが自動生成しているQRコードをそのまま使います</p>
+      <div class="pagehead"><h1>図番検索</h1><div class="sub">QRコードを読み取る、または図番で検索してください</div></div>
+
+      <div class="start-choice-row">
+        <button type="button" class="start-choice" id="startScanBtn">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>
+          <b>QRコードを読み取る</b>
+          <span>I-PROが自動生成しているQRコードをそのまま使います</span>
+        </button>
+        <button type="button" class="start-choice" id="manualToggleBtn">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <b>図番で検索する</b>
+          <span>図番の一部を入力して絞り込みます</span>
+        </button>
       </div>
+
       <div id="camWrap" class="hidden">
         <div class="viewfinder">
           <video id="video" playsinline></video>
@@ -452,9 +474,7 @@
         </div>
         <canvas id="canvas" style="display:none;"></canvas>
       </div>
-      <button class="btn btn-primary" id="startScanBtn">QRコードを読み取る</button>
       <div class="status-note" id="scanStatus"></div>
-      <button class="btn btn-ghost" id="manualToggleBtn">図番が読み取れない場合は直接入力</button>
       <div class="manual-entry" id="manualEntry">
         <input type="text" id="manualZubanInput" placeholder="例：9081-6120-Z000">
         <button class="btn btn-secondary" id="manualGoBtn">この図番で進む</button>
@@ -512,10 +532,10 @@
         <div id="deptLogList"></div>
       </div>
 
+      <!-- 2026-11-09：ツール配置・工程内不良入力・品質情報記録・別の図番を読み取る、への導線は
+           左レールと重複するため削除。検査記録フォルダを開くボタンのみ、レールに相当項目が無い
+           ので残す（画面遷移ではなくDriveの外部フォルダを開くアクションのため）。 -->
       <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
-        <button class="btn btn-primary hidden" id="goToolsBtn">ツールレイアウトを見る・編集する</button>
-        <button class="btn btn-primary hidden" id="goDefectBtn">工程内不良を入力する</button>
-        <button class="btn btn-primary hidden" id="goQiBtn">品質情報を記録する</button>
         <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
       </div>
       <div class="status-note" id="inspectionFolderStatus"></div>
@@ -523,7 +543,6 @@
         <p class="section-label sub">同じ名前のフォルダが複数見つかりました。開きたい方を選んでください</p>
         <div id="folderCandidateList"></div>
       </div>
-      <button class="btn btn-ghost" id="backToScanBtn">別の図番を読み取る</button>
     </section>
 
     <!-- SCREEN 4: 紙の取込確認 -->
@@ -556,15 +575,15 @@
         <div class="status-note" id="paperImportStatus"></div>
       </div>
 
-      <button class="btn btn-ghost" id="paperImportBackBtn" style="margin-top:16px;">ツールレイアウトに戻る</button>
     </section>
 
     <!-- SCREEN 3: ツール配置 -->
     <section class="screen" data-screen="tools">
       <div class="pagehead"><h1>ツール配置</h1><span class="zuban-inline" id="toolsZubanHeader"></span></div>
+      <!-- 2026-11-09：紙の取込確認への導線は左レールと重複するため削除。編集⇔閲覧の表示モード
+           切替は画面遷移ではないため残す。 -->
       <div class="tools-header">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-secondary" id="goPaperImportBtn">ツールレイアウト表取込</button>
           <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
         </div>
       </div>
@@ -681,7 +700,6 @@
       </div>
 
       <div class="status-note" id="toolsStatus"></div>
-      <button class="btn btn-ghost" id="toolsBackBtn">過去情報表示に戻る</button>
     </section>
 
     <!-- SCREEN 5: 品質情報記録 -->
@@ -889,7 +907,6 @@
 
       <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">まとめて保存する</button>
       <div class="status-note" id="qiStatus"></div>
-      <button class="btn btn-ghost" id="qiBackBtn">過去情報表示に戻る</button>
     </section>
 
     <!-- SCREEN 6: 工程内不良入力 -->
@@ -923,7 +940,6 @@
       <button type="button" class="btn btn-primary" id="defectSaveBtn">送信する</button>
       <div class="status-note" id="defectStatus"></div>
       <a class="btn btn-ghost" href="defect-dashboard.html" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">不良ダッシュボードを見る</a>
-      <button class="btn btn-ghost" id="defectBackBtn">過去情報表示に戻る</button>
     </section>
   </main>
   </div>
@@ -943,6 +959,14 @@
   // ==== 画面切り替え ====
   var currentScreenName = 'scan';
   function setScreen(name) {
+    // 2026-11-09：③⑤画面に個別にあった「過去情報表示に戻る」ボタンを削除し、レールからの遷移に
+    // 一本化したため、各画面で編集した内容が②画面に戻った時すぐ反映されるよう、history画面へ
+    // 遷移するたびにここで再描画する（旧ボタンが個別に呼んでいた再描画をまとめて引き継いだ）。
+    if (name === 'history' && currentZubanData) {
+      renderPastTroubleDisplay(currentZubanData);
+      renderQualityLogSection(currentZubanData);
+      renderShippingSpecDisplay(currentZubanData.shippingSpec);
+    }
     currentScreenName = name;
     document.querySelectorAll('.screen').forEach(function (el) {
       el.classList.toggle('active', el.dataset.screen === name);
@@ -1282,10 +1306,6 @@
       });
   });
 
-  document.getElementById('backToScanBtn').addEventListener('click', function () {
-    setScreen('scan');
-  });
-
   // ==== 図番確定 → ②画面へ ====
   // prefetchedData：QRスキャン時にscanZuban(製番→図番変換＋図番情報を1リクエストにまとめたAPI)で
   // 既に取得済みのデータがあれば渡す。渡された場合はzubanInfoの再取得をスキップする
@@ -1538,15 +1558,12 @@
   document.getElementById('confirmCheck').addEventListener('change', updateActionGate);
 
   // ==== ②画面：役割・過去トラ確認状況に応じたボタンの出し分け（確認するまで押せない） ====
+  // 2026-11-09：画面遷移系のボタン（ツール配置／工程内不良入力／品質情報記録）は左レールと重複する
+  // ため削除し、ここでは「検査記録フォルダを開く」（画面遷移ではない操作）の出し分けのみ残した。
+  // 画面遷移系の出し分け条件自体はupdateRailNav_()にそのまま引き継いである。
   function updateActionGate() {
-    var goToolsBtn = document.getElementById('goToolsBtn');
-    var goDefectBtn = document.getElementById('goDefectBtn');
-    var goQiBtn = document.getElementById('goQiBtn');
     var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
     if (!currentZubanData) {
-      goToolsBtn.classList.add('hidden');
-      goDefectBtn.classList.add('hidden');
-      goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
       updateRailNav_();
       return;
@@ -1554,18 +1571,6 @@
     var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
     var confirmed = hasTrouble ? document.getElementById('confirmCheck').checked : true;
     updateRailNav_();
-
-    goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
-    goToolsBtn.disabled = !confirmed;
-
-    // 工程内不良入力は一次・二次加工（seizou）専用（2026-09-22追加）
-    goDefectBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
-    goDefectBtn.disabled = !confirmed;
-
-    // ⑤は一次・二次加工（③を使う）以外の全部署が、何らかの形で使う
-    var showQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
-    goQiBtn.classList.toggle('hidden', !showQi);
-    goQiBtn.disabled = !confirmed;
 
     var showInspectionFolderBtn = currentRole === 'kensa' || currentAllAccess;
     openInspectionFolderBtn.classList.toggle('hidden', !showInspectionFolderBtn);
@@ -1652,8 +1657,8 @@
     var confirmCheckEl = document.getElementById('confirmCheck');
     var confirmed = hasTrouble ? (confirmCheckEl && confirmCheckEl.checked) : true;
 
-    // 役割による表示条件は既存のupdateActionGate()と同じ判定（goToolsBtn/goDefectBtn/goQiBtnの
-    // classList.toggle('hidden', ...)条件）をそのまま踏襲。紙の取込確認はツール配置と同じ扱い。
+    // 役割による表示条件は、旧updateActionGate()が画面内ボタンで使っていたのと同じ判定
+    // （seizouロールまたはallAccessか等）をそのまま踏襲。紙の取込確認はツール配置と同じ扱い。
     var canTools = currentRole === 'seizou' || currentAllAccess;
     var canQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
 
@@ -1667,18 +1672,6 @@
     qiBtn.classList.toggle('locked', !confirmed);
   }
 
-  document.getElementById('goToolsBtn').addEventListener('click', function () {
-    if (this.disabled) return;
-    goToTools();
-  });
-  document.getElementById('goDefectBtn').addEventListener('click', function () {
-    if (this.disabled) return;
-    goToDefect();
-  });
-  document.getElementById('goQiBtn').addEventListener('click', function () {
-    if (this.disabled) return;
-    goToQi();
-  });
   document.getElementById('openInspectionFolderBtn').addEventListener('click', function () {
     if (this.disabled) return;
     if (currentInspectionFolderUrl === '__ambiguous__' && currentInspectionFolderCandidates) {
@@ -1751,14 +1744,6 @@
     });
     document.getElementById('folderCandidateSelect').classList.remove('hidden');
   }
-  document.getElementById('goPaperImportBtn').addEventListener('click', function () {
-    if (this.disabled) return;
-    goToPaperImport();
-  });
-  document.getElementById('paperImportBackBtn').addEventListener('click', function () {
-    goToTools();
-  });
-
   function zubanLabel(data) {
     return data.zuban + (data.hinmei ? '　' + data.hinmei : '');
   }
@@ -2248,10 +2233,6 @@
       .catch(function () { toolFieldSuggestionsLoaded = false; });
   }
 
-  document.getElementById('toolsBackBtn').addEventListener('click', function () {
-    if (currentZubanData) renderPastTroubleDisplay(currentZubanData);
-    setScreen('history');
-  });
 
   function refreshZubanData() {
     return fetch(GAS_API_URL + '?action=zubanInfo&zuban=' + encodeURIComponent(currentZubanData.zuban))
@@ -3335,14 +3316,6 @@
     }
   }
 
-  document.getElementById('qiBackBtn').addEventListener('click', function () {
-    if (currentZubanData) {
-      renderPastTroubleDisplay(currentZubanData);
-      renderQualityLogSection(currentZubanData);
-      renderShippingSpecDisplay(currentZubanData.shippingSpec);
-    }
-    setScreen('history');
-  });
 
   var editingQiId = null;
 
@@ -3883,9 +3856,6 @@
     loadExistingDefectForDate_();
   }
 
-  document.getElementById('defectBackBtn').addEventListener('click', function () {
-    setScreen('history');
-  });
 
   document.getElementById('defectSaveBtn').addEventListener('click', function () {
     if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
