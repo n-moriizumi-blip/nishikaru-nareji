@@ -34,32 +34,46 @@
      不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
      （更新・戻る等）に伝わらないようにする。 */
   html, body { overscroll-behavior-y: none; }
-  #app { display: flex; flex-direction: column; min-height: 100vh; max-width: min(1400px, 96vw); margin: 0 auto; }
-  header.appbar {
-    display: flex; align-items: center; justify-content: space-between; flex: none;
-    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
-  }
-  header.appbar .title { font-weight: 900; font-size: 1.05rem; letter-spacing: 0.01em; }
-  header.appbar .app-version { font-size: 0.68rem; color: var(--ink-soft); margin-left: 8px; font-family: var(--mono, monospace); vertical-align: middle; }
-  #userBox { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); }
-  #signinBtn { display: none; }
+  #app { display: flex; flex-direction: column; min-height: 100vh; width: 100%; }
 
-  /* ==== 左アイコンレール（2026-11-07新設、検査記録ポータルと同じ構造） ==== */
+  /* ==== 左アイコンレール（2026-11-07新設、2026-11-08改修：触れる/ポイントで開くタイプに、
+     ヘッダーのブランド・ユーザー情報もレール内へ移設、左右の余白を無くしフルサイズ化） ==== */
   .app-shell { flex: 1; min-height: 0; display: flex; overflow: hidden; }
-  .rail { width: 76px; flex: none; background: var(--rail); display: flex; flex-direction: column; padding: 14px 0; transition: width .18s; overflow: hidden; }
-  .rail.expanded { width: 232px; }
-  .rail-toggle-row { display: flex; justify-content: flex-end; padding: 0 14px 10px; }
-  .rail-toggle { background: transparent; border: none; color: var(--rail-dim); padding: 6px; border-radius: 6px; cursor: pointer; }
-  .rail-toggle:hover { background: rgba(255,255,255,.08); color: var(--rail-ink); }
+  .rail {
+    width: 76px; flex: none; background: var(--rail); display: flex; flex-direction: column;
+    padding: 14px 0 10px; transition: width .18s; overflow: hidden;
+  }
+  .rail.expanded, .rail:hover, .rail:focus-within { width: 232px; }
+
+  .rail-brand { display: flex; align-items: center; gap: 10px; padding: 0 16px 18px; flex: none; }
+  .rail-mark { width: 32px; height: 32px; border-radius: 7px; background: var(--accent); color: var(--rail); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; flex: none; }
+  .rail-brand-text { display: none; color: var(--rail-ink); font-weight: 900; font-size: 12.5px; line-height: 1.4; white-space: nowrap; }
+  .rail-brand-text .app-version { display: block; font-size: 10px; font-weight: 700; color: var(--rail-dim); font-family: var(--font-mono); margin-top: 2px; }
+  .rail.expanded .rail-brand-text, .rail:hover .rail-brand-text, .rail:focus-within .rail-brand-text { display: block; }
+
   .nav-btn { display: flex; align-items: center; gap: 14px; padding: 13px 16px; background: none; border: none; color: var(--rail-dim); white-space: nowrap; width: 100%; text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-sizing: border-box; }
   .nav-btn .ic { flex: none; width: 22px; height: 22px; }
   .nav-btn .lbl { font-size: 13.5px; font-weight: 700; display: none; }
-  .rail.expanded .nav-btn .lbl { display: inline; }
+  .rail.expanded .nav-btn .lbl, .rail:hover .nav-btn .lbl, .rail:focus-within .nav-btn .lbl { display: inline; }
   .nav-btn.active { background: var(--rail-active); color: #fff; }
   .nav-btn:not(.active):not(.locked):hover { background: rgba(255,255,255,.06); color: var(--rail-ink); }
   .nav-btn.locked { opacity: .38; cursor: not-allowed; }
   .nav-btn .lock { margin-left: auto; flex: none; width: 15px; height: 15px; display: none; }
-  .rail.expanded .nav-btn.locked .lock { display: block; }
+  .rail.expanded .nav-btn.locked .lock, .rail:hover .nav-btn.locked .lock, .rail:focus-within .nav-btn.locked .lock { display: block; }
+
+  .rail-foot { margin-top: auto; flex: none; border-top: 1px solid rgba(255,255,255,.1); padding-top: 10px; }
+  .rail-user { display: flex; align-items: center; gap: 10px; padding: 8px 16px; min-width: 0; }
+  .rail-user-icon { width: 26px; height: 26px; border-radius: 50%; background: var(--rail-active); color: var(--rail-ink); flex: none; padding: 5px; box-sizing: border-box; }
+  .rail-user-detail { display: none; font-size: 11px; color: var(--rail-dim); line-height: 1.5; word-break: break-all; min-width: 0; }
+  .rail.expanded .rail-user-detail, .rail:hover .rail-user-detail, .rail:focus-within .rail-user-detail { display: block; }
+  .rail-signin { display: none; padding: 6px 16px 2px; }
+  .rail.expanded .rail-signin, .rail:hover .rail-signin, .rail:focus-within .rail-signin { display: block; }
+
+  /* ==== 画面共通の見出し（2026-11-08追加、全画面で統一） ==== */
+  .pagehead { flex: none; }
+  .pagehead h1 { margin: 0; font-size: 1.2rem; font-weight: 900; }
+  .pagehead .sub, .pagehead .zuban-header, .pagehead .zuban-inline { margin-top: 4px; }
+
   main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
   .screen { display: none; flex-direction: column; gap: 18px; }
   .screen.active { display: flex; }
@@ -369,21 +383,11 @@
 </head>
 <body>
 <div id="app">
-  <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v2.0.0</span></span>
-    <div id="userBox">
-      <span id="userLabel">未ログイン</span>
-      <div id="g_id_signin"></div>
-      <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
-    </div>
-  </header>
-
   <div class="app-shell">
     <nav class="rail" id="rail">
-      <div class="rail-toggle-row">
-        <button type="button" class="rail-toggle" id="railToggleBtn" aria-label="メニューを開閉">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-        </button>
+      <div class="rail-brand">
+        <div class="rail-mark">西</div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -418,11 +422,23 @@
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20V11M11 20V4M18 20v-7M2 20h20"/></svg>
         <span class="lbl">不良ダッシュボード</span>
       </a>
+
+      <div class="rail-foot">
+        <div class="rail-user">
+          <svg class="rail-user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-6 8-6s8 2 8 6"/></svg>
+          <div class="rail-user-detail"><span id="userLabel">未ログイン</span></div>
+        </div>
+        <div class="rail-signin">
+          <div id="g_id_signin"></div>
+          <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
+        </div>
+      </div>
     </nav>
 
   <main>
     <!-- SCREEN 1: 図番読み取り -->
     <section class="screen active" data-screen="scan">
+      <div class="pagehead"><h1>図番検索</h1></div>
       <div class="scan-copy">
         <h2>作業票のQRを読み取る</h2>
         <p>I-PROが自動生成しているQRコードをそのまま使います</p>
@@ -455,7 +471,7 @@
 
     <!-- SCREEN 2: 過去情報表示 -->
     <section class="screen" data-screen="history">
-      <div class="zuban-header" id="historyZubanHeader"></div>
+      <div class="pagehead"><h1>過去トラ・共有情報</h1><div class="zuban-header" id="historyZubanHeader"></div></div>
       <p class="status-note hidden" id="zubanLoadingNote">読み込み中…</p>
 
       <div id="pastTroubleWrap" style="display:none;">
@@ -512,9 +528,7 @@
 
     <!-- SCREEN 4: 紙の取込確認 -->
     <section class="screen" data-screen="paperImport">
-      <div class="tools-header">
-        <span class="zuban-inline" id="paperImportZubanHeader"></span>
-      </div>
+      <div class="pagehead"><h1>紙の取込確認</h1><span class="zuban-inline" id="paperImportZubanHeader"></span></div>
       <p class="status-note">ツールレイアウト表の紙をカメラで撮影するか、写真を選んでください（表裏や複数ページある場合は複数枚まとめて撮影・選択できます）。AIが内容を読み取り、次の画面で1件ずつ原本と照合してから登録します。</p>
 
       <div class="field">
@@ -547,8 +561,8 @@
 
     <!-- SCREEN 3: ツール配置 -->
     <section class="screen" data-screen="tools">
+      <div class="pagehead"><h1>ツール配置</h1><span class="zuban-inline" id="toolsZubanHeader"></span></div>
       <div class="tools-header">
-        <span class="zuban-inline" id="toolsZubanHeader"></span>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button type="button" class="btn btn-secondary" id="goPaperImportBtn">ツールレイアウト表取込</button>
           <button type="button" class="btn btn-secondary" id="toolViewToggle">編集する</button>
@@ -672,10 +686,7 @@
 
     <!-- SCREEN 5: 品質情報記録 -->
     <section class="screen" data-screen="qi">
-      <div class="field">
-        <label>図番／品名</label>
-        <div class="zuban-inline" id="qiZubanHeader"></div>
-      </div>
+      <div class="pagehead"><h1>品質情報記録</h1><div class="zuban-inline" id="qiZubanHeader"></div></div>
       <div class="mini-grid">
         <div class="mini-field"><label>部署（自動）</label><input type="text" id="qiDeptDisplay" disabled></div>
         <div class="mini-field"><label>日付（自動）</label><input type="text" id="qiDateDisplay" disabled></div>
@@ -883,10 +894,7 @@
 
     <!-- SCREEN 6: 工程内不良入力 -->
     <section class="screen" data-screen="processDefect">
-      <div class="field">
-        <label>図番／品名</label>
-        <div class="zuban-inline" id="defectZubanHeader"></div>
-      </div>
+      <div class="pagehead"><h1>工程内不良入力</h1><div class="zuban-inline" id="defectZubanHeader"></div></div>
       <div class="mini-grid">
         <div class="mini-field"><label>得意先（自動）</label><input type="text" id="defectTokuisakiDisplay" disabled></div>
         <div class="mini-field"><label>機械名（自動・修正可）</label><input type="text" id="defectMachineInput" list="defectMachineTypeList"></div>
@@ -1207,6 +1215,39 @@
   document.getElementById('manualToggleBtn').addEventListener('click', function () {
     document.getElementById('manualEntry').classList.toggle('active');
   });
+
+  // 文字を入れていくたびに候補を絞り込む（2026-11-08追加）。既存のsearchZuban（完全一致＝exact／
+  // 部分一致＝candidates）・showCandidateSelect/hideCandidateSelectをそのまま流用する。
+  // 「この図番で進む」ボタン（下のmanualGoBtn）は、入力値そのままで新規登録したい場合の
+  // フォールバックとして残す。
+  (function () {
+    var manualZubanInputEl = document.getElementById('manualZubanInput');
+    var debounceTimer = null;
+    manualZubanInputEl.addEventListener('input', function () {
+      var v = manualZubanInputEl.value.trim();
+      clearTimeout(debounceTimer);
+      if (v.length < 2) { hideCandidateSelect(); return; }
+      debounceTimer = setTimeout(function () {
+        fetch(GAS_API_URL + '?action=searchZuban&query=' + encodeURIComponent(v))
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            // 入力中に値が変わっていたら（＝もっと新しい検索が走っている）古い結果は捨てる。
+            if (manualZubanInputEl.value.trim() !== v) return;
+            if (res.error) return;
+            var seen = {};
+            var list = [];
+            if (res.exact) { list.push(res.exact); seen[res.exact.zuban] = true; }
+            (res.candidates || []).forEach(function (c) {
+              if (!seen[c.zuban]) { list.push(c); seen[c.zuban] = true; }
+            });
+            if (list.length === 0) { hideCandidateSelect(); return; }
+            showCandidateSelect(list, '候補（タップして選択、無ければ下のボタンから新規登録）');
+          })
+          .catch(function () {});
+      }, 300);
+    });
+  })();
+
   document.getElementById('manualGoBtn').addEventListener('click', function () {
     var v = document.getElementById('manualZubanInput').value.trim();
     if (!v) return;
@@ -1552,9 +1593,19 @@
 
   // ==== 左アイコンレール（2026-11-07新設） ====
   // ロック判定はupdateActionGate()と同じ条件（過去トラ確認済み・役割）を再利用する。
-  document.getElementById('railToggleBtn').addEventListener('click', function () {
-    document.getElementById('rail').classList.toggle('expanded');
-  });
+  // 2026-11-08：手動開閉ボタンをやめ、触れる/ポイントすると開くタイプに変更。CSSの:hover/:focus-within
+  // はマウス操作でそのまま効くが、タッチ端末には「ホバー」という概念が無いため、タッチ開始時に
+  // 明示的にexpandedクラスを付け、レールの外をタップしたら外す（タップしたまま離れた時の
+  // pointerleave頼みだと閉じるタイミングが不安定なため、タップ位置で判定する）。
+  (function () {
+    var railEl = document.getElementById('rail');
+    railEl.addEventListener('mouseenter', function () { railEl.classList.add('expanded'); });
+    railEl.addEventListener('mouseleave', function () { railEl.classList.remove('expanded'); });
+    railEl.addEventListener('touchstart', function () { railEl.classList.add('expanded'); }, { passive: true });
+    document.addEventListener('touchstart', function (e) {
+      if (!railEl.contains(e.target)) railEl.classList.remove('expanded');
+    }, { passive: true });
+  })();
   document.getElementById('railScanBtn').addEventListener('click', function () {
     setScreen('scan');
   });
