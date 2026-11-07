@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -528,7 +528,6 @@
         <div class="section-label">部署別の情報を見る</div>
         <div class="dept-btn-row" id="deptBtnRow">
           <button type="button" class="dept-btn" data-dept="加工">加工</button>
-          <button type="button" class="dept-btn" data-dept="品証">品証</button>
           <button type="button" class="dept-btn" data-dept="仕上げ">仕上げ</button>
           <button type="button" class="dept-btn" data-dept="洗浄">洗浄</button>
           <button type="button" class="dept-btn" data-dept="出荷">出荷</button>
@@ -717,7 +716,7 @@
       </div>
 
       <div id="specKensaSection" class="hidden">
-        <div class="section-label">品証専用（記録添付）｜検査記録の添付・ミルシート（品証担当のみ編集・図番ごとに1件、上書き）</div>
+        <div class="section-label">品証専用｜品証担当のみ編集・図番ごとに1件、上書き</div>
         <div class="field">
           <label>検査記録の添付</label>
           <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
@@ -732,11 +731,6 @@
             <button type="button" class="chip">不要</button>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">品証専用（記録添付）を保存する</button>
-      </div>
-
-      <div id="specCommonSection" class="hidden">
-        <div class="section-label">共通情報｜検査・生産管理共通項目（検査・生産管理どちらでも編集可・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>トレー梱包</label>
           <div class="chip-row" data-group="tray" data-field="トレー梱包">
@@ -767,7 +761,7 @@
           <label>キーエンス測定のプログラム名（自由入力）</label>
           <input type="text" id="keyenceProgramInput" placeholder="例：K1001">
         </div>
-        <button type="button" class="btn btn-secondary" id="specCommonSaveBtn">共通情報を保存する</button>
+        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">品証専用を保存する</button>
       </div>
 
       <div id="specSeisanSection" class="hidden">
@@ -1366,7 +1360,13 @@
   // 過去トラ・「あなたが初挑戦です」の表示更新。確認チェックの状態には触れない
   // （③⑤からの保存後にこの部分だけ再描画するために分離）。
   function renderPastTroubleDisplay(data) {
-    var hasTrouble = (data.pastTrouble || []).length > 0;
+    // 品証の記録（旧・検査、SHEET_QUALITY_LOGの部署='品証'）は検査記録ポータルへ移行済みのため、
+    // 過去トラ・共有情報の一覧からも除外する（2026-11-09、閲覧も含めて西軽精機ナレッジ側では
+    // 表示しない方針。データ自体は削除せずシートに残したまま）。
+    var pastTrouble = (data.pastTrouble || []).filter(function (item) {
+      return !(item.row && item.row['部署'] === '品証');
+    });
+    var hasTrouble = pastTrouble.length > 0;
     document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
     // 「あなたが初挑戦です」は、この図番に本当に何も記録が無い場合だけ出す。共有された
     // 過去トラが無くても、品質情報記録ログ（他部署分も含む）・ツール配置・出荷仕様等の
@@ -1377,7 +1377,7 @@
     if (hasTrouble) {
       var list = document.getElementById('pastTroubleList');
       list.innerHTML = '';
-      data.pastTrouble.forEach(function (item) {
+      pastTrouble.forEach(function (item) {
         if (item.row) {
           // 新システム内で「共有する」を選んだ品質情報記録・ツール配置メモ。
           // 写真・編集/削除ボタンも他の一覧と同じtip-card形式で表示する。
@@ -1455,7 +1455,8 @@
   function renderQualityLogSection(data) {
     document.getElementById('deptViewSection').style.display = 'block';
     if (!selectedDeptView) {
-      selectedDeptView = { seizou: '加工', kensa: '品証', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }[currentRole] || null;
+      // 品証の記録は検査記録ポータルへ移行済みのため、kensaロールでもここでは自動選択しない（2026-11-09）。
+      selectedDeptView = { seizou: '加工', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }[currentRole] || null;
     }
     document.querySelectorAll('#deptBtnRow .dept-btn').forEach(function (btn) {
       btn.setAttribute('aria-pressed', btn.getAttribute('data-dept') === selectedDeptView ? 'true' : 'false');
@@ -3240,31 +3241,27 @@
 
     var spec = currentZubanData.shippingSpec || {};
     var showKensa = currentRole === 'kensa' || currentAllAccess;
-    var showCommon = currentRole === 'kensa' || currentRole === 'seisan' || currentAllAccess;
     var showSeisan = currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
     var showShiage = currentRole === 'shiage' || currentAllAccess;
     var showSenjou = currentRole === 'senjou' || currentAllAccess;
 
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
-    document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
     document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
     document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
-    // この画面の各セクションは、部署をまたいで複数表示されることがある（例：検査担当は
-    // 検査専用＋共通情報の両方を編集できる）ため、各セクション個別の保存ボタンに加えて、
+    // この画面の各セクションは、部署をまたいで複数表示されることがある（例：生産管理担当は
+    // 生産管理専用＋出荷の両方を編集できる）ため、各セクション個別の保存ボタンに加えて、
     // 画面全体の一番下に表示中の分をまとめて1回で保存できる「まとめて保存する」ボタンも
     // 用意する（2026-09-07追加。当初は出荷仕様系の3セクションだけを対象にしていたが、
     // 仕上専用・洗浄専用も含めて画面全体を対象にしてほしいとの要望で拡張した）。
     document.getElementById('specSaveBtn').classList.toggle('hidden',
-      !(showKensa || showCommon || showSeisan || showShukka || showShiage || showSenjou));
+      !(showKensa || showSeisan || showShukka || showShiage || showSenjou));
 
     if (showKensa) {
       setChipValue('inspRecord', spec['検査記録の添付']);
       setChipValue('millSheet', spec['ミルシート']);
-    }
-    if (showCommon) {
       setChipValue('tray', spec['トレー梱包']);
       setChipValue('ngSample', spec['NG限度見本']);
       setChipValue('keyence', spec['キーエンス測定']);
@@ -3373,9 +3370,6 @@
     if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
       fields['検査記録の添付'] = getChipValue('inspRecord');
       fields['ミルシート'] = getChipValue('millSheet');
-      hasSpecFields = true;
-    }
-    if (!document.getElementById('specCommonSection').classList.contains('hidden')) {
       fields['トレー梱包'] = getChipValue('tray');
       fields['NG限度見本'] = getChipValue('ngSample');
       fields['キーエンス測定'] = getChipValue('keyence');
@@ -3395,7 +3389,7 @@
       fields['梱包写真URL'] = pendingShukkaPhotoUrl;
       hasSpecFields = true;
     }
-    if (hasSpecFields) saveShippingSpecFields(fields, '共通・生産管理・出荷情報', 'specSaveBtn');
+    if (hasSpecFields) saveShippingSpecFields(fields, '品証・生産管理・出荷情報', 'specSaveBtn');
 
     // 仕上専用・洗浄専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
     // 空のまま保存できる性質ではないため、内容が入力されている場合だけ、それぞれの
@@ -3414,14 +3408,10 @@
   // ユーザー要望で2026-09-07に復活）。
   document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
-      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet')
-    }, '品証専用（記録添付）', 'specKensaSaveBtn');
-  });
-  document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
+      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
       'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
       'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value
-    }, '共通情報', 'specCommonSaveBtn');
+    }, '品証専用', 'specKensaSaveBtn');
   });
   document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
