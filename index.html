@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.2</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -434,6 +434,12 @@
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20V11M11 20V4M18 20v-7M2 20h20"/></svg>
         <span class="lbl">不良ダッシュボード</span>
       </a>
+      <!-- 2026-11-09追加：引っ張って更新を無効化した（v1.31.4）ので、アプリ側に明示的な
+           再読み込み手段を用意しておく（PWAとしてインストールしているとブラウザの更新ボタンが無いため）。 -->
+      <button type="button" class="nav-btn" id="railReloadBtn">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.66-5.66M20 12a8 8 0 0 1-13.66 5.66"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
+        <span class="lbl">再読み込み</span>
+      </button>
 
       <div class="rail-foot">
         <div class="rail-user">
@@ -1634,6 +1640,9 @@
   document.getElementById('railPaperBtn').addEventListener('click', function () {
     if (this.classList.contains('locked')) return;
     goToPaperImport();
+  });
+  document.getElementById('railReloadBtn').addEventListener('click', function () {
+    location.reload();
   });
 
   function updateRailNav_() {
