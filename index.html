@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.3.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.3.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -1464,8 +1464,8 @@
 
   // 図番ごとに1件の固定仕様情報のうち、生産管理項目だけ過去トラの確認有無に関わらず②画面に
   // 常に表示する。品証項目（トレー梱包・NG限度見本・キーエンス測定プログラム名・検査記録の添付・
-  // ミルシート）は検査記録ポータルへ移行済みのため、②画面には一切表示しない（2026-11-09、
-  // 編集自体は⑤画面の品証専用セクションに残すが、この常時表示サマリーからは除外）。
+  // ミルシート）は検査記録ポータルへ移行済みのため、②画面の表示・⑤画面の編集フォームとも
+  // 西軽精機ナレッジ側からは完全に削除した（2026-11-09）。
   // 3つ目の要素（onlyValue）を指定した項目は、その値のとき（＝「有」「要」等）だけ表示する
   // （「無」「不要」は情報として意味が薄いため出さない、2026-09-02変更）。
   var SHIPPING_SPEC_LABELS_SEISAN = [
