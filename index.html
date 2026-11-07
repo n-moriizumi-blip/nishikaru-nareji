@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.1.2</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -767,6 +767,11 @@
           <label>キーエンス測定のプログラム名（自由入力）</label>
           <input type="text" id="keyenceProgramInput" placeholder="例：K1001">
         </div>
+        <button type="button" class="btn btn-secondary" id="specCommonSaveBtn">共通情報を保存する</button>
+      </div>
+
+      <div id="specSeisanSection" class="hidden">
+        <div class="section-label">生産管理専用｜生産管理課専用項目（生産管理担当のみ編集・図番ごとに1件、上書き）</div>
         <div class="field">
           <label>カット品</label>
           <div class="chip-row" data-group="cutSample" data-field="カット品">
@@ -792,7 +797,7 @@
           <label>ゲージの種類（自由入力）</label>
           <input type="text" id="gaugeDetailInput" placeholder="例：限界ピンゲージ φ8.0">
         </div>
-        <button type="button" class="btn btn-secondary" id="specCommonSaveBtn">共通情報を保存する</button>
+        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">生産管理専用を保存する</button>
       </div>
 
       <div id="specShukkaSection" class="hidden">
@@ -880,35 +885,6 @@
         </label>
         <button type="button" class="btn btn-secondary" id="senjouSaveBtn">洗浄専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="senjouEditCancelBtn">編集をキャンセル</button>
-      </div>
-
-      <div id="qiLogSection" class="hidden">
-        <div class="section-label">品証専用（ログ）｜品質情報を記録する（品証担当のみ・複数件記録できます）</div>
-        <div class="field">
-          <label>外観ランク（任意）</label>
-          <div class="chip-row" data-group="rank">
-            <button type="button" class="chip">A</button>
-            <button type="button" class="chip">B</button>
-            <button type="button" class="chip">C</button>
-            <button type="button" class="chip">D</button>
-            <button type="button" class="chip">E</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>内容</label>
-          <textarea id="qiContentInput" placeholder="例：規格値◯±0.1に対し実測◯◯。在庫と同様のためそのまま合格とした、等"></textarea>
-        </div>
-        <div class="field">
-          <label>写真（任意）</label>
-          <button type="button" class="photo-btn" id="qiPhotoBtn"><span id="qiPhotoIcon">📷</span><span id="qiPhotoLabel">写真・PDFを選ぶ</span></button>
-          <input type="file" id="qiPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
-        </div>
-        <label class="confirm-row">
-          <input type="checkbox" id="qiShareCheck">
-          <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
-        </label>
-        <button type="button" class="btn btn-secondary" id="qiSaveBtn">品証専用（ログ）を記録する</button>
-        <button type="button" class="btn btn-ghost hidden" id="qiEditCancelBtn">編集をキャンセル</button>
       </div>
 
       <button type="button" class="btn btn-secondary hidden" id="specSaveBtn">まとめて保存する</button>
@@ -3209,8 +3185,6 @@
   });
 
   // ==== ⑤ 品質情報記録 ====
-  var pendingQiPhotoUrl = '';
-
   // 「有」を選んだ時だけ自由入力欄を出すチップ（借用ゲージ／キーエンス測定）のグループキー→欄ID対応。
   var CHIP_DETAIL_FIELDS = { gauge: 'gaugeDetailField', keyence: 'keyenceProgramField' };
 
@@ -3267,24 +3241,24 @@
     var spec = currentZubanData.shippingSpec || {};
     var showKensa = currentRole === 'kensa' || currentAllAccess;
     var showCommon = currentRole === 'kensa' || currentRole === 'seisan' || currentAllAccess;
+    var showSeisan = currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
     var showShiage = currentRole === 'shiage' || currentAllAccess;
     var showSenjou = currentRole === 'senjou' || currentAllAccess;
-    var showQiLog = currentRole === 'kensa' || currentAllAccess;
 
     document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specCommonSection').classList.toggle('hidden', !showCommon);
+    document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
     document.getElementById('specSenjouSection').classList.toggle('hidden', !showSenjou);
-    document.getElementById('qiLogSection').classList.toggle('hidden', !showQiLog);
     // この画面の各セクションは、部署をまたいで複数表示されることがある（例：検査担当は
     // 検査専用＋共通情報の両方を編集できる）ため、各セクション個別の保存ボタンに加えて、
     // 画面全体の一番下に表示中の分をまとめて1回で保存できる「まとめて保存する」ボタンも
     // 用意する（2026-09-07追加。当初は出荷仕様系の3セクションだけを対象にしていたが、
-    // 仕上専用・洗浄専用・品証専用も含めて画面全体を対象にしてほしいとの要望で拡張した）。
+    // 仕上専用・洗浄専用も含めて画面全体を対象にしてほしいとの要望で拡張した）。
     document.getElementById('specSaveBtn').classList.toggle('hidden',
-      !(showKensa || showCommon || showShukka || showShiage || showSenjou || showQiLog));
+      !(showKensa || showCommon || showSeisan || showShukka || showShiage || showSenjou));
 
     if (showKensa) {
       setChipValue('inspRecord', spec['検査記録の添付']);
@@ -3295,6 +3269,8 @@
       setChipValue('ngSample', spec['NG限度見本']);
       setChipValue('keyence', spec['キーエンス測定']);
       document.getElementById('keyenceProgramInput').value = spec['キーエンスプログラム名'] || '';
+    }
+    if (showSeisan) {
       setChipValue('cutSample', spec['カット品']);
       setChipValue('testPiece', spec['テストピース']);
       setChipValue('gauge', spec['借用ゲージ有無']);
@@ -3320,45 +3296,16 @@
       cancelEditSenjouLog();
       loadSenjouFieldSuggestions_();
     }
-    if (showQiLog) {
-      cancelEditQualityLog();
-    }
   }
 
 
-  var editingQiId = null;
-
+  // 品証の記録（旧・検査、SHEET_QUALITY_LOGの部署='品証'）は検査記録ポータルへ移行したため、
+  // 西軽精機ナレッジ側での新規投稿・編集は廃止した（2026-11-09）。削除のみ従来通り可能。
   function startEditQualityLog(row) {
     if (row['部署'] === '仕上げ') { startEditShiageLog(row); return; }
     if (row['部署'] === '洗浄') { startEditSenjouLog(row); return; }
-    goToQi();
-    editingQiId = row['投稿ID'];
-    document.getElementById('qiContentInput').value = row['内容'] || '';
-    setChipValue('rank', row['外観ランク'] || '');
-    document.getElementById('qiShareCheck').checked = row['共有フラグ'] === true;
-    pendingQiPhotoUrl = row['写真URL'] || '';
-    if (pendingQiPhotoUrl) {
-      document.getElementById('qiPhotoIcon').textContent = '✅';
-      document.getElementById('qiPhotoLabel').textContent = '添付しました';
-      document.getElementById('qiPhotoBtn').classList.add('has-photo');
-    } else {
-      resetQiPhotoBtn();
-    }
-    document.getElementById('qiSaveBtn').textContent = 'この内容で更新する';
-    document.getElementById('qiEditCancelBtn').classList.remove('hidden');
+    alert('品証の記録は検査記録ポータルへ移行しました。編集はそちらで行ってください。');
   }
-
-  function cancelEditQualityLog() {
-    editingQiId = null;
-    setChipValue('rank', '');
-    document.getElementById('qiContentInput').value = '';
-    document.getElementById('qiShareCheck').checked = false;
-    resetQiPhotoBtn();
-    document.getElementById('qiSaveBtn').textContent = '品証専用（ログ）を記録する';
-    document.getElementById('qiEditCancelBtn').classList.add('hidden');
-  }
-
-  document.getElementById('qiEditCancelBtn').addEventListener('click', cancelEditQualityLog);
 
   function deleteQualityLogEntry(row) {
     if (!confirm('この記録を削除しますか？')) return;
@@ -3366,7 +3313,6 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) { alert('削除に失敗しました: ' + res.error); return Promise.reject(); }
-        if (editingQiId === row['投稿ID']) cancelEditQualityLog();
         if (editingShiageId === row['投稿ID']) cancelEditShiageLog();
         if (editingSenjouId === row['投稿ID']) cancelEditSenjouLog();
         return refreshZubanData();
@@ -3434,6 +3380,9 @@
       fields['NG限度見本'] = getChipValue('ngSample');
       fields['キーエンス測定'] = getChipValue('keyence');
       fields['キーエンスプログラム名'] = document.getElementById('keyenceProgramInput').value;
+      hasSpecFields = true;
+    }
+    if (!document.getElementById('specSeisanSection').classList.contains('hidden')) {
       fields['カット品'] = getChipValue('cutSample');
       fields['テストピース'] = getChipValue('testPiece');
       fields['借用ゲージ有無'] = getChipValue('gauge');
@@ -3446,9 +3395,9 @@
       fields['梱包写真URL'] = pendingShukkaPhotoUrl;
       hasSpecFields = true;
     }
-    if (hasSpecFields) saveShippingSpecFields(fields, '共通・品証・出荷情報', 'specSaveBtn');
+    if (hasSpecFields) saveShippingSpecFields(fields, '共通・生産管理・出荷情報', 'specSaveBtn');
 
-    // 仕上専用・洗浄専用・品証専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
+    // 仕上専用・洗浄専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
     // 空のまま保存できる性質ではないため、内容が入力されている場合だけ、それぞれの
     // 保存ボタンを自動的に押す（未使用のセクションで無関係な「内容を入力してください」
     // という警告が出ないようにする、2026-09-07追加）。
@@ -3459,10 +3408,6 @@
     if (!document.getElementById('specSenjouSection').classList.contains('hidden') &&
         document.getElementById('senjouContentInput').value.trim()) {
       document.getElementById('senjouSaveBtn').click();
-    }
-    if (!document.getElementById('qiLogSection').classList.contains('hidden') &&
-        document.getElementById('qiContentInput').value.trim()) {
-      document.getElementById('qiSaveBtn').click();
     }
   });
   // 各セクションにも個別の保存ボタンを残す（1項目だけ直したい時にまとめて保存を待たなくて済むように、
@@ -3475,10 +3420,14 @@
   document.getElementById('specCommonSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
-      'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value,
+      'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value
+    }, '共通情報', 'specCommonSaveBtn');
+  });
+  document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
+    saveShippingSpecFields({
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
       '借用ゲージ有無': getChipValue('gauge'), '借用ゲージ種類': document.getElementById('gaugeDetailInput').value
-    }, '共通情報', 'specCommonSaveBtn');
+    }, '生産管理専用', 'specSeisanSaveBtn');
   });
   var pendingShukkaPhotoUrl = '';
   var resetShukkaPhotoBtn = wirePhotoUpload({
@@ -3678,44 +3627,6 @@
         loadSenjouFieldSuggestions_();
       })
       .catch(function (err) { clearLoadingText(senjouQiStatusEl); if (err) senjouQiStatusEl.textContent = '保存に失敗しました: ' + err; });
-  });
-
-  var resetQiPhotoBtn = wirePhotoUpload({
-    btnId: 'qiPhotoBtn', iconId: 'qiPhotoIcon', labelId: 'qiPhotoLabel', inputId: 'qiPhotoInput',
-    onUploaded: function (url) { pendingQiPhotoUrl = url; }
-  });
-
-  document.getElementById('qiSaveBtn').addEventListener('click', function () {
-    if (!currentUser) { alert('記録にはGoogleログインが必要です'); return; }
-    var content = document.getElementById('qiContentInput').value.trim();
-    if (!content) { alert('内容を入力してください'); return; }
-    var isEdit = !!editingQiId;
-    var payload = isEdit
-      ? { action: 'updateQualityLog', postId: editingQiId, department: '品証', rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl, shared: document.getElementById('qiShareCheck').checked, idToken: currentUser.idToken }
-      : {
-          action: 'postQualityLog', zuban: currentZubanData.zuban,
-          department: '品証',
-          idToken: currentUser.idToken,
-          rank: getChipValue('rank'), content: content, photoUrl: pendingQiPhotoUrl,
-          shared: document.getElementById('qiShareCheck').checked
-        };
-    var qiSaveStatusEl = document.getElementById('qiStatus');
-    setLoadingText(qiSaveStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
-    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (res.error) { clearLoadingText(qiSaveStatusEl); qiSaveStatusEl.textContent = (isEdit ? '更新' : '記録') + 'に失敗しました: ' + res.error; return Promise.reject(); }
-        if (isEdit) cancelEditQualityLog();
-        else {
-          document.getElementById('qiContentInput').value = '';
-          document.getElementById('qiShareCheck').checked = false;
-          setChipValue('rank', '');
-          resetQiPhotoBtn();
-        }
-        return refreshZubanData();
-      })
-      .then(function () { clearLoadingText(qiSaveStatusEl); qiSaveStatusEl.textContent = (isEdit ? '更新' : '記録') + 'しました'; })
-      .catch(function (err) { clearLoadingText(qiSaveStatusEl); if (err) qiSaveStatusEl.textContent = '保存に失敗しました: ' + err; });
   });
 
   // ==== ⑥ 工程内不良入力（一次・二次加工専用、2026-09-22追加） ====
