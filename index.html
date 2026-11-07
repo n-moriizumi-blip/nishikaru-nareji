@@ -5,22 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>西軽精機ナレッジ</title>
 <link rel="manifest" href="./manifest.json">
-<meta name="theme-color" content="#100F0D">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<meta name="theme-color" content="#182333">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <style>
   :root {
-    --bg: #100F0D; --surface: #1B1A16; --surface-2: #242220;
-    --ink: #EDE7D9; --ink-soft: #9B9686; --line: #37352E;
-    --accent: #EDA23E; --accent-soft: #2E2216; --accent-ink: #F0AC49;
-    --alert: #E0533D; --alert-soft: #241A16; --alert-ink: #F2A897;
-    --ok: #9BC48A;
-    --info: #7EB6D9;
-    --mustard: #E0D070;
-    --lavender: #B79FD1;
+    /* 2026-11-07、検査記録ポータル・勤怠管理ポータルと共通の「紙のポータル」配色に刷新。
+       以前の暗い「計測盤スタイル」からの全面リニューアル（ユーザーがWebモックアップで確認・承認済み）。
+       各コンポーネントのCSSはこの変数を参照しているため、ここを差し替えるだけで全画面が再配色される。 */
+    --bg: #f1ede3; --surface: #ffffff; --surface-2: #faf8f2;
+    --ink: #1c2a3a; --ink-soft: #5b6b7a; --line: #d8d0bd;
+    --accent: #b5742a; --accent-soft: #f1e2c9; --accent-ink: #7a4a16;
+    --alert: #b23b3b; --alert-soft: #f8e3e1; --alert-ink: #8a2020;
+    --ok: #2f7d5b;
+    --info: #2f6690;
+    --mustard: #8a6d1f;
+    --lavender: #7a5fa8;
     --viewfinder-bg: #0C0B09;
-    --font-ui: "BIZ UDPGothic", "Noto Sans JP", -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Segoe UI", sans-serif;
+    --rail: #182333; --rail-ink: #e9e3d2; --rail-dim: #8694a6; --rail-active: #2a3b52;
+    --font-ui: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", -apple-system, "Yu Gothic UI", "Segoe UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Roboto Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
@@ -30,19 +34,33 @@
      不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
      （更新・戻る等）に伝わらないようにする。 */
   html, body { overscroll-behavior-y: none; }
-  #app { display: flex; flex-direction: column; min-height: 100vh; max-width: 900px; margin: 0 auto; }
-  /* ③ツール配置画面はT番の一覧を横に並べるため、他の画面より横幅を広く使う（2026-10-25追加）。
-     タブレット横向き等、画面の空いている左右の余白を目いっぱい使う。 */
-  #app.wide-app { max-width: min(1400px, 96vw); }
+  #app { display: flex; flex-direction: column; min-height: 100vh; max-width: min(1400px, 96vw); margin: 0 auto; }
   header.appbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
+    display: flex; align-items: center; justify-content: space-between; flex: none;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
   }
-  header.appbar .title { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; }
+  header.appbar .title { font-weight: 900; font-size: 1.05rem; letter-spacing: 0.01em; }
   header.appbar .app-version { font-size: 0.68rem; color: var(--ink-soft); margin-left: 8px; font-family: var(--mono, monospace); vertical-align: middle; }
   #userBox { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); }
   #signinBtn { display: none; }
-  main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+
+  /* ==== 左アイコンレール（2026-11-07新設、検査記録ポータルと同じ構造） ==== */
+  .app-shell { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .rail { width: 76px; flex: none; background: var(--rail); display: flex; flex-direction: column; padding: 14px 0; transition: width .18s; overflow: hidden; }
+  .rail.expanded { width: 232px; }
+  .rail-toggle-row { display: flex; justify-content: flex-end; padding: 0 14px 10px; }
+  .rail-toggle { background: transparent; border: none; color: var(--rail-dim); padding: 6px; border-radius: 6px; cursor: pointer; }
+  .rail-toggle:hover { background: rgba(255,255,255,.08); color: var(--rail-ink); }
+  .nav-btn { display: flex; align-items: center; gap: 14px; padding: 13px 16px; background: none; border: none; color: var(--rail-dim); white-space: nowrap; width: 100%; text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-sizing: border-box; }
+  .nav-btn .ic { flex: none; width: 22px; height: 22px; }
+  .nav-btn .lbl { font-size: 13.5px; font-weight: 700; display: none; }
+  .rail.expanded .nav-btn .lbl { display: inline; }
+  .nav-btn.active { background: var(--rail-active); color: #fff; }
+  .nav-btn:not(.active):not(.locked):hover { background: rgba(255,255,255,.06); color: var(--rail-ink); }
+  .nav-btn.locked { opacity: .38; cursor: not-allowed; }
+  .nav-btn .lock { margin-left: auto; flex: none; width: 15px; height: 15px; display: none; }
+  .rail.expanded .nav-btn.locked .lock { display: block; }
+  main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
   .screen { display: none; flex-direction: column; gap: 18px; }
   .screen.active { display: flex; }
 
@@ -105,11 +123,12 @@
     border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
 
-  .zuban-header { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 1.15rem; text-shadow: 0 0 18px rgba(237,162,62,0.25); }
+  .zuban-header { font-family: var(--font-mono); font-weight: 900; color: var(--accent-ink); font-size: 1.15rem; }
 
+  /* 2026-11-07、新配色では暗色背景前提の斜線パターンをやめ、他のカードと同じ白地＋左の色帯にする。 */
   .alert-card {
-    border: 1px solid #7A2E22; border-left: 4px solid var(--alert); border-radius: 4px; padding: 16px;
-    background: repeating-linear-gradient(135deg, var(--alert-soft), var(--alert-soft) 11px, #38180F 11px, #38180F 22px);
+    border: 1px solid var(--line); border-left: 4px solid var(--alert); border-radius: 10px; padding: 16px;
+    background: var(--surface);
   }
   .alert-card .alert-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--alert-ink); font-size: 0.95rem; margin-bottom: 12px; }
   .alert-item { font-size: 0.88rem; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 12px; margin-bottom: 8px; }
@@ -186,7 +205,7 @@
     font-family: inherit; font-size: 0.94rem; padding: 14px; border-radius: 4px;
     border: 1px solid var(--line); background: var(--surface); color: var(--ink);
   }
-  .field input[type="time"] { color-scheme: dark; }
+  .field input[type="time"] { color-scheme: light; }
   .photo-btn {
     display: flex; align-items: center; gap: 9px; border: 1px dashed var(--ink-soft); background: var(--surface-2);
     border-radius: 4px; padding: 14px 15px; font-size: 0.88rem; color: var(--ink-soft); font-weight: 700; cursor: pointer;
@@ -351,13 +370,55 @@
 <body>
 <div id="app">
   <header class="appbar">
-    <span class="title">西軽精機ナレッジ<span class="app-version">v1.31.5</span></span>
+    <span class="title">西軽精機ナレッジ<span class="app-version">v2.0.0</span></span>
     <div id="userBox">
       <span id="userLabel">未ログイン</span>
       <div id="g_id_signin"></div>
       <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
     </div>
   </header>
+
+  <div class="app-shell">
+    <nav class="rail" id="rail">
+      <div class="rail-toggle-row">
+        <button type="button" class="rail-toggle" id="railToggleBtn" aria-label="メニューを開閉">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+      </div>
+      <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <span class="lbl">図番検索</span>
+      </button>
+      <button type="button" class="nav-btn" id="railHistoryBtn" data-rail="history">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span class="lbl">過去トラ・共有情報</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <button type="button" class="nav-btn" id="railToolsBtn" data-rail="tools">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        <span class="lbl">ツール配置</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <button type="button" class="nav-btn" id="railQiBtn" data-rail="qi">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2.5H9zM8.5 11h7M8.5 15h4.5"/></svg>
+        <span class="lbl">品質情報記録</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <button type="button" class="nav-btn" id="railDefectBtn" data-rail="processDefect">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l9 17H3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+        <span class="lbl">工程内不良入力</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <button type="button" class="nav-btn" id="railPaperBtn" data-rail="paperImport">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.4-2.2h5.2L16 7"/><circle cx="12" cy="13.5" r="3.4"/></svg>
+        <span class="lbl">紙の取込確認</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <a class="nav-btn" id="railDashboardBtn" href="defect-dashboard.html" target="_blank" rel="noopener">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20V11M11 20V4M18 20v-7M2 20h20"/></svg>
+        <span class="lbl">不良ダッシュボード</span>
+      </a>
+    </nav>
 
   <main>
     <!-- SCREEN 1: 図番読み取り -->
@@ -857,6 +918,7 @@
       <button class="btn btn-ghost" id="defectBackBtn">過去情報表示に戻る</button>
     </section>
   </main>
+  </div>
 </div>
 
 <script>
@@ -871,11 +933,13 @@
   }
 
   // ==== 画面切り替え ====
+  var currentScreenName = 'scan';
   function setScreen(name) {
+    currentScreenName = name;
     document.querySelectorAll('.screen').forEach(function (el) {
       el.classList.toggle('active', el.dataset.screen === name);
     });
-    document.getElementById('app').classList.toggle('wide-app', name === 'tools');
+    updateRailNav_();
     // 画面切り替えは同じページ内でのdisplay切り替えのため、前の画面でスクロールしていた位置が
     // そのまま残ってしまう（新しい画面がいきなり下の方から表示される）。切り替えるたびに先頭に戻す。
     window.scrollTo(0, 0);
@@ -1443,10 +1507,12 @@
       goDefectBtn.classList.add('hidden');
       goQiBtn.classList.add('hidden');
       openInspectionFolderBtn.classList.add('hidden');
+      updateRailNav_();
       return;
     }
     var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
     var confirmed = hasTrouble ? document.getElementById('confirmCheck').checked : true;
+    updateRailNav_();
 
     goToolsBtn.classList.toggle('hidden', currentRole !== 'seizou' && !currentAllAccess);
     goToolsBtn.disabled = !confirmed;
@@ -1482,6 +1548,72 @@
           }
         });
     }
+  }
+
+  // ==== 左アイコンレール（2026-11-07新設） ====
+  // ロック判定はupdateActionGate()と同じ条件（過去トラ確認済み・役割）を再利用する。
+  document.getElementById('railToggleBtn').addEventListener('click', function () {
+    document.getElementById('rail').classList.toggle('expanded');
+  });
+  document.getElementById('railScanBtn').addEventListener('click', function () {
+    setScreen('scan');
+  });
+  document.getElementById('railHistoryBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    if (!currentZubanData) return;
+    setScreen('history');
+  });
+  document.getElementById('railToolsBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    goToTools();
+  });
+  document.getElementById('railQiBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    goToQi();
+  });
+  document.getElementById('railDefectBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    goToDefect();
+  });
+  document.getElementById('railPaperBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    goToPaperImport();
+  });
+
+  function updateRailNav_() {
+    document.querySelectorAll('.nav-btn[data-rail]').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.rail === currentScreenName);
+    });
+
+    var historyBtn = document.getElementById('railHistoryBtn');
+    var toolsBtn = document.getElementById('railToolsBtn');
+    var qiBtn = document.getElementById('railQiBtn');
+    var defectBtn = document.getElementById('railDefectBtn');
+    var paperBtn = document.getElementById('railPaperBtn');
+
+    if (!currentZubanData) {
+      [historyBtn, toolsBtn, qiBtn, defectBtn, paperBtn].forEach(function (b) { b.classList.add('locked'); });
+      return;
+    }
+    historyBtn.classList.remove('locked');
+
+    var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
+    var confirmCheckEl = document.getElementById('confirmCheck');
+    var confirmed = hasTrouble ? (confirmCheckEl && confirmCheckEl.checked) : true;
+
+    // 役割による表示条件は既存のupdateActionGate()と同じ判定（goToolsBtn/goDefectBtn/goQiBtnの
+    // classList.toggle('hidden', ...)条件）をそのまま踏襲。紙の取込確認はツール配置と同じ扱い。
+    var canTools = currentRole === 'seizou' || currentAllAccess;
+    var canQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
+
+    toolsBtn.classList.toggle('hidden', !canTools);
+    toolsBtn.classList.toggle('locked', !confirmed);
+    defectBtn.classList.toggle('hidden', !canTools);
+    defectBtn.classList.toggle('locked', !confirmed);
+    paperBtn.classList.toggle('hidden', !canTools);
+    paperBtn.classList.toggle('locked', !confirmed);
+    qiBtn.classList.toggle('hidden', !canQi);
+    qiBtn.classList.toggle('locked', !confirmed);
   }
 
   document.getElementById('goToolsBtn').addEventListener('click', function () {
@@ -3748,6 +3880,7 @@
 
   renderRecentList();
   initSignIn();
+  updateRailNav_();
 </script>
 </body>
 </html>
