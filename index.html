@@ -399,7 +399,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.2.3</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.3.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -717,54 +717,6 @@
         <div class="mini-field"><label>日付（自動）</label><input type="text" id="qiDateDisplay" disabled></div>
       </div>
 
-      <div id="specKensaSection" class="hidden">
-        <div class="section-label">品証専用｜品証担当のみ編集・図番ごとに1件、上書き</div>
-        <div class="field">
-          <label>検査記録の添付</label>
-          <div class="chip-row" data-group="inspRecord" data-field="検査記録の添付">
-            <button type="button" class="chip">要</button>
-            <button type="button" class="chip">不要</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>ミルシート</label>
-          <div class="chip-row" data-group="millSheet" data-field="ミルシート">
-            <button type="button" class="chip">要</button>
-            <button type="button" class="chip">不要</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>トレー梱包</label>
-          <div class="chip-row" data-group="tray" data-field="トレー梱包">
-            <button type="button" class="chip">G-050-3</button>
-            <button type="button" class="chip">5-912052-2(25個)</button>
-            <button type="button" class="chip">E-080-1</button>
-            <button type="button" class="chip">MT10-4</button>
-            <button type="button" class="chip">MT8-2</button>
-            <button type="button" class="chip">協和精工専用</button>
-            <button type="button" class="chip">その他</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>NG・限度見本</label>
-          <div class="chip-row" data-group="ngSample" data-field="NG限度見本">
-            <button type="button" class="chip">有</button>
-            <button type="button" class="chip">無</button>
-          </div>
-        </div>
-        <div class="field">
-          <label>キーエンス測定</label>
-          <div class="chip-row" data-group="keyence" data-field="キーエンス測定">
-            <button type="button" class="chip">有</button>
-            <button type="button" class="chip">無</button>
-          </div>
-        </div>
-        <div class="field hidden" id="keyenceProgramField">
-          <label>キーエンス測定のプログラム名（自由入力）</label>
-          <input type="text" id="keyenceProgramInput" placeholder="例：K1001">
-        </div>
-        <button type="button" class="btn btn-secondary" id="specKensaSaveBtn">品証専用を保存する</button>
-      </div>
 
       <div id="specSeisanSection" class="hidden">
         <div class="section-label">生産管理専用｜生産管理課専用項目（生産管理担当のみ編集・図番ごとに1件、上書き）</div>
@@ -1651,7 +1603,9 @@
     // 役割による表示条件は、旧updateActionGate()が画面内ボタンで使っていたのと同じ判定
     // （seizouロールまたはallAccessか等）をそのまま踏襲。紙の取込確認はツール配置と同じ扱い。
     var canTools = currentRole === 'seizou' || currentAllAccess;
-    var canQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou');
+    // 品証（kensa）は検査記録ポータルへ移行済みで⑤画面に編集項目が無くなったため対象から外す
+    // （2026-11-09）。
+    var canQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou' && currentRole !== 'kensa');
 
     toolsBtn.classList.toggle('hidden', !canTools);
     toolsBtn.classList.toggle('locked', !confirmed);
@@ -3192,7 +3146,7 @@
 
   // ==== ⑤ 品質情報記録 ====
   // 「有」を選んだ時だけ自由入力欄を出すチップ（借用ゲージ／キーエンス測定）のグループキー→欄ID対応。
-  var CHIP_DETAIL_FIELDS = { gauge: 'gaugeDetailField', keyence: 'keyenceProgramField' };
+  var CHIP_DETAIL_FIELDS = { gauge: 'gaugeDetailField' };
 
   // チップは「未選択」も正しい状態として扱う（保存前の既定値を勝手に選択済みにしない）。
   // 選択中のチップをもう一度押すと未選択に戻る。
@@ -3245,13 +3199,11 @@
     document.getElementById('qiStatus').textContent = '';
 
     var spec = currentZubanData.shippingSpec || {};
-    var showKensa = currentRole === 'kensa' || currentAllAccess;
     var showSeisan = currentRole === 'seisan' || currentAllAccess;
     var showShukka = currentRole === 'shukka' || currentAllAccess;
     var showShiage = currentRole === 'shiage' || currentAllAccess;
     var showSenjou = currentRole === 'senjou' || currentAllAccess;
 
-    document.getElementById('specKensaSection').classList.toggle('hidden', !showKensa);
     document.getElementById('specSeisanSection').classList.toggle('hidden', !showSeisan);
     document.getElementById('specShukkaSection').classList.toggle('hidden', !showShukka);
     document.getElementById('specShiageSection').classList.toggle('hidden', !showShiage);
@@ -3262,16 +3214,8 @@
     // 用意する（2026-09-07追加。当初は出荷仕様系の3セクションだけを対象にしていたが、
     // 仕上専用・洗浄専用も含めて画面全体を対象にしてほしいとの要望で拡張した）。
     document.getElementById('specSaveBtn').classList.toggle('hidden',
-      !(showKensa || showSeisan || showShukka || showShiage || showSenjou));
+      !(showSeisan || showShukka || showShiage || showSenjou));
 
-    if (showKensa) {
-      setChipValue('inspRecord', spec['検査記録の添付']);
-      setChipValue('millSheet', spec['ミルシート']);
-      setChipValue('tray', spec['トレー梱包']);
-      setChipValue('ngSample', spec['NG限度見本']);
-      setChipValue('keyence', spec['キーエンス測定']);
-      document.getElementById('keyenceProgramInput').value = spec['キーエンスプログラム名'] || '';
-    }
     if (showSeisan) {
       setChipValue('cutSample', spec['カット品']);
       setChipValue('testPiece', spec['テストピース']);
@@ -3367,20 +3311,11 @@
       });
   }
 
-  // 検査専用・共通情報・出荷（梱包・その他）は、表示されている（＝編集権限がある）分だけ
+  // 生産管理専用・出荷（梱包・その他）は、表示されている（＝編集権限がある）分だけ
   // まとめて1回で保存する（部署をまたいで入力があっても1クリックで済むように、2026-09-07変更）。
   document.getElementById('specSaveBtn').addEventListener('click', function () {
     var fields = {};
     var hasSpecFields = false;
-    if (!document.getElementById('specKensaSection').classList.contains('hidden')) {
-      fields['検査記録の添付'] = getChipValue('inspRecord');
-      fields['ミルシート'] = getChipValue('millSheet');
-      fields['トレー梱包'] = getChipValue('tray');
-      fields['NG限度見本'] = getChipValue('ngSample');
-      fields['キーエンス測定'] = getChipValue('keyence');
-      fields['キーエンスプログラム名'] = document.getElementById('keyenceProgramInput').value;
-      hasSpecFields = true;
-    }
     if (!document.getElementById('specSeisanSection').classList.contains('hidden')) {
       fields['カット品'] = getChipValue('cutSample');
       fields['テストピース'] = getChipValue('testPiece');
@@ -3394,7 +3329,7 @@
       fields['梱包写真URL'] = pendingShukkaPhotoUrl;
       hasSpecFields = true;
     }
-    if (hasSpecFields) saveShippingSpecFields(fields, '品証・生産管理・出荷情報', 'specSaveBtn');
+    if (hasSpecFields) saveShippingSpecFields(fields, '生産管理・出荷情報', 'specSaveBtn');
 
     // 仕上専用・洗浄専用は出荷仕様と違い「新規の記録を1件追加する」形式で、
     // 空のまま保存できる性質ではないため、内容が入力されている場合だけ、それぞれの
@@ -3411,13 +3346,6 @@
   });
   // 各セクションにも個別の保存ボタンを残す（1項目だけ直したい時にまとめて保存を待たなくて済むように、
   // ユーザー要望で2026-09-07に復活）。
-  document.getElementById('specKensaSaveBtn').addEventListener('click', function () {
-    saveShippingSpecFields({
-      '検査記録の添付': getChipValue('inspRecord'), 'ミルシート': getChipValue('millSheet'),
-      'トレー梱包': getChipValue('tray'), 'NG限度見本': getChipValue('ngSample'),
-      'キーエンス測定': getChipValue('keyence'), 'キーエンスプログラム名': document.getElementById('keyenceProgramInput').value
-    }, '品証専用', 'specKensaSaveBtn');
-  });
   document.getElementById('specSeisanSaveBtn').addEventListener('click', function () {
     saveShippingSpecFields({
       'カット品': getChipValue('cutSample'), 'テストピース': getChipValue('testPiece'),
