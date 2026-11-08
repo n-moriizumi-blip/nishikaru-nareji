@@ -278,14 +278,6 @@
   /* ==== ③ ツール配置 ==== */
   .tools-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; flex-wrap: wrap; }
   .tools-header .zuban-inline { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 1rem; }
-  /* 自由入力／ツールレイアウトのタブ切替（2026-10-25追加）。 */
-  .tool-tab-row { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; flex: none; width: fit-content; }
-  .tool-tab-btn {
-    font-family: inherit; font-size: 0.86rem; font-weight: 700; padding: 10px 20px; border: none; cursor: pointer;
-    background: transparent; color: var(--ink-soft); border-right: 1px solid var(--line);
-  }
-  .tool-tab-btn:last-child { border-right: none; }
-  .tool-tab-btn.active { background: var(--accent-soft); color: var(--accent-ink); }
   .tool-view-wrap, #toolEditWrap { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
   #toolTabMemoView, #toolTabLayoutView, #toolTabMemoEdit, #toolTabLayoutEdit { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
   #toolEditWrap { position: relative; }
@@ -404,7 +396,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.3.2</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.4.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -415,14 +407,14 @@
         <span class="lbl">過去トラ・共有情報</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
-      <button type="button" class="nav-btn" id="railToolsBtn" data-rail="tools">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
-        <span class="lbl">ツール配置</span>
+      <button type="button" class="nav-btn" id="railToolMemoBtn" data-rail="tools" data-tool-tab="memo">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <span class="lbl">ツール配置メモ</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
-      <button type="button" class="nav-btn" id="railQiBtn" data-rail="qi">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2.5H9zM8.5 11h7M8.5 15h4.5"/></svg>
-        <span class="lbl">品質情報記録</span>
+      <button type="button" class="nav-btn" id="railToolLayoutBtn" data-rail="tools" data-tool-tab="layout">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        <span class="lbl">ツールレイアウト</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railDefectBtn" data-rail="processDefect">
@@ -433,6 +425,11 @@
       <button type="button" class="nav-btn" id="railPaperBtn" data-rail="paperImport">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.4-2.2h5.2L16 7"/><circle cx="12" cy="13.5" r="3.4"/></svg>
         <span class="lbl">紙の取込確認</span>
+        <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </button>
+      <button type="button" class="nav-btn" id="railQiBtn" data-rail="qi">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2.5H9zM8.5 11h7M8.5 15h4.5"/></svg>
+        <span class="lbl">品質情報記録</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <a class="nav-btn" id="railDashboardBtn" href="defect-dashboard.html" target="_blank" rel="noopener">
@@ -591,7 +588,7 @@
 
     <!-- SCREEN 3: ツール配置 -->
     <section class="screen" data-screen="tools">
-      <div class="pagehead"><h1>ツール配置</h1><span class="zuban-inline" id="toolsZubanHeader"></span></div>
+      <div class="pagehead"><h1 id="toolsPageTitle">ツール配置メモ</h1><span class="zuban-inline" id="toolsZubanHeader"></span></div>
       <!-- 2026-11-09：紙の取込確認への導線は左レールと重複するため削除。編集⇔閲覧の表示モード
            切替は画面遷移ではないため残す。 -->
       <div class="tools-header">
@@ -623,10 +620,6 @@
         <datalist id="machineNameList"></datalist>
       </div>
 
-      <div class="tool-tab-row" id="toolTabRow">
-        <button type="button" class="tool-tab-btn" data-tab="memo">自由入力</button>
-        <button type="button" class="tool-tab-btn" data-tab="layout">ツールレイアウト</button>
-      </div>
 
       <div class="tool-view-wrap" id="toolViewWrap">
         <div id="toolTabMemoView">
@@ -1564,9 +1557,13 @@
     if (!currentZubanData) return;
     setScreen('history');
   });
-  document.getElementById('railToolsBtn').addEventListener('click', function () {
+  document.getElementById('railToolMemoBtn').addEventListener('click', function () {
     if (this.classList.contains('locked')) return;
-    goToTools();
+    goToTools('memo');
+  });
+  document.getElementById('railToolLayoutBtn').addEventListener('click', function () {
+    if (this.classList.contains('locked')) return;
+    goToTools('layout');
   });
   document.getElementById('railQiBtn').addEventListener('click', function () {
     if (this.classList.contains('locked')) return;
@@ -1585,18 +1582,23 @@
   });
 
   function updateRailNav_() {
+    // ツール配置メモ／ツールレイアウトは同じdata-screen="tools"を共有するため、アクティブ判定は
+    // 画面名だけでなくdata-tool-tabがcurrentToolTabと一致するかも見る（2026-11-09、③を2項目に分割）。
     document.querySelectorAll('.nav-btn[data-rail]').forEach(function (btn) {
-      btn.classList.toggle('active', btn.dataset.rail === currentScreenName);
+      var isCurrentScreen = btn.dataset.rail === currentScreenName;
+      var toolTab = btn.dataset.toolTab;
+      btn.classList.toggle('active', isCurrentScreen && (!toolTab || toolTab === currentToolTab));
     });
 
     var historyBtn = document.getElementById('railHistoryBtn');
-    var toolsBtn = document.getElementById('railToolsBtn');
+    var toolMemoBtn = document.getElementById('railToolMemoBtn');
+    var toolLayoutBtn = document.getElementById('railToolLayoutBtn');
     var qiBtn = document.getElementById('railQiBtn');
     var defectBtn = document.getElementById('railDefectBtn');
     var paperBtn = document.getElementById('railPaperBtn');
 
     if (!currentZubanData) {
-      [historyBtn, toolsBtn, qiBtn, defectBtn, paperBtn].forEach(function (b) { b.classList.add('locked'); });
+      [historyBtn, toolMemoBtn, toolLayoutBtn, qiBtn, defectBtn, paperBtn].forEach(function (b) { b.classList.add('locked'); });
       return;
     }
     historyBtn.classList.remove('locked');
@@ -1612,8 +1614,10 @@
     // （2026-11-09）。
     var canQi = currentAllAccess || (!!currentRole && currentRole !== 'seizou' && currentRole !== 'kensa');
 
-    toolsBtn.classList.toggle('hidden', !canTools);
-    toolsBtn.classList.toggle('locked', !confirmed);
+    toolMemoBtn.classList.toggle('hidden', !canTools);
+    toolMemoBtn.classList.toggle('locked', !confirmed);
+    toolLayoutBtn.classList.toggle('hidden', !canTools);
+    toolLayoutBtn.classList.toggle('locked', !confirmed);
     defectBtn.classList.toggle('hidden', !canTools);
     defectBtn.classList.toggle('locked', !confirmed);
     paperBtn.classList.toggle('hidden', !canTools);
@@ -1918,8 +1922,9 @@
   var pendingMemoPhotoUrl = '';
   var COL_LABELS = { front: '正面チャック径', back: '背面チャック径', cycle: 'サイクルタイム' };
 
-  // 自由入力／ツールレイアウトのタブ切替（2026-10-25追加）。OCR読み取りレビュー中（原本写真との
-  // 照合が必要な場面）だけは、メモ・レイアウト両方の内容を見落とさないよう両タブを強制的に表示する。
+  // ツール配置メモ／ツールレイアウトのタブ切替（2026-10-25追加、2026-11-09に画面内タブから
+  // レールの別項目へ変更）。OCR読み取りレビュー中（原本写真との照合が必要な場面）だけは、
+  // メモ・レイアウト両方の内容を見落とさないよう両方を強制的に表示する。
   var currentToolTab = 'memo';
   function applyToolTabVisibility_() {
     var ocrMode = document.getElementById('toolEditWrap').classList.contains('ocr-review-mode');
@@ -1929,17 +1934,11 @@
     document.getElementById('toolTabLayoutView').classList.toggle('hidden', !showLayout);
     document.getElementById('toolTabMemoEdit').classList.toggle('hidden', !showMemo);
     document.getElementById('toolTabLayoutEdit').classList.toggle('hidden', !showLayout);
-    document.getElementById('toolTabRow').classList.toggle('hidden', ocrMode);
-    Array.prototype.forEach.call(document.querySelectorAll('.tool-tab-btn'), function (b) {
-      b.classList.toggle('active', b.dataset.tab === currentToolTab);
-    });
+    document.getElementById('toolsPageTitle').textContent =
+      ocrMode ? 'ツール配置（読み取り結果の確認）' : (currentToolTab === 'layout' ? 'ツールレイアウト' : 'ツール配置メモ');
+    // レール側のロック表示・現在地ハイライトを更新する。
+    updateRailNav_();
   }
-  Array.prototype.forEach.call(document.querySelectorAll('.tool-tab-btn'), function (btn) {
-    btn.addEventListener('click', function () {
-      currentToolTab = btn.dataset.tab;
-      applyToolTabVisibility_();
-    });
-  });
 
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
   function escapeAttr(s) { return escapeHtml(String(s || '')); }
@@ -2126,13 +2125,15 @@
     enterToolEdit();
   });
 
-  function goToTools() {
+  function goToTools(tab) {
     if (!currentZubanData) return;
+    // レール側の有効化判定（updateRailNav_）がcurrentToolTabを見るため、setScreen()より先に
+    // 確定させておく（2026-11-09、③を2項目に分割した際の表示ズレ対策）。
+    currentToolTab = tab || 'memo';
     setScreen('tools');
     document.getElementById('toolsZubanHeader').textContent = zubanLabel(currentZubanData);
     document.getElementById('toolsStatus').textContent = '';
     toolEditMode = false;
-    currentToolTab = 'memo';
     document.getElementById('toolViewToggle').textContent = '編集する';
     document.getElementById('toolViewWrap').classList.remove('hidden');
     document.getElementById('toolEditWrap').classList.add('hidden');
@@ -2460,7 +2461,8 @@
     if (selectedMachine && availableMachines.indexOf(selectedMachine) === -1) availableMachines.push(selectedMachine);
     renderMachinePicker_();
     renderToolView(currentZubanData);
-    currentToolTab = 'memo';
+    // 編集前に見ていたタブ（メモ／レイアウト）をそのまま維持する（2026-11-09、両者が
+    // レール上の別項目になったため、保存後に勝手にメモへ戻ると不自然になるため変更）。
     applyToolTabVisibility_();
   }
 
