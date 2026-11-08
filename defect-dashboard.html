@@ -383,7 +383,11 @@
     var leftMaxRaw = 0;
     opts.barSeries.forEach(function (s) { s.values.forEach(function (v) { if (v > leftMaxRaw) leftMaxRaw = v; }); });
     var leftMax = niceMax(leftMaxRaw * 1.05); // 実績に対して余白5%だけ持たせ、あとはniceMaxの細かい刻みに任せる
-    var rightMax = opts.rightMax || 100;
+    // 右軸も左軸と同じ考え方で実績にあわせて可変にする（opts.rightMaxを明示指定した場合はそちらを優先。
+    // パレート図の累積比率は0〜100%固定で意味があるため、呼び出し側でrightMax:100を渡す。2026-11-09修正）。
+    var rightMaxRaw = 0;
+    opts.lineSeries.values.forEach(function (v) { if (v != null && v > rightMaxRaw) rightMaxRaw = v; });
+    var rightMax = opts.rightMax != null ? opts.rightMax : niceMax(rightMaxRaw * 1.05);
     var pctDecimals = opts.pctDecimals == null ? 1 : opts.pctDecimals;
 
     var marginLeft = 56, marginRight = 50, marginTop = 24, marginBottom = 92;
@@ -398,10 +402,12 @@
     for (var t = 0; t <= ticks; t++) {
       var ly = marginTop + plotHeight - (plotHeight * t / ticks);
       var leftVal = Math.round(leftMax * t / ticks);
-      var rightVal = Math.round(rightMax * t / ticks);
+      // 右軸の最大値が小さい（不良率など、実績にあわせて可変にした場合）ときは目盛りも小数点1桁
+      // まで出す。rightMax=100固定のパレート図（累積比率）は従来通り整数のままでよい。
+      var rightValText = rightMax < 20 ? (Math.round(rightMax * t / ticks * 10) / 10) : Math.round(rightMax * t / ticks);
       svgParts.push('<line x1="' + marginLeft + '" y1="' + ly + '" x2="' + (marginLeft + plotWidth) + '" y2="' + ly + '" stroke="var(--line)" stroke-width="1" opacity="' + (t === 0 ? '0.9' : '0.4') + '"></line>');
       svgParts.push('<text x="' + (marginLeft - 8) + '" y="' + (ly + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + formatNum(leftVal) + '</text>');
-      svgParts.push('<text x="' + (marginLeft + plotWidth + 8) + '" y="' + (ly + 4) + '" text-anchor="start" font-size="10" fill="var(--ink-soft)">' + rightVal + '%</text>');
+      svgParts.push('<text x="' + (marginLeft + plotWidth + 8) + '" y="' + (ly + 4) + '" text-anchor="start" font-size="10" fill="var(--ink-soft)">' + rightValText + '%</text>');
     }
     // グラフ内の縦書き軸ラベルは削除した（2026-11-09、位置がうまく揃わずユーザー指摘。
     // 左右軸の対応は上の凡例（完了数量(左軸・個)等）で示せているため、無くす方針にした）。
@@ -644,7 +650,7 @@
         { label: '不良個数', color: 'var(--series-dim)', values: recentMonthly.map(function (r) { return r.defectQty; }) }
       ],
       lineSeries: { label: '不良率', color: 'var(--accent-ink)', values: recentMonthly.map(function (r) { return r.rate == null ? null : r.rate * 100; }) },
-      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, pctDecimals: 2, groupWidth: 72
+      leftUnitLabel: '個', rightUnitLabel: '%', pctDecimals: 2, groupWidth: 72 // 右軸(不良率)は実績にあわせて可変（rightMax未指定）
     });
 
     buildMonthlyDetailTable(document.getElementById('monthlyDetailTable'), recentMonthly, data.detailColumns);
