@@ -1086,6 +1086,274 @@ function readProcessDefects_(zuban) {
   return result;
 }
 
+// ==== 工程内不良ログの過去データ移行（2026-11-08、旧・花里さん管理の月次スプレッドシートより） ====
+// 対象：2025年11月分〜2026年9月分（本番運用開始前のため実施。ユーザー確認済み：「工程内不良ログ」に
+// 現在入っているのは全てテスト投稿）。旧シートは月によってレイアウトが2種類ある：
+// ①「品番別」等の名前を持つシートに、図番ごとの月間集計表（不良項目の内訳つき、列E:AP）と、
+//   日付ごとの生ログ（加工日〜寸法出し、列AV:BF）が左右に別の表として同居しているもの（ほとんどの月）。
+//   この2つの表は行が揃っていない（集計表は図番順、生ログは日付順）ため、「いつ・どの項目」という
+//   対応は復元できない。ユーザー確認の上、月間集計表（内訳つき）だけを採用する方針とした
+//   （2026-11-08、個別の日付ではなく月初日をダミー日付として1図番1行で取り込む）。
+// ②「○年○月製造工程不良元データ」という名前で、1行に日付・内訳が両方入っているもの（2026年4月のみ、
+//   この月だけ正式な「一覧」版が作られなかった模様）。こちらはこちらで図番ごとに月内を集計し直す。
+var HISTORICAL_PROCESS_DEFECT_FILES_ = [
+  { label: '2025-11', fileId: '1qI1QOu4Z78vnXYgmzxGmcT2FjKWQZWobaR2vNCJocNA' },
+  { label: '2025-12', fileId: '1fuwH6uDNb6Maj7oGQu2WxN06VUwApLiFVrUKevTixD4' },
+  { label: '2026-01', fileId: '1YER3AMl0PI0l9WqhBZMLwRxNXp_2l5QDWN5T_vV4S1w' },
+  { label: '2026-02', fileId: '1dl2_o3gBsFbrlX4EAYaVpDVXe1YNCk0N_NZ5DzVhFsE' },
+  { label: '2026-03', fileId: '1r4bekpxKx5LVor2gIul5Yz6hQYca09o_RO7UkLhKSao' },
+  { label: '2026-04', fileId: '1E6xudY3u47Pq8UVdXnngizBxRChvHPH6CUUjJTwG87Y' }, // 「2026年4月製造工程不良元データ」（この月だけ正式版「一覧」ファイルが無い）
+  { label: '2026-05', fileId: '1ELnOOZgyn_pglYJJPqqjqOKc0f-pVL9KS0rKAoR6Im0' },
+  { label: '2026-06', fileId: '1X7UtvHa-N73vEkuHQRPJzBtUQ0utM9mH16wyDDrsYFQ' },
+  { label: '2026-07', fileId: '1oDi0Tvp9gR494D31c6mYvhcc3V699InddkZ71Yf1z18' },
+  { label: '2026-08', fileId: '1t5MfksNJOiHFf9_UtXmg62Xl8vxBdZ8qycEZWF-N7Uc' },
+  { label: '2026-09', fileId: '1qoTXmA2t4INuBx1EUuAclPZkfKI7zmAfw7yhbu7B_5E' }
+];
+
+// 旧シートの不良項目38列（見出し文字列）→新・大分類/詳細（index.htmlのDEFECT_CATEGORY_MAPと対応）。
+var OLD_DEFECT_HEADER_MAP_ = {
+  'エンドミル（面取りカッター含む） 欠け・折れ': { category: '刃物欠け・折れ', detail: 'エンドミル(面取りカッター含む)' },
+  '前挽き 欠け・折れ': { category: '刃物欠け・折れ', detail: '前挽き' },
+  '後挽き 欠け・折れ': { category: '刃物欠け・折れ', detail: '後挽き' },
+  'ドリル （センター含む）欠け・折れ': { category: '刃物欠け・折れ', detail: 'ドリル(センター含む)' },
+  'タップ 欠け・折れ': { category: '刃物欠け・折れ', detail: 'タップ' },
+  '中ぐり 欠け・折れ': { category: '刃物欠け・折れ', detail: '中ぐり' },
+  '内径ネジ・内径ミゾ 欠け・折れ': { category: '刃物欠け・折れ', detail: '内径ネジ・内径ミゾ' },
+  '突切 欠け・折れ': { category: '刃物欠け・折れ', detail: '突切' },
+  'ねじ切り 欠け・折れ': { category: '刃物欠け・折れ', detail: 'ねじ切り' },
+  'ミゾ 欠け・折れ': { category: '刃物欠け・折れ', detail: 'ミゾ' },
+  'その他（シェーパー・スレッドミル・キーシードカッターなど）欠け・折れ': { category: '刃物欠け・折れ', detail: 'その他(シェーパー・スレッドミル・キーシードカッターなど)' },
+  '外径大': { category: '寸法不良', detail: '外径大' },
+  '外径小': { category: '寸法不良', detail: '外径小' },
+  '内径大': { category: '寸法不良', detail: '内径大' },
+  '内径小': { category: '寸法不良', detail: '内径小' },
+  '長さ不良': { category: '寸法不良', detail: '長さ不良' },
+  '2次加工部寸法不良': { category: '寸法不良', detail: '2次加工部寸法不良' },
+  'ネジ不良': { category: '寸法不良', detail: 'ネジ不良' },
+  '穴ズレ': { category: '寸法不良', detail: '穴ズレ' },
+  '芯ズレ・振れ大': { category: '寸法不良', detail: '芯ズレ・振れ大' },
+  'テーパ不良': { category: '寸法不良', detail: 'テーパ不良' },
+  '面取りの不良': { category: '寸法不良', detail: '面取りの不良' },
+  '挽目不良（面粗度）': { category: '寸法不良', detail: '挽目不良(面粗度)' },
+  'その他の寸法不良': { category: '寸法不良', detail: 'その他の寸法不良' },
+  '圧痕': { category: '外観不良', detail: '圧痕' },
+  '打痕': { category: '外観不良', detail: '打痕' },
+  '溶着': { category: '外観不良', detail: '溶着' },
+  '段差': { category: '外観不良', detail: '段差' },
+  '外径G/B傷': { category: '外観不良', detail: '外径G/B傷' },
+  'バリ': { category: '外観不良', detail: 'バリ' },
+  '曲がり': { category: '外観不良', detail: '曲がり' },
+  '変形': { category: '外観不良', detail: '変形' },
+  '修正不良': { category: '外観不良', detail: '修正不良' },
+  'その他の外観不良': { category: '外観不良', detail: 'その他の外観不良' },
+  '材料違い': { category: 'その他', detail: '材料違い' },
+  '人為的なミス': { category: 'その他', detail: '人為的なミス' },
+  '未加工': { category: 'その他', detail: '未加工' },
+  '該当項目以外の不良': { category: 'その他', detail: '該当項目以外の不良' }
+};
+
+/**
+ * 旧シート1ファイル分から、図番ごとの月間集計（良品数・不良数・不良項目内訳）を抽出する。
+ * ①「品番別」等のシート（月間集計表＋日付別生ログが同居）と②「元データ」シート（日付別生ログのみ、
+ * 内訳も同じ行にある）の両方に対応する。見分け方は「良品数合計」という列があるかどうか
+ * （①にはある、②には無い＝自分で図番ごとに集計し直す必要がある）。
+ */
+function parseHistoricalProcessDefectFile_(fileId) {
+  var ss = SpreadsheetApp.openById(fileId);
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var values = sheets[s].getDataRange().getValues();
+    var headerRowIndex = -1, header = null;
+    for (var r = 0; r < Math.min(values.length, 20); r++) {
+      if (values[r].indexOf('加工日') !== -1) { headerRowIndex = r; header = values[r]; break; }
+    }
+    if (!header) continue;
+    var dateCol = header.indexOf('加工日');
+
+    var defectCols = [];
+    header.forEach(function (h, idx) {
+      var key = String(h || '').trim();
+      if (!key) return;
+      if (OLD_DEFECT_HEADER_MAP_[key]) {
+        defectCols.push({ col: idx, category: OLD_DEFECT_HEADER_MAP_[key].category, detail: OLD_DEFECT_HEADER_MAP_[key].detail });
+      }
+    });
+
+    var byZuban = {}; // zuban -> {zuban, goodQty, defectQty, details:{key:qty}}
+    var ensure = function (zuban) {
+      if (!byZuban[zuban]) byZuban[zuban] = { zuban: zuban, goodQty: 0, defectQty: 0, details: {} };
+      return byZuban[zuban];
+    };
+    var addDetails = function (entry, row) {
+      defectCols.forEach(function (dc) {
+        var qty = Number(row[dc.col]);
+        if (qty > 0) {
+          var key = dc.category + '|||' + dc.detail;
+          if (!entry.details[key]) entry.details[key] = { category: dc.category, detail: dc.detail, qty: 0 };
+          entry.details[key].qty += qty;
+        }
+      });
+    };
+
+    var goodTotalCol = header.indexOf('良品数合計');
+    Logger.log('  （シート「' + sheets[s].getName() + '」、不良項目列' + defectCols.length + '個を検出、' + (goodTotalCol !== -1 ? '①月間集計表形式' : '②生ログのみ形式') + '）');
+    if (goodTotalCol !== -1) {
+      // ①月間集計表（品番別）：A列=品番、B=良品数合計、C=不良数合計、E:AP=不良項目内訳。
+      // 「加工日」より前の列にある（集計表側の「品番」は「加工日」より前、生ログ側の「品番」は後ろ）。
+      var pivotZubanCol = header.indexOf('品番');
+      var pivotGoodCol = goodTotalCol;
+      var pivotDefectCol = header.indexOf('不良数合計');
+      for (var i = headerRowIndex + 1; i < values.length; i++) {
+        var row = values[i];
+        var zuban = String(row[pivotZubanCol] || '').trim();
+        if (!zuban) continue;
+        var entry = ensure(zuban);
+        entry.goodQty += Number(row[pivotGoodCol]) || 0;
+        entry.defectQty += Number(row[pivotDefectCol]) || 0;
+        addDetails(entry, row);
+      }
+    } else {
+      // ②生ログのみ（元データ）：1行1投稿、自分で図番ごとに合算する。
+      var rawZubanCol = header.indexOf('品番', dateCol);
+      var rawGoodCol = header.indexOf('良品数', dateCol);
+      var rawDefectCol = header.indexOf('不良数計', dateCol);
+      for (var j = headerRowIndex + 1; j < values.length; j++) {
+        var row2 = values[j];
+        var zuban2 = String(row2[rawZubanCol] || '').trim();
+        if (!zuban2) continue;
+        var entry2 = ensure(zuban2);
+        entry2.goodQty += Number(row2[rawGoodCol]) || 0;
+        entry2.defectQty += Number(row2[rawDefectCol]) || 0;
+        addDetails(entry2, row2);
+      }
+    }
+
+    return Object.keys(byZuban).map(function (z) {
+      var e = byZuban[z];
+      return {
+        zuban: e.zuban,
+        goodQty: e.goodQty,
+        defectQty: e.defectQty,
+        details: Object.keys(e.details).map(function (k) { return e.details[k]; })
+      };
+    });
+  }
+  return [];
+}
+
+/**
+ * 過去データ移行のプレビュー（書き込みは一切行わない）。対象11ファイルを読み、月ごとの
+ * 件数・不良個数を実行ログに出す。内容を確認してから importProcessDefectHistory() を実行すること。
+ */
+function previewProcessDefectHistoryImport() {
+  HISTORICAL_PROCESS_DEFECT_FILES_.forEach(function (f) {
+    var rows = parseHistoricalProcessDefectFile_(f.fileId);
+    var totalDefect = 0;
+    rows.forEach(function (r) { r.details.forEach(function (d) { totalDefect += d.qty; }); });
+    Logger.log(f.label + '：図番' + rows.length + '件、不良内訳合計' + totalDefect + '個');
+  });
+}
+
+/**
+ * 過去データ移行の本実行。対象11ファイルを読み、「工程内不良ログ」へ1図番1行（月初日をダミーの
+ * 加工日として）で書き込む。図番＋加工日をキーに既存投稿を上書きするため、再実行しても安全
+ * （postProcessDefect_と同じ上書き方式）。実行前にclearProcessDefectTestData()でテスト投稿を
+ * 消しておくこと（ユーザー確認済み：現在の投稿は全てテスト）。
+ */
+function importProcessDefectHistory() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idCol = header.indexOf('投稿ID');
+  var zubanCol = header.indexOf('図番');
+  var dateCol = header.indexOf('加工日');
+
+  // 図番→品名のキャッシュ（11ファイル分を通して使い回し、同じ図番への重複問い合わせを避ける。
+  // 品名が引けない図番は空欄のまま取り込む、とユーザー確認済み）。
+  var hinmeiCache = {};
+  var getHinmei = function (zuban) {
+    if (!(zuban in hinmeiCache)) {
+      try { hinmeiCache[zuban] = lookupZubanMaster_(zuban).hinmei || ''; }
+      catch (e) { hinmeiCache[zuban] = ''; }
+    }
+    return hinmeiCache[zuban];
+  };
+
+  // 先に11ファイル分をすべて解析してからまとめて書き込む（1件ずつsheet操作すると遅く、
+  // GASの実行時間制限に近づくため。appendRowの繰り返しではなく最後に1回のsetValuesで書く）。
+  var allSubmissions = [];
+  HISTORICAL_PROCESS_DEFECT_FILES_.forEach(function (f) {
+    var placeholderDate = f.label + '-01'; // "yyyy-MM-01"。月単位集計のため代表日として月初日を使う
+    var rows = parseHistoricalProcessDefectFile_(f.fileId);
+    rows.forEach(function (sub) {
+      allSubmissions.push({
+        zuban: sub.zuban, placeholderDate: placeholderDate, workDateForSheet: placeholderDate.replace(/-/g, '/'),
+        goodQty: sub.goodQty, defectQty: sub.defectQty, details: sub.details
+      });
+    });
+    Logger.log(f.label + '：図番' + rows.length + '件を解析');
+  });
+
+  // 同じ図番・同じ加工日（今回は月初ダミー日）の既存投稿があれば、書き込み前にまとめて削除する
+  // （postProcessDefect_と同じ上書き方式。再実行しても安全なようにするため）。
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var keySet = {};
+    allSubmissions.forEach(function (sub) { keySet[sub.zuban + '|||' + sub.placeholderDate] = true; });
+    var existingValues = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+    var idsToDelete = {};
+    existingValues.forEach(function (row) {
+      var z = row[zubanCol], d = row[dateCol];
+      if (z && d && keySet[String(z) + '|||' + normalizeDateForCompare_(d)]) idsToDelete[row[idCol]] = true;
+    });
+    var rowsToDelete = [];
+    existingValues.forEach(function (row, i) {
+      if (idsToDelete[row[idCol]]) rowsToDelete.push(i + 2);
+    });
+    rowsToDelete.sort(function (a, b) { return b - a; });
+    rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+  }
+
+  // まとめて書き込む用の配列を組む
+  var outRows = [];
+  allSubmissions.forEach(function (sub) {
+    var id = Utilities.getUuid();
+    var details = sub.details;
+    var first = details[0] || {};
+    var note = '過去データ・月次集計（旧・製造工程不良一覧表より移行、日付は便宜上の月初日）';
+    var hinmei = getHinmei(sub.zuban);
+    outRows.push([
+      id, new Date(), sub.zuban, '', hinmei, '', '', '', '',
+      sub.workDateForSheet, sub.goodQty, sub.defectQty, 0,
+      first.category || '', first.detail || '', (first.qty === undefined ? '' : first.qty),
+      note, '', '過去データ移行'
+    ]);
+    for (var k = 1; k < details.length; k++) {
+      var d = details[k];
+      outRows.push([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
+    }
+    invalidateZubanCache_(sub.zuban);
+  });
+
+  if (outRows.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    if (dateCol !== -1) sheet.getRange(startRow, dateCol + 1, outRows.length, 1).setNumberFormat('@');
+    sheet.getRange(startRow, 1, outRows.length, header.length).setValues(outRows);
+  }
+
+  Logger.log('合計' + allSubmissions.length + '件の図番集計（' + outRows.length + '行）を書き込みました');
+}
+
+/**
+ * 「工程内不良ログ」の中身を全削除する（2026-11-08、過去データ移行前の一回限りの実行用）。
+ * 本番運用開始前で、現在入っている投稿は全てテストであることをユーザーに確認済み。
+ */
+function clearProcessDefectTestData() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  Logger.log((lastRow >= 2 ? lastRow - 1 : 0) + '行削除しました');
+}
+
 /**
  * ⑥工程内不良入力のダッシュボード（Webページ版、2026-10-25追加、Phase 2）用の集計データを返す。
  * ログイン不要（品質不具合管理システムのdashboard.htmlと同じ、読み取り専用のため）。
@@ -1108,15 +1376,20 @@ function buildProcessDefectDashboardData_() {
     var categoryCol = header.indexOf('大分類');
     var detailCol = header.indexOf('詳細');
     var qtyCol = header.indexOf('個数');
+    var goodQtyCol = header.indexOf('良品数');
+    var defectQtyTotalCol = header.indexOf('不良数計');
     var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
     values.forEach(function (row) {
       var id = row[idCol];
       if (!id) return;
-      if (!submissions[id]) submissions[id] = { zuban: '', hinmei: '', workDate: '', details: [] };
+      if (!submissions[id]) submissions[id] = { zuban: '', hinmei: '', workDate: '', goodQty: 0, defectQtyTotal: 0, details: [] };
       var sub = submissions[id];
       if (row[zubanCol]) sub.zuban = row[zubanCol];
       if (row[hinmeiCol]) sub.hinmei = row[hinmeiCol];
       if (row[dateCol]) sub.workDate = normalizeDateForCompare_(row[dateCol]); // "yyyy-MM-dd"に統一
+      // メイン行にしか入っていない（継続行は空欄）。過去データ移行分の不良率代用分母に使う（下記参照）。
+      if (row[goodQtyCol] !== '') sub.goodQty = Number(row[goodQtyCol]) || 0;
+      if (row[defectQtyTotalCol] !== '') sub.defectQtyTotal = Number(row[defectQtyTotalCol]) || 0;
       var category = row[categoryCol], detail = row[detailCol], qty = row[qtyCol];
       if (category && detail && qty !== '') {
         sub.details.push({ category: category, detail: detail, qty: Number(qty) || 0 });
@@ -1153,6 +1426,26 @@ function buildProcessDefectDashboardData_() {
   var byMonth = {};     // yyyy-MM -> {defectQty, incidentCount}
   var totalDefectQty = 0, totalIncidentCount = 0;
 
+  // 加工数スナップショットが無い月・図番（2026-09-26より前＝過去データ移行分はすべて該当）向けの
+  // 代用分母（2026-11-08追加）。工程内不良ログ自体の「良品数＋不良数計」（投稿時にメイン行へ
+  // 書き込まれる値）を合計し、スナップショットが無い場合だけこちらで不良率を計算する。
+  // 月次集計で移行した過去データは「その月の申告ベース合計」、新しい月はI-PRO由来の真の完了数量と、
+  // 分母の性質が異なる点に注意（CLAUDE.md参照）。
+  var rawCompletedByZuban = {};
+  var rawCompletedByMonth = {};
+  Object.keys(submissions).forEach(function (id) {
+    var sub = submissions[id];
+    if (!sub.zuban) return;
+    var completed = (sub.goodQty || 0) + (sub.defectQtyTotal || 0);
+    if (completed > 0) {
+      rawCompletedByZuban[sub.zuban] = (rawCompletedByZuban[sub.zuban] || 0) + completed;
+      if (sub.workDate) {
+        var ymRaw = sub.workDate.slice(0, 7);
+        rawCompletedByMonth[ymRaw] = (rawCompletedByMonth[ymRaw] || 0) + completed;
+      }
+    }
+  });
+
   Object.keys(submissions).forEach(function (id) {
     var sub = submissions[id];
     if (!sub.zuban) return;
@@ -1187,11 +1480,17 @@ function buildProcessDefectDashboardData_() {
   var monthly = Object.keys(monthKeys).sort().map(function (ym) {
     var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0, details: {} };
     var completedQty = qtyByMonth[ym] || 0;
+    var completedQtySource = 'ipro';
+    if (completedQty <= 0 && rawCompletedByMonth[ym] > 0) {
+      completedQty = rawCompletedByMonth[ym];
+      completedQtySource = 'raw'; // 過去データ移行分の代用分母（良品数＋不良数計の申告ベース）
+    }
     return {
       month: ym,
       defectQty: defect.defectQty,
       incidentCount: defect.incidentCount,
       completedQty: completedQty,
+      completedQtySource: completedQtySource,
       rate: completedQty > 0 ? defect.defectQty / completedQty : null,
       details: defect.details
     };
@@ -1200,12 +1499,18 @@ function buildProcessDefectDashboardData_() {
   var zubanRate = Object.keys(byZuban).map(function (z) {
     var row = byZuban[z];
     var completedQty = qtyByZuban[z] || 0;
+    var completedQtySource = 'ipro';
+    if (completedQty <= 0 && rawCompletedByZuban[z] > 0) {
+      completedQty = rawCompletedByZuban[z];
+      completedQtySource = 'raw';
+    }
     return {
       zuban: row.zuban,
       hinmei: row.hinmei,
       defectQty: row.defectQty,
       incidentCount: row.incidentCount,
       completedQty: completedQty,
+      completedQtySource: completedQtySource,
       rate: completedQty > 0 ? row.defectQty / completedQty : null,
       categories: row.categories
     };

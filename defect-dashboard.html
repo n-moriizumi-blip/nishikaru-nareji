@@ -496,8 +496,10 @@
     var html = '<table class="data-table" style="min-width:640px;"><thead><tr><th>図番</th>';
     CATEGORY_ORDER.forEach(function (c) { html += '<th>' + escapeHtml(c) + '</th>'; });
     html += '<th>不良個数計</th><th>完了数量</th><th>不良率</th></tr></thead><tbody>';
+    var hasRawRate = false;
     rows.forEach(function (r) {
       var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
+      if (r.rate != null && r.completedQtySource === 'raw') { ratePct += '†'; hasRawRate = true; }
       var rateClass = (r.rate != null && r.rate >= 0.1) ? ' rate-high' : '';
       html += '<tr><td class="zuban">' + escapeHtml(r.zuban) + '</td>';
       CATEGORY_ORDER.forEach(function (c) {
@@ -511,6 +513,8 @@
     container.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
     if (!withRate.length) {
       container.insertAdjacentHTML('afterbegin', '<p class="empty-note">完了数量のデータがまだ無いため、不良率は計算できていません。</p>');
+    } else if (hasRawRate) {
+      container.insertAdjacentHTML('beforeend', '<p class="empty-note">†は加工数スナップショットが無いため、工程内不良ログ自体の良品数＋不良数計（申告ベース）を分母に代用した参考値。</p>');
     }
   }
 
@@ -525,10 +529,12 @@
 
     var totals = { completedQty: 0, defectQty: 0 };
     var detailTotals = {};
+    var hasRawRate = false;
     detailColumns.forEach(function (c) { detailTotals[c.key] = 0; });
 
     monthly.forEach(function (r) {
       var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
+      if (r.rate != null && r.completedQtySource === 'raw') { ratePct += '†'; hasRawRate = true; }
       html += '<tr><td>' + escapeHtml(r.month.replace('-', '/')) + '</td><td class="mono">' + formatNum(r.completedQty) + '</td><td class="mono">' + formatNum(r.defectQty) + '</td><td class="mono">' + ratePct + '</td>';
       detailColumns.forEach(function (c) {
         var v = (r.details && r.details[c.key]) || 0;
@@ -544,6 +550,9 @@
     html += '<tr class="total-row"><td>合計</td><td class="mono">' + formatNum(totals.completedQty) + '</td><td class="mono">' + formatNum(totals.defectQty) + '</td><td class="mono">' + totalRate + '</td>';
     detailColumns.forEach(function (c) { html += '<td class="mono">' + (detailTotals[c.key] || '―') + '</td>'; });
     html += '</tr></tbody></table>';
+    if (hasRawRate) {
+      html += '<p class="empty-note">†は加工数スナップショットが無い月（過去データ移行分）の参考値。工程内不良ログ自体の良品数＋不良数計（申告ベース）を分母に代用。</p>';
+    }
 
     container.innerHTML = '<div style="overflow-x:auto;">' + html + '</div>';
   }
