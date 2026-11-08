@@ -363,13 +363,27 @@
     return v.toFixed(decimals == null ? 1 : decimals) + '%';
   }
 
-  // 「前月」（今日の日付から見た前の暦月）に該当するmonthlyの要素を返す。無ければ0埋めで補う
-  // （KPIタイル・当月分グラフをどちらも「前月分」に固定するため、2026-11-09追加）。
+  // URLに ?month=2026-09 を付けると、その月を「前月分」として見られる（本番運用開始前で
+  // 直近月にまだ実データが無いときの確認用。2026-11-09追加。URLを人に送るものではなく、
+  // 自分のブラウザで一時的に確認するためのパラメータ）。
+  function getQueryMonthOverride_() {
+    var v = new URLSearchParams(window.location.search).get('month');
+    return (v && /^\d{4}-\d{2}$/.test(v)) ? v : null;
+  }
+
+  // 「前月」（今日の日付から見た前の暦月、または?monthで指定した月）に該当するmonthlyの要素を返す。
+  // 無ければ0埋めで補う（KPIタイル・当月分グラフをどちらも「前月分」に固定するため、2026-11-09追加）。
   function getPreviousMonthEntry(data) {
-    var now = new Date();
-    var y = now.getFullYear(), m = now.getMonth(); // getMonth()は0始まりなので、これ自体が「前月」の月番号(1始まり)になる
-    if (m === 0) { y -= 1; m = 12; }
-    var ym = y + '-' + (m < 10 ? '0' + m : m);
+    var override = getQueryMonthOverride_();
+    var ym;
+    if (override) {
+      ym = override;
+    } else {
+      var now = new Date();
+      var y = now.getFullYear(), m = now.getMonth(); // getMonth()は0始まりなので、これ自体が「前月」の月番号(1始まり)になる
+      if (m === 0) { y -= 1; m = 12; }
+      ym = y + '-' + (m < 10 ? '0' + m : m);
+    }
     var found = data.monthly.filter(function (r) { return r.month === ym; })[0];
     return found || { month: ym, defectQty: 0, incidentCount: 0, zubanCount: 0, completedQty: 0, completedQtySource: 'ipro', rate: null, details: {} };
   }
@@ -667,10 +681,11 @@
       });
     });
 
-    // 月別推移グラフは直近1年分（現在の月から過去12か月）だけに絞る（2026-11-09追加）。
-    var now = new Date();
-    var cutoffYm = (now.getFullYear() - 1) + '-' + String(now.getMonth() + 1 < 10 ? '0' : '') + (now.getMonth() + 1);
-    var recentMonthly = data.monthly.filter(function (r) { return r.month > cutoffYm; });
+    // 月別推移グラフは直近1年分（前月分の月から過去12か月）だけに絞る（2026-11-09追加）。
+    // ?monthで月を指定したときもそれに連動させるため、実時計ではなくprevMonth.monthを基準にする。
+    var pmParts = prevMonth.month.split('-');
+    var cutoffYm = (Number(pmParts[0]) - 1) + '-' + pmParts[1];
+    var recentMonthly = data.monthly.filter(function (r) { return r.month > cutoffYm && r.month <= prevMonth.month; });
     buildDualAxisCombo(document.getElementById('monthlyChart'), {
       categories: recentMonthly.map(function (r) { return r.month.replace('-', '/'); }),
       barSeries: [
