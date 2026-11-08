@@ -186,7 +186,7 @@
       <div class="section-head">
         <h2><span class="bar"></span>月別 製造工程不良の推移</h2>
       </div>
-      <p class="empty-note" style="padding-top:0;">左軸＝完了数量・不良個数（バー）、右軸＝不良率（線）。</p>
+      <p class="empty-note" style="padding-top:0;">左軸＝完了数量・不良個数（バー）、右軸＝不良率（線）。直近1年分を表示。</p>
       <div id="monthlyChart"></div>
     </div>
 
@@ -194,7 +194,7 @@
       <div class="section-head">
         <h2><span class="bar"></span>月別集計表</h2>
       </div>
-      <p class="empty-note" style="padding-top:0;">各月の完了数量・不良個数・不良率と、不良内容（詳細）ごとの個数内訳。</p>
+      <p class="empty-note" style="padding-top:0;">各月の完了数量・不良個数・不良率と、不良内容（詳細）ごとの個数内訳。直近1年分を表示。</p>
       <div id="monthlyDetailTable"></div>
     </div>
 
@@ -636,7 +636,7 @@
       leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, pctDecimals: 2
     });
 
-    buildMonthlyDetailTable(document.getElementById('monthlyDetailTable'), data.monthly, data.detailColumns);
+    buildMonthlyDetailTable(document.getElementById('monthlyDetailTable'), recentMonthly, data.detailColumns);
 
     buildRateTable(document.getElementById('rateTable'), data.zubanRate);
   }
