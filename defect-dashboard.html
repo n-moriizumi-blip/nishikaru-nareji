@@ -386,13 +386,12 @@
     var rightMax = opts.rightMax || 100;
     var pctDecimals = opts.pctDecimals == null ? 1 : opts.pctDecimals;
 
-    var marginLeft = 68, marginRight = 58, marginTop = 24, marginBottom = 92;
+    var marginLeft = 56, marginRight = 50, marginTop = 24, marginBottom = 92;
     var groupWidth = opts.groupWidth || 96;
     var plotWidth = Math.max(categories.length * groupWidth, 240);
     var plotHeight = 230;
     var svgW = marginLeft + plotWidth + marginRight;
     var svgH = marginTop + plotHeight + marginBottom;
-    var axisCenterY = marginTop + plotHeight / 2;
 
     var svgParts = [];
     var ticks = 4;
@@ -404,10 +403,8 @@
       svgParts.push('<text x="' + (marginLeft - 8) + '" y="' + (ly + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + formatNum(leftVal) + '</text>');
       svgParts.push('<text x="' + (marginLeft + plotWidth + 8) + '" y="' + (ly + 4) + '" text-anchor="start" font-size="10" fill="var(--ink-soft)">' + rightVal + '%</text>');
     }
-    // 軸ラベルは左右の余白内で縦軸中央に縦書き配置する（以前はプロット領域の左上端に横書きで
-    // 置いていたため、軸の目盛りから離れて見えた。2026-11-09、ユーザー指摘で変更）。
-    svgParts.push('<text x="16" y="' + axisCenterY + '" text-anchor="middle" font-size="10" fill="var(--ink-soft)" transform="rotate(-90 16 ' + axisCenterY + ')">' + escapeHtml(opts.leftUnitLabel) + '（左軸）</text>');
-    svgParts.push('<text x="' + (marginLeft + plotWidth + 46) + '" y="' + axisCenterY + '" text-anchor="middle" font-size="10" fill="var(--ink-soft)" transform="rotate(90 ' + (marginLeft + plotWidth + 46) + ' ' + axisCenterY + ')">' + escapeHtml(opts.rightUnitLabel) + '（右軸）</text>');
+    // グラフ内の縦書き軸ラベルは削除した（2026-11-09、位置がうまく揃わずユーザー指摘。
+    // 左右軸の対応は上の凡例（完了数量(左軸・個)等）で示せているため、無くす方針にした）。
 
     var barInteractive = [];
     var lineInteractive = [];
@@ -565,7 +562,7 @@
     detailColumns.forEach(function (c) { detailTotals[c.key] = 0; });
 
     monthly.forEach(function (r) {
-      var ratePct = r.rate != null ? (Math.round(r.rate * 1000) / 10) + '%' : '―';
+      var ratePct = formatPct(r.rate == null ? null : r.rate * 100, 2);
       if (r.rate != null && r.completedQtySource === 'raw') { ratePct += '†'; hasRawRate = true; }
       html += '<tr><td>' + escapeHtml(r.month.replace('-', '/')) + '</td><td class="mono">' + formatNum(r.completedQty) + '</td><td class="mono">' + formatNum(r.defectQty) + '</td><td class="mono">' + ratePct + '</td>';
       detailColumns.forEach(function (c) {
@@ -578,7 +575,7 @@
       html += '</tr>';
     });
 
-    var totalRate = totals.completedQty > 0 ? (Math.round((totals.defectQty / totals.completedQty) * 1000) / 10) + '%' : '―';
+    var totalRate = formatPct(totals.completedQty > 0 ? (totals.defectQty / totals.completedQty) * 100 : null, 2);
     html += '<tr class="total-row"><td>合計</td><td class="mono">' + formatNum(totals.completedQty) + '</td><td class="mono">' + formatNum(totals.defectQty) + '</td><td class="mono">' + totalRate + '</td>';
     detailColumns.forEach(function (c) { html += '<td class="mono">' + (detailTotals[c.key] || '―') + '</td>'; });
     html += '</tr></tbody></table>';
