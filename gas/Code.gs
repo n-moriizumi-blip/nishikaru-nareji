@@ -1165,10 +1165,14 @@ function parseHistoricalProcessDefectFile_(fileId) {
     var values = sheets[s].getDataRange().getValues();
     var headerRowIndex = -1, header = null;
     for (var r = 0; r < Math.min(values.length, 20); r++) {
-      // 「加工日」（日付別生ログ）か「良品数合計」（月間集計表）のどちらかがあればヘッダー行とみなす。
-      // 2026年1〜3月分は月間集計表だけで日付別生ログが無く、「加工日」列自体が存在しなかったため、
-      // 「加工日」だけで判定すると0件になっていた（2026-11-08発覚・修正）。
-      if (values[r].indexOf('加工日') !== -1 || values[r].indexOf('良品数合計') !== -1) { headerRowIndex = r; header = values[r]; break; }
+      // 「品番」列があり、かつ「加工日」（日付別生ログ）か「良品数合計」（月間集計表）のどちらかも
+      // あればヘッダー行とみなす。2026年1〜3月分は月間集計表だけで日付別生ログが無く、「加工日」列
+      // 自体が存在しないため「加工日」だけでは判定できない（2026-11-08発覚）が、「品番」を必須に
+      // しないと「月別総計」シート（こちらにも「良品数合計」列がある。ただし「品番」列は無い、
+      // 月ごとの集計のため）を誤って拾ってしまう（2026-11-08再発覚・修正）。
+      if (values[r].indexOf('品番') !== -1 && (values[r].indexOf('加工日') !== -1 || values[r].indexOf('良品数合計') !== -1)) {
+        headerRowIndex = r; header = values[r]; break;
+      }
     }
     if (!header) continue;
     var dateCol = header.indexOf('加工日'); // 無ければ-1（月間集計表のみの月。①の集計表側「品番」列には影響しない）
