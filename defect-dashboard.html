@@ -169,7 +169,7 @@
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span><span id="categoryDonutTitle">大分類別の内訳</span></h2>
+        <h2><span class="bar"></span><span id="categoryDonutTitle">不良項目別の内訳</span></h2>
       </div>
       <div id="categoryDonut"></div>
     </div>
@@ -221,6 +221,8 @@
     'その他': 'var(--series-other)'
   };
   var CATEGORY_ORDER = ['刃物欠け・折れ', '寸法不良', '外観不良', 'その他'];
+  // 不良項目別の内訳（円グラフ）は項目数が月によって変わるため、大分類4色より多めの色を順番に割り当てる。
+  var DETAIL_PALETTE = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8e5fd1', '#d1458f', '#4fb3bf', '#9fa83e', '#e0533d', '#7EB6D9'];
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -286,20 +288,20 @@
     container.appendChild(tableDiv);
   }
 
-  // ==== 円グラフ（大分類別、カテゴリカル4色、凡例＋直接%ラベル） ====
+  // ==== 円グラフ（不良項目別、個数の多い順、凡例＋直接%ラベル） ====
+  // 2026-11-09、旧シートの「製造工程不良層別グラフ」に合わせて変更：大分類4つにまとめず、
+  // 個々の項目（内径小・長さ不良・外径小…）をそのまま円グラフにする。
   function buildDonut(container, rows) {
     container.innerHTML = '';
     var total = rows.reduce(function (s, r) { return s + r.qty; }, 0);
     if (!total) { container.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
-    var ordered = CATEGORY_ORDER.map(function (cat) {
-      var found = rows.filter(function (r) { return r.category === cat; })[0];
-      return { category: cat, qty: found ? found.qty : 0 };
-    }).filter(function (r) { return r.qty > 0; });
+    var ordered = rows.filter(function (r) { return r.qty > 0; }).sort(function (a, b) { return b.qty - a.qty; });
 
     var r = 150, cx = 170, cy = 170, inner = 85; // ユーザー指摘により大きく表示（2026-11-09、以前の約2倍）
     var angle = -90;
     var paths = '';
-    ordered.forEach(function (seg) {
+    ordered.forEach(function (seg, i) {
+      var color = DETAIL_PALETTE[i % DETAIL_PALETTE.length];
       var sweep = (seg.qty / total) * 360;
       var x1 = cx + r * Math.cos(angle * Math.PI / 180);
       var y1 = cy + r * Math.sin(angle * Math.PI / 180);
@@ -313,7 +315,7 @@
       var iy2 = cy + inner * Math.sin(endAngle * Math.PI / 180);
       var d = 'M' + x1 + ',' + y1 + ' A' + r + ',' + r + ' 0 ' + largeArc + ' 1 ' + x2 + ',' + y2 +
         ' L' + ix2 + ',' + iy2 + ' A' + inner + ',' + inner + ' 0 ' + largeArc + ' 0 ' + ix1 + ',' + iy1 + ' Z';
-      paths += '<path d="' + d + '" fill="' + CATEGORY_COLOR[seg.category] + '" data-cat="' + escapeHtml(seg.category) +
+      paths += '<path d="' + d + '" fill="' + color + '" data-cat="' + escapeHtml(seg.detail) +
         '" data-qty="' + seg.qty + '" stroke="var(--surface)" stroke-width="2"></path>';
       angle = endAngle;
     });
@@ -321,14 +323,15 @@
     var wrap = document.createElement('div');
     wrap.className = 'donut-wrap';
     var legendHtml = '<div class="legend">';
-    ordered.forEach(function (seg) {
+    ordered.forEach(function (seg, i) {
+      var color = DETAIL_PALETTE[i % DETAIL_PALETTE.length];
       var pct = Math.round((seg.qty / total) * 1000) / 10;
-      legendHtml += '<div class="legend-item"><span class="legend-swatch" style="background:' + CATEGORY_COLOR[seg.category] + ';"></span>' +
-        '<span class="name">' + escapeHtml(seg.category) + '</span><span class="pct mono">' + seg.qty + '個（' + pct + '%）</span></div>';
+      legendHtml += '<div class="legend-item"><span class="legend-swatch" style="background:' + color + ';"></span>' +
+        '<span class="name">' + escapeHtml(seg.detail) + '</span><span class="pct mono">' + seg.qty + '個（' + pct + '%）</span></div>';
     });
     legendHtml += '</div>';
     wrap.innerHTML =
-      '<svg viewBox="0 0 340 340" role="img" aria-label="大分類別の不良個数内訳">' + paths +
+      '<svg viewBox="0 0 340 340" role="img" aria-label="不良項目別の不良個数内訳">' + paths +
       '<text x="170" y="163" text-anchor="middle" font-size="14" fill="var(--ink-soft)">合計</text>' +
       '<text x="170" y="195" text-anchor="middle" font-size="30" font-weight="700" fill="var(--ink)">' + total + '</text>' +
       '</svg>' + legendHtml;
@@ -629,17 +632,11 @@
     currentMonthRows.sort(function (a, b) { return b.qty - a.qty; });
     buildBarRanking(document.getElementById('currentMonthRanking'), currentMonthRows, { color: 'var(--series-dim)' });
 
-    // 大分類別の内訳も前月分に絞る（2026-11-09、以前は全期間の累計だった）。
-    // monthlyのdetails（key="category|||detail"→個数）をdetailColumnsでkey→categoryに引き直して集計し直す。
-    document.getElementById('categoryDonutTitle').textContent = prevMonth.month.replace('-', '年') + '月分 大分類別の内訳';
-    var keyToCategory = {};
-    data.detailColumns.forEach(function (c) { keyToCategory[c.key] = c.category; });
-    var prevMonthByCategory = {};
-    Object.keys(prevMonth.details || {}).forEach(function (key) {
-      var cat = keyToCategory[key];
-      if (cat) prevMonthByCategory[cat] = (prevMonthByCategory[cat] || 0) + prevMonth.details[key];
-    });
-    buildDonut(document.getElementById('categoryDonut'), Object.keys(prevMonthByCategory).map(function (c) { return { category: c, qty: prevMonthByCategory[c] }; }));
+    // 不良項目別の内訳（円グラフ）も前月分に絞る。大分類でまとめず、currentMonthRows
+    // （項目ごとの個数、ランキング棒グラフと同じ中身）をそのまま使う（2026-11-09、旧シートの
+    // 「製造工程不良層別グラフ」に合わせて大分類集計をやめた）。
+    document.getElementById('categoryDonutTitle').textContent = prevMonth.month.replace('-', '年') + '月分 不良項目別の内訳';
+    buildDonut(document.getElementById('categoryDonut'), currentMonthRows.map(function (r) { return { detail: r.label, qty: r.qty }; }));
 
     // パレート図：前月分を大分類（刃物欠け・折れ／寸法不良／外観不良／その他）ごとに分けて、
     // それぞれの中だけで個数の多い順→累積比率を計算する（2026-11-09、旧シートの構成に合わせて変更。
