@@ -1500,12 +1500,15 @@ function buildProcessDefectDashboardData_() {
   Object.keys(qtyByMonth).forEach(function (k) { monthKeys[k] = true; });
   var monthly = Object.keys(monthKeys).sort().map(function (ym) {
     var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0, details: {} };
-    var completedQty = qtyByMonth[ym] || 0;
-    var completedQtySource = 'ipro';
-    if (completedQty <= 0 && rawCompletedByMonth[ym] > 0) {
-      completedQty = rawCompletedByMonth[ym];
-      completedQtySource = 'raw'; // 過去データ移行分の代用分母（良品数＋不良数計の申告ベース）
-    }
+    var iproQty = qtyByMonth[ym] || 0;
+    var rawQty = rawCompletedByMonth[ym] || 0;
+    // I-PRO同期データ（進捗状況照会）は直近数ヶ月分しか保持しないため、加工数スナップショットの
+    // 初回取得時（2026-09-26）に古い月の完了実績がたまたま一部だけ残っていることがある
+    // （例：2026年5〜6月分が数百件だけ拾われ、過去データ移行分の申告ベース合計より小さくなり、
+    // 不良率が100%を超える異常値になる不具合が実機で発生・2026-11-08判明）。
+    // 常に大きい方（＝より完全な集計）を採用することで、どちらが不完全でも極端な値にならないようにする。
+    var completedQty = Math.max(iproQty, rawQty);
+    var completedQtySource = (rawQty > iproQty) ? 'raw' : 'ipro'; // 過去データ移行分の代用分母（良品数＋不良数計の申告ベース）
     return {
       month: ym,
       defectQty: defect.defectQty,
@@ -1519,12 +1522,12 @@ function buildProcessDefectDashboardData_() {
 
   var zubanRate = Object.keys(byZuban).map(function (z) {
     var row = byZuban[z];
-    var completedQty = qtyByZuban[z] || 0;
-    var completedQtySource = 'ipro';
-    if (completedQty <= 0 && rawCompletedByZuban[z] > 0) {
-      completedQty = rawCompletedByZuban[z];
-      completedQtySource = 'raw';
-    }
+    var iproQtyZ = qtyByZuban[z] || 0;
+    var rawQtyZ = rawCompletedByZuban[z] || 0;
+    // monthlyと同じ理由（I-PROの保持期間切れ際に古い完了実績が一部だけ残ることがある）で、
+    // 常に大きい方を採用する（2026-11-08修正）。
+    var completedQty = Math.max(iproQtyZ, rawQtyZ);
+    var completedQtySource = (rawQtyZ > iproQtyZ) ? 'raw' : 'ipro';
     return {
       zuban: row.zuban,
       hinmei: row.hinmei,
