@@ -181,6 +181,13 @@
     border-bottom: 1px solid var(--line); border-radius: 0; padding: 0 0 6px; margin: 20px 0 12px; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 14px; font-size: 0.9rem; }
 
+  .defect-history-item { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; margin-bottom: 8px; }
+  .defect-history-item .dh-date { font-family: var(--font-mono); font-weight: 700; font-size: 0.88rem; color: var(--ink); margin-bottom: 6px; }
+  .defect-history-item .dh-row { display: flex; justify-content: space-between; font-size: 0.86rem; color: var(--ink-soft); padding: 3px 0; }
+  .defect-history-item .dh-row + .dh-row { border-top: 1px dashed var(--line); }
+  .defect-history-item .dh-qty { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
+  .defect-history-empty { font-size: 0.84rem; color: var(--ink-soft); text-align: center; padding: 10px 0; }
+
   .status-note { font-size: 0.82rem; color: var(--ink-soft); text-align: center; }
   #scanStatus { font-size: 1rem; font-weight: 700; color: var(--ink); }
 
@@ -396,7 +403,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.4.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.5.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -867,6 +874,10 @@
 
       <button type="button" class="btn btn-primary" id="defectSaveBtn">送信する</button>
       <div class="status-note" id="defectStatus"></div>
+
+      <div class="section-label">過去の入力履歴（この図番）</div>
+      <div id="defectHistoryList"></div>
+
       <a class="btn btn-ghost" href="defect-dashboard.html" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">不良ダッシュボードを見る</a>
     </section>
   </main>
@@ -3695,6 +3706,26 @@
     loadExistingDefectForDate_();
   });
 
+  // この図番の工程内不良の投稿履歴（何日に何の項目で何個入力したか）を一覧表示する（2026-11-08追加）。
+  function renderProcessDefectHistory(data) {
+    var list = document.getElementById('defectHistoryList');
+    var submissions = data.processDefects || [];
+    list.innerHTML = '';
+    if (submissions.length === 0) {
+      list.innerHTML = '<div class="defect-history-empty">この図番の投稿はまだありません</div>';
+      return;
+    }
+    submissions.forEach(function (sub) {
+      var item = document.createElement('div');
+      item.className = 'defect-history-item';
+      var rowsHtml = (sub.details || []).map(function (d) {
+        return '<div class="dh-row"><span>' + escapeHtml(d.category) + ' / ' + escapeHtml(d.detail) + '</span><span class="dh-qty">' + escapeHtml(String(d.qty)) + '個</span></div>';
+      }).join('');
+      item.innerHTML = '<div class="dh-date">' + escapeHtml(String(sub.workDate || '').replace(/-/g, '/')) + '</div>' + rowsHtml;
+      list.appendChild(item);
+    });
+  }
+
   function goToDefect() {
     if (!currentZubanData) return;
     setScreen('processDefect');
@@ -3704,6 +3735,7 @@
     resetDefectFormFields_();
     document.getElementById('defectStatus').textContent = '';
     loadExistingDefectForDate_();
+    renderProcessDefectHistory(currentZubanData);
   }
 
 
@@ -3745,6 +3777,7 @@
         clearLoadingText(statusEl);
         resetDefectFormFields_();
         statusEl.textContent = '送信しました';
+        return refreshZubanData().then(function () { renderProcessDefectHistory(currentZubanData); });
       })
       .catch(function (err) { clearLoadingText(statusEl); if (err) statusEl.textContent = '送信に失敗しました: ' + err; });
   });

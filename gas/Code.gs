@@ -215,6 +215,7 @@ function getZubanInfo_(zuban, knownMaster) {
   var toolMemo = readToolMemo_(zuban);
   var toolPositions = readToolPositions_(zuban);
   var shippingSpec = readShippingSpec_(zuban);
+  var processDefects = readProcessDefects_(zuban); // ⑥画面の「過去の入力履歴」用（2026-11-08追加）
   var t3 = Date.now();
   if (t3 - t0 > 5000) {
     Logger.log('getZubanInfo_が遅延（図番:' + zuban + '）: 品名等取得=' + (t1 - t0) + 'ms, 過去トラ検索=' + (t2 - t1) + 'ms, その他読み取り=' + (t3 - t2) + 'ms, 合計=' + (t3 - t0) + 'ms');
@@ -233,7 +234,8 @@ function getZubanInfo_(zuban, knownMaster) {
     qualityLog: qualityLog,         // 自部署の品質情報（共有フラグOFFのもの）
     toolMemo: toolMemo,             // ツール配置メモ（一次・二次加工向け）
     toolPositions: toolPositions,   // ツール配置ポジション（正面／背面／サイクルタイム）
-    shippingSpec: shippingSpec      // 出荷仕様（検査・生産管理・出荷担当が入力）
+    shippingSpec: shippingSpec,     // 出荷仕様（検査・生産管理・出荷担当が入力）
+    processDefects: processDefects  // 工程内不良の投稿履歴（日付降順、⑥画面の「過去の入力履歴」用）
   };
 
   try { cache.put(cacheKey, JSON.stringify(result), 300); } catch (e) {} // 5分。サイズ超過等は無視して素通りさせる
@@ -1042,6 +1044,49 @@ function getProcessDefectByZubanDate_(zuban, workDate) {
 }
 
 /**
+ * 図番に紐づく工程内不良の投稿履歴を日付降順で返す（2026-11-08追加）。
+ * ⑥工程内不良入力で「何日に何の項目で何個入力したか」を振り返れるようにするため。
+ * 投稿ID単位でグループ化し、メイン行の図番・加工日を同じ投稿の明細行（継続行、図番・加工日は
+ * 空欄）にも適用してから集計する（buildProcessDefectDashboardData_と同じグルーピング手法）。
+ */
+function readProcessDefects_(zuban) {
+  if (!zuban) return [];
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idCol = header.indexOf('投稿ID');
+  var zubanCol = header.indexOf('図番');
+  var dateCol = header.indexOf('加工日');
+  var categoryCol = header.indexOf('大分類');
+  var detailCol = header.indexOf('詳細');
+  var qtyCol = header.indexOf('個数');
+  var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+  var submissions = {}; // 投稿ID -> {zuban, workDate(yyyy-MM-dd), details:[{category,detail,qty}]}
+  values.forEach(function (row) {
+    var id = row[idCol];
+    if (!id) return;
+    if (!submissions[id]) submissions[id] = { zuban: '', workDate: '', details: [] };
+    var sub = submissions[id];
+    if (row[zubanCol]) sub.zuban = row[zubanCol];
+    if (row[dateCol]) sub.workDate = normalizeDateForCompare_(row[dateCol]);
+    var category = row[categoryCol], detail = row[detailCol], qty = row[qtyCol];
+    if (category && detail && qty !== '') {
+      sub.details.push({ category: category, detail: detail, qty: Number(qty) || 0 });
+    }
+  });
+  var result = [];
+  Object.keys(submissions).forEach(function (id) {
+    var sub = submissions[id];
+    if (String(sub.zuban) === String(zuban)) {
+      result.push({ workDate: sub.workDate, details: sub.details });
+    }
+  });
+  result.sort(function (a, b) { return a.workDate < b.workDate ? 1 : (a.workDate > b.workDate ? -1 : 0); });
+  return result;
+}
+
+/**
  * ⑥工程内不良入力のダッシュボード（Webページ版、2026-10-25追加、Phase 2）用の集計データを返す。
  * ログイン不要（品質不具合管理システムのdashboard.htmlと同じ、読み取り専用のため）。
  * 「工程内不良ログ」（投稿IDでグループ化し、メイン行の共通項目を同じ投稿の明細行にも適用してから
@@ -1238,6 +1283,7 @@ function postProcessDefect_(payload) {
       var d = details[i];
       sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
     }
+    invalidateZubanCache_(payload.zuban); // 保存直後に⑥の「過去の入力履歴」へ反映させるため（2026-11-08）
     return { id: id };
   });
 }
