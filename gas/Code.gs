@@ -1213,7 +1213,10 @@ function parseHistoricalProcessDefectFile_(fileId) {
       for (var i = headerRowIndex + 1; i < values.length; i++) {
         var row = values[i];
         var zuban = String(row[pivotZubanCol] || '').trim();
-        if (!zuban) continue;
+        // シート末尾の合計行（「総計」「月別総計貼り付け用（値の貼り付け）」等）を図番として
+        // 取り込んでしまうと、月合計を二重に加算してしまう（2026-11-08、実際にこの不具合で
+        // 2025-11分の内訳合計が本来の約2倍になっていたことが判明・修正）。
+        if (!zuban || zuban === '総計' || zuban.indexOf('貼り付け') !== -1) continue;
         var entry = ensure(zuban);
         entry.goodQty += Number(row[pivotGoodCol]) || 0;
         entry.defectQty += Number(row[pivotDefectCol]) || 0;
