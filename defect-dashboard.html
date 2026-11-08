@@ -169,7 +169,7 @@
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>大分類別の内訳</h2>
+        <h2><span class="bar"></span><span id="categoryDonutTitle">大分類別の内訳</span></h2>
       </div>
       <div id="categoryDonut"></div>
     </div>
@@ -386,12 +386,13 @@
     var rightMax = opts.rightMax || 100;
     var pctDecimals = opts.pctDecimals == null ? 1 : opts.pctDecimals;
 
-    var marginLeft = 56, marginRight = 50, marginTop = 24, marginBottom = 92;
-    var groupWidth = 96;
+    var marginLeft = 68, marginRight = 58, marginTop = 24, marginBottom = 92;
+    var groupWidth = opts.groupWidth || 96;
     var plotWidth = Math.max(categories.length * groupWidth, 240);
     var plotHeight = 230;
     var svgW = marginLeft + plotWidth + marginRight;
     var svgH = marginTop + plotHeight + marginBottom;
+    var axisCenterY = marginTop + plotHeight / 2;
 
     var svgParts = [];
     var ticks = 4;
@@ -403,8 +404,10 @@
       svgParts.push('<text x="' + (marginLeft - 8) + '" y="' + (ly + 4) + '" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + formatNum(leftVal) + '</text>');
       svgParts.push('<text x="' + (marginLeft + plotWidth + 8) + '" y="' + (ly + 4) + '" text-anchor="start" font-size="10" fill="var(--ink-soft)">' + rightVal + '%</text>');
     }
-    svgParts.push('<text x="' + marginLeft + '" y="14" font-size="10" fill="var(--ink-soft)">←' + escapeHtml(opts.leftUnitLabel) + '（左軸）</text>');
-    svgParts.push('<text x="' + (marginLeft + plotWidth) + '" y="14" text-anchor="end" font-size="10" fill="var(--ink-soft)">' + escapeHtml(opts.rightUnitLabel) + '（右軸）→</text>');
+    // 軸ラベルは左右の余白内で縦軸中央に縦書き配置する（以前はプロット領域の左上端に横書きで
+    // 置いていたため、軸の目盛りから離れて見えた。2026-11-09、ユーザー指摘で変更）。
+    svgParts.push('<text x="16" y="' + axisCenterY + '" text-anchor="middle" font-size="10" fill="var(--ink-soft)" transform="rotate(-90 16 ' + axisCenterY + ')">' + escapeHtml(opts.leftUnitLabel) + '（左軸）</text>');
+    svgParts.push('<text x="' + (marginLeft + plotWidth + 46) + '" y="' + axisCenterY + '" text-anchor="middle" font-size="10" fill="var(--ink-soft)" transform="rotate(90 ' + (marginLeft + plotWidth + 46) + ' ' + axisCenterY + ')">' + escapeHtml(opts.rightUnitLabel) + '（右軸）</text>');
 
     var barInteractive = [];
     var lineInteractive = [];
@@ -463,9 +466,10 @@
     legendHtml += '<span class="combo-legend-item"><span class="legend-swatch" style="background:' + opts.lineSeries.color + ';border-radius:50%;"></span>' + escapeHtml(opts.lineSeries.label) + '（右軸・' + escapeHtml(opts.rightUnitLabel) + '）</span>';
     legend.innerHTML = legendHtml;
 
+    // viewBoxだけで縦横比を保たせ、横幅は常にコンテナいっぱい（100%）に収める＝横スクロール不要にする
+    // （2026-11-09、以前はwidth/height固定＋min-widthで、画面幅が足りないと横スクロールが必須だった）。
     var scrollWrap = document.createElement('div');
-    scrollWrap.style.overflowX = 'auto';
-    scrollWrap.innerHTML = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" width="' + svgW + '" height="' + svgH + '" style="display:block;min-width:' + Math.min(svgW, 1000) + 'px;">' + svgParts.join('') + '</svg>';
+    scrollWrap.innerHTML = '<svg viewBox="0 0 ' + svgW + ' ' + svgH + '" style="display:block;width:100%;height:auto;">' + svgParts.join('') + '</svg>';
 
     var chartDiv = document.createElement('div');
     chartDiv.appendChild(legend);
@@ -608,7 +612,17 @@
     currentMonthRows.sort(function (a, b) { return b.qty - a.qty; });
     buildBarRanking(document.getElementById('currentMonthRanking'), currentMonthRows, { color: 'var(--series-dim)' });
 
-    buildDonut(document.getElementById('categoryDonut'), data.byCategory);
+    // 大分類別の内訳も前月分に絞る（2026-11-09、以前は全期間の累計だった）。
+    // monthlyのdetails（key="category|||detail"→個数）をdetailColumnsでkey→categoryに引き直して集計し直す。
+    document.getElementById('categoryDonutTitle').textContent = prevMonth.month.replace('-', '年') + '月分 大分類別の内訳';
+    var keyToCategory = {};
+    data.detailColumns.forEach(function (c) { keyToCategory[c.key] = c.category; });
+    var prevMonthByCategory = {};
+    Object.keys(prevMonth.details || {}).forEach(function (key) {
+      var cat = keyToCategory[key];
+      if (cat) prevMonthByCategory[cat] = (prevMonthByCategory[cat] || 0) + prevMonth.details[key];
+    });
+    buildDonut(document.getElementById('categoryDonut'), Object.keys(prevMonthByCategory).map(function (c) { return { category: c, qty: prevMonthByCategory[c] }; }));
 
     // パレート図：個数の多い順（byDetailは既に降順）に累積%を計算
     var paretoRows = data.byDetail.slice(0, 10);
@@ -619,7 +633,7 @@
       categories: paretoRows.map(function (r) { return r.detail; }),
       barSeries: [{ label: '個数', color: 'var(--series-dim)', values: paretoRows.map(function (r) { return r.qty; }) }],
       lineSeries: { label: '累積比率', color: 'var(--accent-ink)', values: cumPct },
-      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100
+      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, groupWidth: 72
     });
 
     // 月別推移グラフは直近1年分（現在の月から過去12か月）だけに絞る（2026-11-09追加）。
@@ -633,7 +647,7 @@
         { label: '不良個数', color: 'var(--series-dim)', values: recentMonthly.map(function (r) { return r.defectQty; }) }
       ],
       lineSeries: { label: '不良率', color: 'var(--accent-ink)', values: recentMonthly.map(function (r) { return r.rate == null ? null : r.rate * 100; }) },
-      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, pctDecimals: 2
+      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, pctDecimals: 2, groupWidth: 72
     });
 
     buildMonthlyDetailTable(document.getElementById('monthlyDetailTable'), recentMonthly, data.detailColumns);
