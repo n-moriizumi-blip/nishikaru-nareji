@@ -176,10 +176,10 @@
 
     <div class="section">
       <div class="section-head">
-        <h2><span class="bar"></span>不良内容パレート図</h2>
+        <h2><span class="bar"></span><span id="paretoTitle">不良内容パレート図</span></h2>
       </div>
-      <p class="empty-note" style="padding-top:0;">左軸＝個数（バー）、右軸＝累積比率（線）。個数の多い順に並べ、上位項目が全体の何割を占めるかを見る図。</p>
-      <div id="detailPareto"></div>
+      <p class="empty-note" style="padding-top:0;">左軸＝個数（バー）、右軸＝累積比率（線）。大分類（刃物欠け・折れ／寸法不良／外観不良／その他）ごとに、その中の項目だけで個数の多い順に並べ、上位項目が大分類全体の何割を占めるかを見る図。前月分。</p>
+      <div id="paretoByCategory"></div>
     </div>
 
     <div class="section">
@@ -627,16 +627,44 @@
     });
     buildDonut(document.getElementById('categoryDonut'), Object.keys(prevMonthByCategory).map(function (c) { return { category: c, qty: prevMonthByCategory[c] }; }));
 
-    // パレート図：個数の多い順（byDetailは既に降順）に累積%を計算
-    var paretoRows = data.byDetail.slice(0, 10);
-    var paretoTotal = data.byDetail.reduce(function (s, r) { return s + r.qty; }, 0) || 1;
-    var cum = 0;
-    var cumPct = paretoRows.map(function (r) { cum += r.qty; return (cum / paretoTotal) * 100; });
-    buildDualAxisCombo(document.getElementById('detailPareto'), {
-      categories: paretoRows.map(function (r) { return r.detail; }),
-      barSeries: [{ label: '個数', color: 'var(--series-dim)', values: paretoRows.map(function (r) { return r.qty; }) }],
-      lineSeries: { label: '累積比率', color: 'var(--accent-ink)', values: cumPct },
-      leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, groupWidth: 72
+    // パレート図：前月分を大分類（刃物欠け・折れ／寸法不良／外観不良／その他）ごとに分けて、
+    // それぞれの中だけで個数の多い順→累積比率を計算する（2026-11-09、旧シートの構成に合わせて変更。
+    // 以前は大分類を混ぜたまま全期間の上位10件だった）。
+    document.getElementById('paretoTitle').textContent = prevMonth.month.replace('-', '年') + '月分 不良内容パレート図（大分類別）';
+    var paretoContainer = document.getElementById('paretoByCategory');
+    paretoContainer.innerHTML = '';
+    var detailMeta = {}; // key(="category|||detail") -> {category, detail}
+    data.detailColumns.forEach(function (c) { detailMeta[c.key] = c; });
+    var rowsByCategory = {};
+    CATEGORY_ORDER.forEach(function (cat) { rowsByCategory[cat] = []; });
+    Object.keys(prevMonth.details || {}).forEach(function (key) {
+      var meta = detailMeta[key];
+      var qty = prevMonth.details[key];
+      if (meta && qty > 0 && rowsByCategory[meta.category]) {
+        rowsByCategory[meta.category].push({ detail: meta.detail, qty: qty });
+      }
+    });
+    CATEGORY_ORDER.forEach(function (cat) {
+      var rows = rowsByCategory[cat].sort(function (a, b) { return b.qty - a.qty; });
+      var catTotal = rows.reduce(function (s, r) { return s + r.qty; }, 0);
+      var subWrap = document.createElement('div');
+      subWrap.style.marginBottom = '24px';
+      subWrap.innerHTML = '<div style="font-size:0.84rem;font-weight:700;color:var(--ink);margin-bottom:8px;">' +
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:' + CATEGORY_COLOR[cat] + ';margin-right:6px;vertical-align:-1px;"></span>' +
+        escapeHtml(cat) + '（計' + catTotal + '個）</div>';
+      var chartDiv = document.createElement('div');
+      subWrap.appendChild(chartDiv);
+      paretoContainer.appendChild(subWrap);
+      if (!rows.length) { chartDiv.innerHTML = '<p class="empty-note">データがありません</p>'; return; }
+      var cum = 0;
+      var total = catTotal || 1;
+      var cumPct = rows.map(function (r) { cum += r.qty; return (cum / total) * 100; });
+      buildDualAxisCombo(chartDiv, {
+        categories: rows.map(function (r) { return r.detail; }),
+        barSeries: [{ label: '個数', color: CATEGORY_COLOR[cat], values: rows.map(function (r) { return r.qty; }) }],
+        lineSeries: { label: '累積比率', color: 'var(--accent-ink)', values: cumPct },
+        leftUnitLabel: '個', rightUnitLabel: '%', rightMax: 100, groupWidth: 72
+      });
     });
 
     // 月別推移グラフは直近1年分（現在の月から過去12か月）だけに絞る（2026-11-09追加）。
