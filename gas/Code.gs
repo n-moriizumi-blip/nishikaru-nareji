@@ -1487,10 +1487,11 @@ function buildProcessDefectDashboardData_() {
 
       if (sub.workDate) {
         var ym = sub.workDate.slice(0, 7); // "yyyy-MM-dd" -> "yyyy-MM"
-        if (!byMonth[ym]) byMonth[ym] = { defectQty: 0, incidentCount: 0, details: {} };
+        if (!byMonth[ym]) byMonth[ym] = { defectQty: 0, incidentCount: 0, details: {}, zubanSet: {} };
         byMonth[ym].defectQty += d.qty;
         byMonth[ym].incidentCount++;
         byMonth[ym].details[dKey] = (byMonth[ym].details[dKey] || 0) + d.qty;
+        byMonth[ym].zubanSet[sub.zuban] = true; // KPIタイルの「当月の対象品番数」用（2026-11-09追加）
       }
     });
   });
@@ -1499,7 +1500,7 @@ function buildProcessDefectDashboardData_() {
   Object.keys(byMonth).forEach(function (k) { monthKeys[k] = true; });
   Object.keys(qtyByMonth).forEach(function (k) { monthKeys[k] = true; });
   var monthly = Object.keys(monthKeys).sort().map(function (ym) {
-    var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0, details: {} };
+    var defect = byMonth[ym] || { defectQty: 0, incidentCount: 0, details: {}, zubanSet: {} };
     var iproQty = qtyByMonth[ym] || 0;
     var rawQty = rawCompletedByMonth[ym] || 0;
     // I-PRO同期データ（進捗状況照会）は直近数ヶ月分しか保持しないため、加工数スナップショットの
@@ -1513,6 +1514,7 @@ function buildProcessDefectDashboardData_() {
       month: ym,
       defectQty: defect.defectQty,
       incidentCount: defect.incidentCount,
+      zubanCount: Object.keys(defect.zubanSet || {}).length, // KPIタイル「前月の対象品番数」用
       completedQty: completedQty,
       completedQtySource: completedQtySource,
       rate: completedQty > 0 ? defect.defectQty / completedQty : null,
