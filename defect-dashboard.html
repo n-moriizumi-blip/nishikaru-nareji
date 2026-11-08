@@ -101,7 +101,7 @@
 
   /* 円グラフ＋凡例 */
   .donut-wrap { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
-  .donut-wrap svg { flex: 0 0 180px; }
+  .donut-wrap svg { flex: 0 0 340px; width: 340px; max-width: 100%; height: auto; }
   .legend { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 180px; }
   .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
   .legend-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
@@ -296,7 +296,7 @@
       return { category: cat, qty: found ? found.qty : 0 };
     }).filter(function (r) { return r.qty > 0; });
 
-    var r = 70, cx = 90, cy = 90, inner = 40;
+    var r = 150, cx = 170, cy = 170, inner = 85; // ユーザー指摘により大きく表示（2026-11-09、以前の約2倍）
     var angle = -90;
     var paths = '';
     ordered.forEach(function (seg) {
@@ -328,9 +328,9 @@
     });
     legendHtml += '</div>';
     wrap.innerHTML =
-      '<svg viewBox="0 0 180 180" role="img" aria-label="大分類別の不良個数内訳">' + paths +
-      '<text x="90" y="85" text-anchor="middle" font-size="11" fill="var(--ink-soft)">合計</text>' +
-      '<text x="90" y="103" text-anchor="middle" font-size="18" font-weight="700" fill="var(--ink)">' + total + '</text>' +
+      '<svg viewBox="0 0 340 340" role="img" aria-label="大分類別の不良個数内訳">' + paths +
+      '<text x="170" y="163" text-anchor="middle" font-size="14" fill="var(--ink-soft)">合計</text>' +
+      '<text x="170" y="195" text-anchor="middle" font-size="30" font-weight="700" fill="var(--ink)">' + total + '</text>' +
       '</svg>' + legendHtml;
     container.appendChild(wrap);
 
