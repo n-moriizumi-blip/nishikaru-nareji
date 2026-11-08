@@ -1277,15 +1277,26 @@ function importProcessDefectHistory() {
   var zubanCol = header.indexOf('図番');
   var dateCol = header.indexOf('加工日');
 
-  // 図番→品名のキャッシュ（11ファイル分を通して使い回し、同じ図番への重複問い合わせを避ける。
-  // 品名が引けない図番は空欄のまま取り込む、とユーザー確認済み）。
-  var hinmeiCache = {};
-  var getHinmei = function (zuban) {
-    if (!(zuban in hinmeiCache)) {
-      try { hinmeiCache[zuban] = lookupZubanMaster_(zuban).hinmei || ''; }
-      catch (e) { hinmeiCache[zuban] = ''; }
+  // 図番→品名の高速ルックアップ。「図番インデックス」シートを1回だけ読み込んでメモリ上の
+  // 対応表を作る方式にした（2026-11-08修正）。当初は`lookupZubanMaster_`を図番ごとに呼んでいたが、
+  // インデックスに無い図番（過去データは未登録のものが多い）はI-PRO全データの全タブスキャンという
+  // 重い処理にフォールバックする仕組みのため、合計でGASの実行時間上限（6分）に達して止まってしまった
+  // （実機で確認）。インデックスに無い図番は品名空欄のまま取り込む方針のため、この遅いフォールバックは
+  // そもそも不要と判断し、インデックスの直接参照だけで済ませるようにした。
+  var hinmeiByZubanKey_ = {};
+  (function () {
+    var idxSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+    if (!idxSheet || idxSheet.getLastRow() < 2) return;
+    var idxValues = idxSheet.getDataRange().getValues();
+    var idxHeader = idxValues[0];
+    var idxZubanCol = idxHeader.indexOf('図番');
+    var idxHinmeiCol = idxHeader.indexOf('品名');
+    for (var ii = 1; ii < idxValues.length; ii++) {
+      if (idxValues[ii][idxHinmeiCol]) hinmeiByZubanKey_[numericZubanKey_(idxValues[ii][idxZubanCol])] = idxValues[ii][idxHinmeiCol];
     }
-    return hinmeiCache[zuban];
+  })();
+  var getHinmei = function (zuban) {
+    return hinmeiByZubanKey_[numericZubanKey_(zuban)] || '';
   };
 
   // 先に11ファイル分をすべて解析してからまとめて書き込む（1件ずつsheet操作すると遅く、
