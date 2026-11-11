@@ -667,7 +667,7 @@ function findPastTrouble_(zuban, tokuisakiCode) {
   items = items.concat(findSharedQualityInfoFromKensaPortal_(zuban));
   fkFiles.forEach(function (f) {
     pushUnique({
-      source: '改善計画書',
+      source: '不適合改善計画書', // 2026-11-11、表示ラベルを「改善計画書」から変更（ユーザー指摘）
       title: f.name,
       url: f.url,
       note: '一行要約（不適合事象）の自動抽出は未実装。まずはフォルダへのリンクのみ。'

@@ -403,7 +403,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.8.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.8.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -1365,7 +1365,7 @@
           }
           list.appendChild(card);
         } else {
-          // 既存の「品質情報」スプレッドシート／改善計画書フォルダ（Drive検索、リンクのみ）
+          // 不適合改善計画書フォルダ（Drive検索、リンクのみ。品質情報は2026-11-11以降、上のtip-card側で表示）
           var div = document.createElement('div');
           div.className = 'alert-item';
           var titleText = item.title || item.source;
