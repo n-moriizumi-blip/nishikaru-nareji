@@ -56,7 +56,7 @@
   .rail.expanded .rail-brand-text, .rail:hover .rail-brand-text, .rail:focus-within .rail-brand-text { display: block; }
 
   .nav-btn { display: flex; align-items: center; gap: 14px; padding: 13px 16px; background: none; border: none; color: var(--rail-dim); white-space: nowrap; width: 100%; text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-sizing: border-box; }
-  .nav-btn .ic { flex: none; width: 22px; height: 22px; }
+  .nav-btn .ic { flex: none; width: 22px; text-align: center; font-size: 19px; line-height: 1; } /* 絵文字アイコン（2026-11-11、線画SVGから変更） */
   .nav-btn .lbl { font-size: 13.5px; font-weight: 700; display: none; }
   .rail.expanded .nav-btn .lbl, .rail:hover .nav-btn .lbl, .rail:focus-within .nav-btn .lbl { display: inline; }
   .nav-btn.active { background: var(--rail-active); color: #fff; }
@@ -403,50 +403,50 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.6.8</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.7.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <span class="ic">🔍</span>
         <span class="lbl">図番検索</span>
       </button>
       <button type="button" class="nav-btn" id="railHistoryBtn" data-rail="history">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span class="ic">📋</span>
         <span class="lbl">過去トラ・共有情報</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railToolMemoBtn" data-rail="tools" data-tool-tab="memo">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <span class="ic">📝</span>
         <span class="lbl">ツール配置メモ</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railToolLayoutBtn" data-rail="tools" data-tool-tab="layout">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        <span class="ic">🧰</span>
         <span class="lbl">ツールレイアウト</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railDefectBtn" data-rail="processDefect">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l9 17H3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+        <span class="ic">⚠️</span>
         <span class="lbl">工程内不良入力</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railPaperBtn" data-rail="paperImport">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.4-2.2h5.2L16 7"/><circle cx="12" cy="13.5" r="3.4"/></svg>
+        <span class="ic">📷</span>
         <span class="lbl">紙の取込確認</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <button type="button" class="nav-btn" id="railQiBtn" data-rail="qi">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3.5h6v2.5H9zM8.5 11h7M8.5 15h4.5"/></svg>
+        <span class="ic">📔</span>
         <span class="lbl">品質情報記録</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
       <a class="nav-btn" id="railDashboardBtn" href="defect-dashboard.html" target="_blank" rel="noopener">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20V11M11 20V4M18 20v-7M2 20h20"/></svg>
+        <span class="ic">📊</span>
         <span class="lbl">不良ダッシュボード</span>
       </a>
       <!-- 2026-11-09追加：引っ張って更新を無効化した（v1.31.4）ので、アプリ側に明示的な
            再読み込み手段を用意しておく（PWAとしてインストールしているとブラウザの更新ボタンが無いため）。 -->
       <button type="button" class="nav-btn" id="railReloadBtn">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.66-5.66M20 12a8 8 0 0 1-13.66 5.66"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
+        <span class="ic">🔄</span>
         <span class="lbl">再読み込み</span>
       </button>
 
