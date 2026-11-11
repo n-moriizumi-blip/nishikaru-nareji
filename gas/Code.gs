@@ -28,6 +28,14 @@ var IPRO_PROGRESS_SPREADSHEET_ID = '1F9Iu5t62WDW5lg_eeEa6XW9ngCUJ2DmXTKjqd5oXrac
 // 社員マスタ「組織図マスタ」。氏名・Mail Address・課名・工程名の列を持つ。部署ごとの機能出し分けに使う。
 var ORG_MASTER_SPREADSHEET_ID = '1fffjE_bwrzswvRO62U0OHwvqrs5b_UuSV5IbudUMxec';
 
+// 「検査記録ポータル マスタ」。旧・図番ごとの「{図番} 品質情報」スプレッドシート（Driveの個別ファイル）は
+// 検査記録ポータル側に統合・移行済み（2026-11-11、ユーザー確認）。「品質情報」タブの構成は
+// 西軽精機ナレッジ自身のSHEET_QUALITY_LOGと同じ（投稿ID/タイムスタンプ/図番/部署/外観ランク/内容/
+// 写真URL/共有フラグ/投稿者名/投稿者メール）。編集・削除は検査記録ポータル側で行う前提のため、
+// 西軽精機ナレッジ側は共有フラグ=trueの行を閲覧専用で表示するだけに留める。
+var KENSA_PORTAL_MASTER_SPREADSHEET_ID = '1dT9bSPSSQfgw7avxu-inPsKWpmOo_XWVIbY2L-4WxYw';
+var KENSA_PORTAL_SHEET_QUALITY = '品質情報';
+
 // Google OAuthクライアントID（index.htmlのGOOGLE_CLIENT_IDと同じ値）。IDトークンのサーバー側検証で、
 // 他アプリ向けに発行されたトークンを受け付けないようaudクレームと突き合わせるのに使う。
 var OAUTH_CLIENT_ID = '800178947678-t49i9pr40ci70th6dgpuslfr4dldqjqh.apps.googleusercontent.com';
@@ -653,15 +661,10 @@ function findPastTrouble_(zuban, tokuisakiCode) {
     });
   }
 
-  qiFiles.forEach(function (f) {
-    pushUnique({
-      source: '品質情報',
-      title: f.name,
-      url: f.url,
-      // TODO: シート本文の読み取り・日付ごとのコメント抽出・Sheet.getImages()での写真検出は未実装
-      note: 'シート本文の要約読み取りは未実装。まずはリンクのみ。'
-    }, f.url);
-  });
+  // 旧・図番ごとの「{図番} 品質情報」スプレッドシート（qiFiles、Drive検索）は検査記録ポータルへの
+  // 統合移行により廃止。代わりに検査記録ポータル マスタの「品質情報」タブから、共有フラグ=trueの
+  // 行を閲覧専用のtip-cardとして表示する（2026-11-11追加）。
+  items = items.concat(findSharedQualityInfoFromKensaPortal_(zuban));
   fkFiles.forEach(function (f) {
     pushUnique({
       source: '改善計画書',
@@ -697,30 +700,18 @@ function findPastTrouble_(zuban, tokuisakiCode) {
  * 共有ドライブ全体を対象に検索する（Advanced Drive Serviceで共有ドライブ対応済みのため可能）。
  */
 function scanPastTroubleFiles_(zuban, tokuisakiCode) {
+  // 旧・図番ごとの「{図番} 品質情報」スプレッドシートのDrive検索は廃止（検査記録ポータルへ統合移行済み、
+  // 2026-11-11）。qiは常に空配列（findSharedQualityInfoFromKensaPortal_側で表示するため）。
   var qi = [];
   var parentName = '';
   var zubanFolder = findZubanFolder_(zuban, tokuisakiCode);
   if (zubanFolder) {
-    driveFilesList_(
-      "name contains '品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + zubanFolder.getId() + "' in parents"
-    ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
-
-    // 類似図番をまとめる「シリーズ」フォルダの下に個別の図番フォルダが分かれているケースでは、
-    // 品質情報は個々の図番フォルダではなく親（シリーズ）フォルダに共通で1つだけ置かれていることがある
+    // 類似図番をまとめる「シリーズ」フォルダの下に個別の図番フォルダが分かれているケースがあるため、
+    // 親フォルダ名は品質情報記録ログの共有投稿（findSharedEntries_）を親名でも探すために控えておく
     // （実例：池田ネジ商会/FV-60-001-E(シリーズ)/FV-60-001-E-R1.25 等、2026-09-04ユーザー確認）。
-    // 親フォルダ名は品質情報記録ログの共有投稿（findSharedEntries_）を親名でも探すために常に控えておく。
     var parents = zubanFolder.getParents();
     if (parents.hasNext()) {
-      var parentFolder = parents.next();
-      parentName = parentFolder.getName();
-      // qiが個別フォルダ内に見つからなければ親フォルダも見る。ただし親フォルダ内の無関係な
-      // ファイルまで拾わないよう、「{親フォルダ名} 品質情報」という命名規則に厳密一致するものだけを対象にする。
-      if (qi.length === 0) {
-        var parentNameEsc = String(parentName).replace(/'/g, "\\'");
-        driveFilesList_(
-          "name = '" + parentNameEsc + " 品質情報' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and '" + parentFolder.getId() + "' in parents"
-        ).forEach(function (f) { qi.push({ name: f.name, url: f.webViewLink }); });
-      }
+      parentName = parents.next().getName();
     }
   }
 
@@ -748,6 +739,39 @@ function findSharedEntries_(sheetName, zuban) {
   for (var i = 1; i < rows.length; i++) {
     if (numericZubanKey_(rows[i][zubanCol]) === key && rows[i][shareCol] === true) {
       out.push({ source: sheetName, row: rowToObject_(header, rows[i]) });
+    }
+  }
+  return out;
+}
+
+/**
+ * 検査記録ポータル マスタの「品質情報」タブから、指定図番・共有フラグ=trueの行を読む
+ * （2026-11-11追加。旧・図番ごとの「{図番} 品質情報」スプレッドシートの後継。KENSA_PORTAL_*参照）。
+ * 編集・削除は検査記録ポータル側で行う前提のため、ここでは閲覧専用として返す
+ * （item.sourceを'品質情報記録ログ'と区別し、フロント側で編集ボタンを出さないようにしてある）。
+ */
+function findSharedQualityInfoFromKensaPortal_(zuban) {
+  var sheet;
+  try {
+    sheet = SpreadsheetApp.openById(KENSA_PORTAL_MASTER_SPREADSHEET_ID).getSheetByName(KENSA_PORTAL_SHEET_QUALITY);
+  } catch (e) {
+    return []; // アクセス不可・シート構成変更等でも⑥画面全体を壊さないようにする
+  }
+  if (!sheet) return [];
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length < 2) return [];
+  var header = rows[0];
+  var zubanCol = header.indexOf('図番');
+  var shareCol = header.indexOf('共有フラグ');
+  var key = numericZubanKey_(zuban);
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var shared = rows[i][shareCol];
+    var isShared = shared === true || String(shared).toLowerCase() === 'true';
+    if (isShared && numericZubanKey_(rows[i][zubanCol]) === key) {
+      var obj = rowToObject_(header, rows[i]);
+      obj['共有フラグ'] = true; // 文字列"true"等でも以後のフロント側判定(===true)が効くよう正規化
+      out.push({ source: '品質情報（検査記録ポータル）', row: obj });
     }
   }
   return out;

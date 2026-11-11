@@ -403,7 +403,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.7.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.8.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -1326,8 +1326,10 @@
     // 品証の記録（旧・検査、SHEET_QUALITY_LOGの部署='品証'）は検査記録ポータルへ移行済みのため、
     // 過去トラ・共有情報の一覧からも除外する（2026-11-09、閲覧も含めて西軽精機ナレッジ側では
     // 表示しない方針。データ自体は削除せずシートに残したまま）。
+    // ただし検査記録ポータル マスタから読む新データ（品質情報（検査記録ポータル））はこの除外の
+    // 対象外とする（2026-11-11追加、ユーザー確認：この移行先データは改めて閲覧表示したい）。
     var pastTrouble = (data.pastTrouble || []).filter(function (item) {
-      return !(item.row && item.row['部署'] === '品証');
+      return !(item.row && item.row['部署'] === '品証' && item.source === '品質情報記録ログ');
     });
     var hasTrouble = pastTrouble.length > 0;
     document.getElementById('pastTroubleWrap').style.display = hasTrouble ? 'block' : 'none';
@@ -1349,7 +1351,9 @@
           // （一度hideContent/hideTitleを付けたが、ユーザー指摘「共有にしたら内容が表示されない」
           // を受けて撤回。内容を隠すのは下の「部署別の情報を見る→加工」タブ限定の方針にした）。
           var isQualityLog = item.source === '品質情報記録ログ';
-          var card = buildTipCard(item.row, {
+          // 検査記録ポータル側のデータは閲覧専用（編集・削除は検査記録ポータルで行う、2026-11-11追加）。
+          var isExternalKensaPortal = item.source === '品質情報（検査記録ポータル）';
+          var card = buildTipCard(item.row, isExternalKensaPortal ? { editable: false } : {
             editable: true,
             onEdit: isQualityLog ? startEditQualityLog : startEditMemoFromHistory,
             onDelete: isQualityLog ? deleteQualityLogEntry : deleteMemoFromHistory
