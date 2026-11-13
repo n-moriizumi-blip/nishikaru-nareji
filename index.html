@@ -403,7 +403,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.8.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.9.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -3676,34 +3676,31 @@
   // 図番・加工日が同じ既存の投稿があれば、送信すると上書きされてしまうため、事前にその内容を
   // 読み込んで表示する（2026-10-25追加、ユーザー要望）。無ければ何もしない（直前にリセットした
   // QR由来の初期値のまま）。
+  // 以前はGAS側（action=lookupProcessDefect）へ毎回問い合わせていたが、必要な情報は
+  // currentZubanData.processDefects（zubanInfo取得時に既に届いている）にすべて含まれているため、
+  // 通信を1往復減らすためクライアント側で絞り込むだけに変更した（2026-11-13、速度改善）。
   function loadExistingDefectForDate_() {
     if (!currentZubanData) return;
     var workDate = document.getElementById('defectDateInput').value;
     var statusEl = document.getElementById('defectStatus');
     if (!workDate) { statusEl.textContent = ''; return; }
-    fetch(GAS_API_URL + '?action=lookupProcessDefect&zuban=' + encodeURIComponent(currentZubanData.zuban) + '&workDate=' + encodeURIComponent(workDate))
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        // 応答が返る前に加工日が変更されていたら、古い結果なので無視する
-        if (document.getElementById('defectDateInput').value !== workDate) return;
-        if (res.found) {
-          document.getElementById('defectMachineInput').value = res.machineName || '';
-          document.getElementById('defectMachineNoInput').value = res.machineNo || '';
-          document.getElementById('defectMaterialInput').value = res.material || '';
-          document.getElementById('defectGoodQtyInput').value = res.goodQty || 0;
-          document.getElementById('defectDimensionQtyInput').value = res.dimensionCheckQty || 0;
-          document.getElementById('defectNoteInput').value = res.note || '';
-          document.getElementById('defectDetailRows').innerHTML = '';
-          var details = res.defectDetails || [];
-          if (details.length === 0) addDefectDetailRow_('', '', 0);
-          else details.forEach(function (d) { addDefectDetailRow_(d.category, d.detail, d.qty); });
-          recalcDefectTotal_();
-          statusEl.textContent = 'この図番・この日付の入力が既にあります（前回の内容を表示中。送信すると上書きされます）';
-        } else {
-          statusEl.textContent = '';
-        }
-      })
-      .catch(function () {});
+    var sub = (currentZubanData.processDefects || []).filter(function (s) { return s.workDate === workDate; })[0];
+    if (sub) {
+      document.getElementById('defectMachineInput').value = sub.machineName || '';
+      document.getElementById('defectMachineNoInput').value = sub.machineNo || '';
+      document.getElementById('defectMaterialInput').value = sub.material || '';
+      document.getElementById('defectGoodQtyInput').value = sub.goodQty || 0;
+      document.getElementById('defectDimensionQtyInput').value = sub.dimensionCheckQty || 0;
+      document.getElementById('defectNoteInput').value = sub.note || '';
+      document.getElementById('defectDetailRows').innerHTML = '';
+      var details = sub.details || [];
+      if (details.length === 0) addDefectDetailRow_('', '', 0);
+      else details.forEach(function (d) { addDefectDetailRow_(d.category, d.detail, d.qty); });
+      recalcDefectTotal_();
+      statusEl.textContent = 'この図番・この日付の入力が既にあります（前回の内容を表示中。送信すると上書きされます）';
+    } else {
+      statusEl.textContent = '';
+    }
   }
   document.getElementById('defectDateInput').addEventListener('change', function () {
     resetDefectFormFieldsExceptDate_();

@@ -425,14 +425,18 @@ function scanZuban_(seiban) {
  * 　実在するのにまだインデックスに載っていない図番は部分一致でも拾えないことがあるため、2026-09-03追加）。
  * 数字だけの図番は頭0の有無に関わらず同じ図番として扱う（numericZubanKey_、既存の頭0落ち対策と同じ考え方）。
  */
-function searchZubanCandidates_(query) {
-  if (!query) return { error: 'query is required' };
-  var queryKey = numericZubanKey_(query);
-  var queryLower = String(query).trim().toLowerCase();
+/**
+ * 図番インクリメンタル検索（searchZubanCandidates_）用に、「図番インデックス」の図番・品名列だけを
+ * 軽量な配列にして5分キャッシュする（2026-11-13の速度調査で追加。入力のたびにデバウンスはしているが、
+ * それでも毎回別のリクエストとして全件を読み直していたため、タイピング中の候補表示が重かった）。
+ */
+function getZubanIndexLite_() {
+  var cacheKey = 'zubanIndexLite';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
 
-  var exact = null;
-  var partial = [];
-  var seenPartial = {};
+  var list = [];
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
   if (sheet && sheet.getLastRow() >= 2) {
     var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -441,20 +445,36 @@ function searchZubanCandidates_(query) {
     var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     for (var i = 0; i < rows.length; i++) {
       var z = String(rows[i][zubanCol] || '');
-      if (!z) continue;
-      if (!exact && numericZubanKey_(z) === queryKey) {
-        exact = { zuban: z, hinmei: rows[i][hinmeiCol] || '' };
-        continue;
-      }
-      var zLower = z.toLowerCase();
-      // 双方向の部分一致：インデックス側の図番が入力値を含む場合だけでなく、逆に入力値が
-      // インデックス側の図番を含む場合（余分な文字を打ってしまった等）も候補に拾う
-      // （2026-09-03、片方向だけだったのを修正。「部分一致しているのに候補が出ない」というユーザー報告で発覚）。
-      if (!seenPartial[z] && (zLower.indexOf(queryLower) !== -1 || queryLower.indexOf(zLower) !== -1)) {
-        seenPartial[z] = true;
-        partial.push({ zuban: z, hinmei: rows[i][hinmeiCol] || '' });
-        if (partial.length >= 10) break;
-      }
+      if (z) list.push({ zuban: z, hinmei: rows[i][hinmeiCol] || '' });
+    }
+  }
+  try { cache.put(cacheKey, JSON.stringify(list), 300); } catch (e) {} // サイズ超過等は無視して素通りさせる
+  return list;
+}
+
+function searchZubanCandidates_(query) {
+  if (!query) return { error: 'query is required' };
+  var queryKey = numericZubanKey_(query);
+  var queryLower = String(query).trim().toLowerCase();
+
+  var exact = null;
+  var partial = [];
+  var seenPartial = {};
+  var list = getZubanIndexLite_();
+  for (var i = 0; i < list.length; i++) {
+    var z = list[i].zuban;
+    if (!exact && numericZubanKey_(z) === queryKey) {
+      exact = { zuban: z, hinmei: list[i].hinmei };
+      continue;
+    }
+    var zLower = z.toLowerCase();
+    // 双方向の部分一致：インデックス側の図番が入力値を含む場合だけでなく、逆に入力値が
+    // インデックス側の図番を含む場合（余分な文字を打ってしまった等）も候補に拾う
+    // （2026-09-03、片方向だけだったのを修正。「部分一致しているのに候補が出ない」というユーザー報告で発覚）。
+    if (!seenPartial[z] && (zLower.indexOf(queryLower) !== -1 || queryLower.indexOf(zLower) !== -1)) {
+      seenPartial[z] = true;
+      partial.push({ zuban: z, hinmei: list[i].hinmei });
+      if (partial.length >= 10) break;
     }
   }
 
@@ -724,9 +744,8 @@ function scanPastTroubleFiles_(zuban, tokuisakiCode) {
 }
 
 function findSharedEntries_(sheetName, zuban) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return [];
-  var rows = sheet.getDataRange().getValues();
+  var rows = getSheetValuesMemo_(sheetName);
+  if (!rows) return [];
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
   var shareCol = header.indexOf('共有フラグ');
@@ -751,30 +770,50 @@ function findSharedEntries_(sheetName, zuban) {
  * （item.sourceを'品質情報記録ログ'と区別し、フロント側で編集ボタンを出さないようにしてある）。
  */
 function findSharedQualityInfoFromKensaPortal_(zuban) {
-  var sheet;
+  var map = getKensaPortalSharedQualityMap_();
+  var rows = map[numericZubanKey_(zuban)] || [];
+  return rows.map(function (obj) { return { source: '品質情報（検査記録ポータル）', row: obj }; });
+}
+
+/**
+ * 検査記録ポータル マスタの「品質情報」シート全体を1回読み、共有フラグ=trueの行だけを図番
+ * （正規化キー）ごとにまとめたマップにして5分キャッシュする（2026-11-13の速度調査で追加。
+ * 別スプレッドシートを図番を見るたびに毎回開いて全件読み直していたのが重かったため。
+ * getZubanInfo_自体の5分キャッシュと揃えてあり、一度どれか1つの図番で温まれば、その後5分間は
+ * 他の図番の初回アクセスもこちらのキャッシュが効く）。
+ */
+function getKensaPortalSharedQualityMap_() {
+  var cacheKey = 'kensaPortalSharedQualityMap';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var map = {};
   try {
-    sheet = SpreadsheetApp.openById(KENSA_PORTAL_MASTER_SPREADSHEET_ID).getSheetByName(KENSA_PORTAL_SHEET_QUALITY);
-  } catch (e) {
-    return []; // アクセス不可・シート構成変更等でも⑥画面全体を壊さないようにする
-  }
-  if (!sheet) return [];
-  var rows = sheet.getDataRange().getValues();
-  if (rows.length < 2) return [];
-  var header = rows[0];
-  var zubanCol = header.indexOf('図番');
-  var shareCol = header.indexOf('共有フラグ');
-  var key = numericZubanKey_(zuban);
-  var out = [];
-  for (var i = 1; i < rows.length; i++) {
-    var shared = rows[i][shareCol];
-    var isShared = shared === true || String(shared).toLowerCase() === 'true';
-    if (isShared && numericZubanKey_(rows[i][zubanCol]) === key) {
-      var obj = rowToObject_(header, rows[i]);
-      obj['共有フラグ'] = true; // 文字列"true"等でも以後のフロント側判定(===true)が効くよう正規化
-      out.push({ source: '品質情報（検査記録ポータル）', row: obj });
+    var sheet = SpreadsheetApp.openById(KENSA_PORTAL_MASTER_SPREADSHEET_ID).getSheetByName(KENSA_PORTAL_SHEET_QUALITY);
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      if (rows.length >= 2) {
+        var header = rows[0];
+        var zubanCol = header.indexOf('図番');
+        var shareCol = header.indexOf('共有フラグ');
+        for (var i = 1; i < rows.length; i++) {
+          var shared = rows[i][shareCol];
+          var isShared = shared === true || String(shared).toLowerCase() === 'true';
+          if (!isShared) continue;
+          var obj = rowToObject_(header, rows[i]);
+          obj['共有フラグ'] = true; // 文字列"true"等でも以後のフロント側判定(===true)が効くよう正規化
+          var key = numericZubanKey_(rows[i][zubanCol]);
+          if (!map[key]) map[key] = [];
+          map[key].push(obj);
+        }
+      }
     }
+  } catch (e) {
+    return {}; // アクセス不可・シート構成変更等でも⑥画面全体を壊さないようにする（この場合はキャッシュしない）
   }
-  return out;
+  try { cache.put(cacheKey, JSON.stringify(map), 300); } catch (e) {} // サイズ超過等は無視して素通りさせる
+  return map;
 }
 
 function readQualityLog_(zuban) {
@@ -794,10 +833,23 @@ function readShippingSpec_(zuban) {
   return rows.length > 0 ? rows[rows.length - 1] : null; // 図番ごとに1件・上書き想定
 }
 
+// getZubanInfo_1回の実行内で、SHEET_QUALITY_LOG・SHEET_TOOL_MEMOはreadQualityLog_/readToolMemo_
+// から1回ずつ、findPastTrouble_からfindSharedEntries_でさらに1〜2回ずつ（図番用・親フォルダ名用）、
+// 同じシートを毎回getDataRange().getValues()で読み直していた（2026-11-13の速度調査で判明）。
+// この2関数はgetZubanInfo_の読み取り専用の呼び出し経路以外からは呼ばれないため
+// （書き込み系のpost/save関数はこの2つを使わない）、実行中だけ有効なメモ化で安全に省略できる。
+var _sheetValuesMemo_ = {};
+function getSheetValuesMemo_(sheetName) {
+  if (!(sheetName in _sheetValuesMemo_)) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    _sheetValuesMemo_[sheetName] = (sheet && sheet.getLastRow() >= 2) ? sheet.getDataRange().getValues() : null;
+  }
+  return _sheetValuesMemo_[sheetName];
+}
+
 function readRowsByZuban_(sheetName, zuban) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
-  if (!sheet || sheet.getLastRow() < 2) return [];
-  var rows = sheet.getDataRange().getValues();
+  var rows = getSheetValuesMemo_(sheetName);
+  if (!rows) return [];
   var header = rows[0];
   var zubanCol = header.indexOf('図番');
   // findSharedEntries_と同じ理由（数字だけの図番がSheets側で数値型になる）でnumericZubanKey_を使う。
@@ -864,15 +916,22 @@ function requireColumnIndex_(header, columnName) {
   return col;
 }
 
+// getZubanInfo_1回の実行内で、lookupZubanMaster_・findPastTrouble_の両方からfindZubanIndexRow_が
+// 呼ばれ、同じ「図番インデックス」シート（行数が多い）を毎回丸ごと読み直していた（2026-11-13の
+// 速度調査で判明）。実行中だけ有効なメモ化（スクリプトのグローバル変数、リクエストをまたいでは
+// 保持されない）で2回目以降の全件読み直しを省略する。upsertZubanIndex_で書き込んだ直後は破棄する。
+var _zubanIndexSnapshot_ = null;
 function findZubanIndexRow_(zuban) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
-  if (!sheet || sheet.getLastRow() < 2) return null;
-  var values = sheet.getDataRange().getValues();
-  var header = values[0];
+  if (!_zubanIndexSnapshot_) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ZUBAN_INDEX);
+    _zubanIndexSnapshot_ = (sheet && sheet.getLastRow() >= 2) ? sheet.getDataRange().getValues() : [];
+  }
+  if (!_zubanIndexSnapshot_.length) return null;
+  var header = _zubanIndexSnapshot_[0];
   var col = requireColumnIndex_(header, '図番');
   var key = numericZubanKey_(zuban);
-  for (var i = 1; i < values.length; i++) {
-    if (numericZubanKey_(values[i][col]) === key) return rowToObject_(header, values[i]);
+  for (var i = 1; i < _zubanIndexSnapshot_.length; i++) {
+    if (numericZubanKey_(_zubanIndexSnapshot_[i][col]) === key) return rowToObject_(header, _zubanIndexSnapshot_[i]);
   }
   return null;
 }
@@ -905,6 +964,8 @@ function upsertZubanIndex_(zuban, fields) {
     sheet.appendRow(newRow);
   } finally {
     lock.releaseLock();
+    _zubanIndexSnapshot_ = null; // findZubanIndexRow_のメモ化を無効化（書き込み後は必ず読み直す）
+    try { CacheService.getScriptCache().remove('zubanIndexLite'); } catch (e) {} // searchZubanCandidates_のキャッシュも破棄
   }
 }
 
@@ -1031,39 +1092,22 @@ function formatWorkDateForSheet_(isoDateStr) {
  */
 function getProcessDefectByZubanDate_(zuban, workDate) {
   if (!zuban || !workDate) return { found: false };
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { found: false };
-  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var zubanCol = header.indexOf('図番');
-  var dateCol = header.indexOf('加工日');
-  var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
-  var mainRow = null;
+  // getProcessDefectsByZubanMap_と同じキャッシュを使う（2026-11-13、以前はこの関数独自に
+  // 全件読み直していた。postProcessDefect_の上書き判定と同じキー＝図番＋加工日で検索する点は従来通り）。
+  var map = getProcessDefectsByZubanMap_();
+  var subs = map[String(zuban)] || [];
   var targetDate = normalizeDateForCompare_(workDate);
-  for (var i = 0; i < values.length; i++) {
-    if (String(values[i][zubanCol]) === String(zuban) && normalizeDateForCompare_(values[i][dateCol]) === targetDate) {
-      mainRow = rowToObject_(header, values[i]);
-      break;
-    }
-  }
-  if (!mainRow) return { found: false };
-  var id = mainRow['投稿ID'];
-  var details = [];
-  values.forEach(function (row) {
-    var obj = rowToObject_(header, row);
-    if (String(obj['投稿ID']) === String(id) && obj['大分類'] && obj['詳細'] && obj['個数'] !== '') {
-      details.push({ category: obj['大分類'], detail: obj['詳細'], qty: obj['個数'] });
-    }
-  });
+  var sub = subs.filter(function (s) { return s.workDate === targetDate; })[0];
+  if (!sub) return { found: false };
   return {
     found: true,
-    machineName: mainRow['機械名'] || '',
-    machineNo: mainRow['機番'] || '',
-    material: mainRow['材種名'] || '',
-    goodQty: mainRow['良品数'] || 0,
-    dimensionCheckQty: mainRow['寸法出し数'] || 0,
-    note: mainRow['備考'] || '',
-    defectDetails: details
+    machineName: sub.machineName || '',
+    machineNo: sub.machineNo || '',
+    material: sub.material || '',
+    goodQty: sub.goodQty || 0,
+    dimensionCheckQty: sub.dimensionCheckQty || 0,
+    note: sub.note || '',
+    defectDetails: sub.details
   };
 }
 
@@ -1075,39 +1119,77 @@ function getProcessDefectByZubanDate_(zuban, workDate) {
  */
 function readProcessDefects_(zuban) {
   if (!zuban) return [];
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  var idCol = header.indexOf('投稿ID');
-  var zubanCol = header.indexOf('図番');
-  var dateCol = header.indexOf('加工日');
-  var categoryCol = header.indexOf('大分類');
-  var detailCol = header.indexOf('詳細');
-  var qtyCol = header.indexOf('個数');
-  var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
-  var submissions = {}; // 投稿ID -> {zuban, workDate(yyyy-MM-dd), details:[{category,detail,qty}]}
-  values.forEach(function (row) {
-    var id = row[idCol];
-    if (!id) return;
-    if (!submissions[id]) submissions[id] = { zuban: '', workDate: '', details: [] };
-    var sub = submissions[id];
-    if (row[zubanCol]) sub.zuban = row[zubanCol];
-    if (row[dateCol]) sub.workDate = normalizeDateForCompare_(row[dateCol]);
-    var category = row[categoryCol], detail = row[detailCol], qty = row[qtyCol];
-    if (category && detail && qty !== '') {
-      sub.details.push({ category: category, detail: detail, qty: Number(qty) || 0 });
-    }
-  });
-  var result = [];
-  Object.keys(submissions).forEach(function (id) {
-    var sub = submissions[id];
-    if (String(sub.zuban) === String(zuban)) {
-      result.push({ workDate: sub.workDate, details: sub.details });
-    }
-  });
+  var map = getProcessDefectsByZubanMap_();
+  var result = (map[String(zuban)] || []).slice();
   result.sort(function (a, b) { return a.workDate < b.workDate ? 1 : (a.workDate > b.workDate ? -1 : 0); });
   return result;
+}
+
+/**
+ * 「工程内不良ログ」全体を1回読み、投稿ID単位でグループ化してから図番ごとにまとめたマップを
+ * 5分キャッシュする（2026-11-13の速度調査で追加。過去データ移行で1300行超になり、図番を見る
+ * たびに毎回全件を読み直して集計し直すのが重かったため。processDefectDashboardのキャッシュと
+ * 同じ考え方・同じ破棄タイミング）。
+ */
+function getProcessDefectsByZubanMap_() {
+  var cacheKey = 'processDefectsByZuban';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
+  var lastRow = sheet.getLastRow();
+  var map = {};
+  if (lastRow >= 2) {
+    var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var idCol = header.indexOf('投稿ID');
+    var zubanCol = header.indexOf('図番');
+    var dateCol = header.indexOf('加工日');
+    var categoryCol = header.indexOf('大分類');
+    var detailCol = header.indexOf('詳細');
+    var qtyCol = header.indexOf('個数');
+    var machineNameCol = header.indexOf('機械名');
+    var machineNoCol = header.indexOf('機番');
+    var materialCol = header.indexOf('材種名');
+    var goodQtyCol = header.indexOf('良品数');
+    var dimensionQtyCol = header.indexOf('寸法出し数');
+    var noteCol = header.indexOf('備考');
+    var values = sheet.getRange(2, 1, lastRow - 1, header.length).getValues();
+    // 投稿ID -> {zuban, workDate(yyyy-MM-dd), details:[{category,detail,qty}], 機械名/機番/材種名/良品数/寸法出し数/備考}
+    // （機械名等はメイン行にしか入っていない。継続行＝明細の追加行は図番・日付・これらも全て空欄）
+    var submissions = {};
+    values.forEach(function (row) {
+      var id = row[idCol];
+      if (!id) return;
+      if (!submissions[id]) submissions[id] = { zuban: '', workDate: '', details: [] };
+      var sub = submissions[id];
+      if (row[zubanCol]) sub.zuban = row[zubanCol];
+      if (row[dateCol]) sub.workDate = normalizeDateForCompare_(row[dateCol]);
+      if (row[machineNameCol]) sub.machineName = row[machineNameCol];
+      if (row[machineNoCol]) sub.machineNo = row[machineNoCol];
+      if (row[materialCol]) sub.material = row[materialCol];
+      if (row[goodQtyCol] !== '') sub.goodQty = row[goodQtyCol];
+      if (row[dimensionQtyCol] !== '') sub.dimensionCheckQty = row[dimensionQtyCol];
+      if (row[noteCol]) sub.note = row[noteCol];
+      var category = row[categoryCol], detail = row[detailCol], qty = row[qtyCol];
+      if (category && detail && qty !== '') {
+        sub.details.push({ category: category, detail: detail, qty: Number(qty) || 0 });
+      }
+    });
+    Object.keys(submissions).forEach(function (id) {
+      var sub = submissions[id];
+      if (!sub.zuban) return;
+      var key = String(sub.zuban);
+      if (!map[key]) map[key] = [];
+      map[key].push({
+        workDate: sub.workDate, details: sub.details,
+        machineName: sub.machineName || '', machineNo: sub.machineNo || '', material: sub.material || '',
+        goodQty: sub.goodQty || 0, dimensionCheckQty: sub.dimensionCheckQty || 0, note: sub.note || ''
+      });
+    });
+  }
+  try { cache.put(cacheKey, JSON.stringify(map), 300); } catch (e) {} // サイズ超過等は無視して素通りさせる
+  return map;
 }
 
 // ==== 工程内不良ログの過去データ移行（2026-11-08、旧・花里さん管理の月次スプレッドシートより） ====
@@ -1385,7 +1467,18 @@ function importProcessDefectHistory() {
     sheet.getRange(startRow, 1, outRows.length, header.length).setValues(outRows);
   }
 
+  invalidateProcessDefectCaches_();
   Logger.log('合計' + allSubmissions.length + '件の図番集計（' + outRows.length + '行）を書き込みました');
+}
+
+/**
+ * 工程内不良まわりの5分キャッシュ（不良ダッシュボード・⑥画面の過去の入力履歴）をまとめて破棄する。
+ * 投稿・過去データ移行の直後に呼ぶこと（2026-11-13、2つとも5分キャッシュを追加したため統合）。
+ */
+function invalidateProcessDefectCaches_() {
+  var cache = CacheService.getScriptCache();
+  try { cache.remove('processDefectDashboard'); } catch (e) {}
+  try { cache.remove('processDefectsByZuban'); } catch (e) {}
 }
 
 /**
@@ -1396,6 +1489,7 @@ function clearProcessDefectTestData() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
   var lastRow = sheet.getLastRow();
   if (lastRow >= 2) sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  invalidateProcessDefectCaches_();
   Logger.log((lastRow >= 2 ? lastRow - 1 : 0) + '行削除しました');
 }
 
@@ -1409,6 +1503,14 @@ function clearProcessDefectTestData() {
  * 出せない、という2026-09-22の設計方針メモに基づく。
  */
 function buildProcessDefectDashboardData_() {
+  // 過去データ移行で工程内不良ログが1300行超になり、ページを開くたびに毎回全件集計し直すのが
+  // 重くなっていた（2026-11-13の速度調査で判明、このダッシュボードには元々キャッシュが無かった）。
+  // 読み取り専用の集計ページのため、5分キャッシュ（他の集計系と同じ長さ）で十分と判断。
+  var dashCacheKey = 'processDefectDashboard';
+  var dashCache = CacheService.getScriptCache();
+  var dashCached = dashCache.get(dashCacheKey);
+  if (dashCached) return JSON.parse(dashCached);
+
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PROCESS_DEFECTS);
   var lastRow = sheet.getLastRow();
   var submissions = {}; // 投稿ID -> {zuban, hinmei, workDate(yyyy-MM-dd), details:[{category,detail,qty}]}
@@ -1566,7 +1668,7 @@ function buildProcessDefectDashboardData_() {
     };
   }).sort(function (a, b) { return b.defectQty - a.defectQty; });
 
-  return {
+  var dashResult = {
     generatedAt: new Date(),
     kpi: {
       totalDefectQty: totalDefectQty,
@@ -1583,6 +1685,8 @@ function buildProcessDefectDashboardData_() {
     monthly: monthly,
     zubanRate: zubanRate
   };
+  try { dashCache.put(dashCacheKey, JSON.stringify(dashResult), 300); } catch (e) {} // サイズ超過等は無視して素通りさせる
+  return dashResult;
 }
 
 function postProcessDefect_(payload) {
@@ -1639,6 +1743,7 @@ function postProcessDefect_(payload) {
       sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
     }
     invalidateZubanCache_(payload.zuban); // 保存直後に⑥の「過去の入力履歴」へ反映させるため（2026-11-08）
+    invalidateProcessDefectCaches_(); // 不良ダッシュボード・過去の入力履歴の5分キャッシュにも即反映させるため（2026-11-13）
     return { id: id };
   });
 }
@@ -2284,10 +2389,36 @@ function deleteRowsByZuban_(sheet, zuban, extraMatch) {
  * 役割は5種類：seizou（一次・二次加工）／kensa（検査）／seisan（生産管理・出荷担当以外）／
  * shukka（生産管理課・出荷担当）／other（仕上げ・洗浄など、上記以外）。
  * 組織図マスタに見つからない場合はotherを返す（安全側：機能を絞る方向のデフォルト）。
+ *
+ * action=role はログインのたびに毎回呼ばれる（fetchRole()、2026-11-13の速度調査で判明）ため、
+ * 組織図マスタ（別スプレッドシート・複数シート）を毎回全件スキャンしていたのが「読み込みが長い」の
+ * 主要因の一つだった。メール→部署・工程のマップをCacheServiceに30分キャッシュする方式に変更。
  */
 function getRole_(email) {
   if (!email) return { error: 'email is required' };
   var allAccess = ALL_ACCESS_EMAILS.indexOf(String(email).trim().toLowerCase()) !== -1;
+  var found = getOrgMasterMap_()[String(email).trim().toLowerCase()];
+  if (found) {
+    return {
+      found: true,
+      name: found.name,
+      section: found.section,
+      process: found.process,
+      role: resolveRole_(found.section, found.process),
+      allAccess: allAccess
+    };
+  }
+  return { found: false, role: 'other', allAccess: allAccess };
+}
+
+/** 組織図マスタ全体を1回だけ読み、メールアドレス（小文字）→{氏名,課名,工程名}のマップにして30分キャッシュする。 */
+function getOrgMasterMap_() {
+  var cacheKey = 'orgMasterMap';
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  var map = {};
   var ss = SpreadsheetApp.openById(ORG_MASTER_SPREADSHEET_ID);
   var sheets = ss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
@@ -2297,27 +2428,22 @@ function getRole_(email) {
     var header = values[0];
     var mailCol = header.indexOf('Mail Address');
     if (mailCol === -1) mailCol = header.indexOf('メールアドレス');
+    if (mailCol === -1) continue;
     var sectionCol = header.indexOf('課名');
     var processCol = header.indexOf('工程名');
     var nameCol = header.indexOf('氏名');
-    if (mailCol === -1) continue;
     for (var i = 1; i < values.length; i++) {
       var rowMail = String(values[i][mailCol] || '').trim().toLowerCase();
-      if (rowMail && rowMail === String(email).trim().toLowerCase()) {
-        var section = sectionCol >= 0 ? values[i][sectionCol] : '';
-        var process = processCol >= 0 ? values[i][processCol] : '';
-        return {
-          found: true,
-          name: nameCol >= 0 ? values[i][nameCol] : '',
-          section: section,
-          process: process,
-          role: resolveRole_(section, process),
-          allAccess: allAccess
-        };
-      }
+      if (!rowMail) continue;
+      map[rowMail] = {
+        name: nameCol >= 0 ? values[i][nameCol] : '',
+        section: sectionCol >= 0 ? values[i][sectionCol] : '',
+        process: processCol >= 0 ? values[i][processCol] : ''
+      };
     }
   }
-  return { found: false, role: 'other', allAccess: allAccess };
+  try { cache.put(cacheKey, JSON.stringify(map), 1800); } catch (e) {} // 30分。サイズ超過等は無視して素通りさせる
+  return map;
 }
 
 /** 課名・工程名の文字列から役割キーを判定する。想定外の組み合わせはother（安全側）にフォールバック。 */
