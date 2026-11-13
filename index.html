@@ -403,7 +403,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.9.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.10.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -439,10 +439,6 @@
         <span class="lbl">品質情報記録</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
-      <a class="nav-btn" id="railDashboardBtn" href="defect-dashboard.html" target="_blank" rel="noopener">
-        <span class="ic">📊</span>
-        <span class="lbl">不良ダッシュボード</span>
-      </a>
       <!-- 2026-11-09追加：引っ張って更新を無効化した（v1.31.4）ので、アプリ側に明示的な
            再読み込み手段を用意しておく（PWAとしてインストールしているとブラウザの更新ボタンが無いため）。 -->
       <button type="button" class="nav-btn" id="railReloadBtn">
@@ -548,17 +544,6 @@
         <div id="deptLogList"></div>
       </div>
 
-      <!-- 2026-11-09：ツール配置・工程内不良入力・品質情報記録・別の図番を読み取る、への導線は
-           左レールと重複するため削除。検査記録フォルダを開くボタンのみ、レールに相当項目が無い
-           ので残す（画面遷移ではなくDriveの外部フォルダを開くアクションのため）。 -->
-      <div id="actionButtons" style="display:flex; flex-direction:column; gap:10px;">
-        <button class="btn btn-primary hidden" id="openInspectionFolderBtn">検査記録フォルダを開く</button>
-      </div>
-      <div class="status-note" id="inspectionFolderStatus"></div>
-      <div id="folderCandidateSelect" class="candidate-select hidden">
-        <p class="section-label sub">同じ名前のフォルダが複数見つかりました。開きたい方を選んでください</p>
-        <div id="folderCandidateList"></div>
-      </div>
     </section>
 
     <!-- SCREEN 4: 紙の取込確認 -->
@@ -877,8 +862,6 @@
 
       <div class="section-label">過去の入力履歴（この図番）</div>
       <div id="defectHistoryList"></div>
-
-      <a class="btn btn-ghost" href="defect-dashboard.html" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">不良ダッシュボードを見る</a>
     </section>
   </main>
   </div>
@@ -1286,10 +1269,6 @@
   }
 
   var currentZubanData = null;
-  var currentInspectionFolderUrl = null;
-  var currentInspectionFolderCandidates = null;
-  var currentInspectionFolderCanCreate = false;
-  var currentInspectionFolderCompanyName = '';
 
   function renderZubanInfo(data) {
     var zubanLoadingEl2 = document.getElementById('zubanLoadingNote');
@@ -1301,12 +1280,6 @@
       return;
     }
     currentZubanData = data;
-    currentInspectionFolderUrl = null;
-    currentInspectionFolderCandidates = null;
-    currentInspectionFolderCanCreate = false;
-    currentInspectionFolderCompanyName = '';
-    document.getElementById('folderCandidateSelect').classList.add('hidden');
-    document.getElementById('inspectionFolderStatus').innerHTML = '';
     document.getElementById('historyZubanHeader').textContent = zubanLabel(data);
 
     renderPastTroubleDisplay(data);
@@ -1514,39 +1487,11 @@
   // 2026-11-09：画面遷移系のボタン（ツール配置／工程内不良入力／品質情報記録）は左レールと重複する
   // ため削除し、ここでは「検査記録フォルダを開く」（画面遷移ではない操作）の出し分けのみ残した。
   // 画面遷移系の出し分け条件自体はupdateRailNav_()にそのまま引き継いである。
+  // 2026-11-14：「検査記録フォルダを開く」ボタンを削除したため、画面内の出し分けはもう無い。
+  // 複数箇所から呼ばれている（confirmCheckの変更時・役割取得後・zubanInfo取得後）ため、
+  // 呼び出し元を書き換えずこの関数名のまま薄いラッパーとして残し、updateRailNav_()だけ呼ぶ。
   function updateActionGate() {
-    var openInspectionFolderBtn = document.getElementById('openInspectionFolderBtn');
-    if (!currentZubanData) {
-      openInspectionFolderBtn.classList.add('hidden');
-      updateRailNav_();
-      return;
-    }
-    var hasTrouble = (currentZubanData.pastTrouble || []).length > 0;
-    var confirmed = hasTrouble ? document.getElementById('confirmCheck').checked : true;
     updateRailNav_();
-
-    var showInspectionFolderBtn = currentRole === 'kensa' || currentAllAccess;
-    openInspectionFolderBtn.classList.toggle('hidden', !showInspectionFolderBtn);
-    openInspectionFolderBtn.disabled = !confirmed;
-    if (showInspectionFolderBtn && currentInspectionFolderUrl === null) {
-      fetch(GAS_API_URL + '?action=inspectionFolder&zuban=' + encodeURIComponent(currentZubanData.zuban))
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d.found && d.ambiguous) {
-            // 同じ名前のフォルダが複数あり得意先名でも自動判別できなかった場合。
-            // URLは確定させず、候補一覧から人に選んでもらう（2026-09-05追加）。
-            currentInspectionFolderCandidates = d.candidates;
-            currentInspectionFolderUrl = '__ambiguous__';
-          } else if (d.found) {
-            currentInspectionFolderUrl = d.url;
-          } else {
-            // フォルダ未作成。得意先名フォルダが分かっていれば新規作成を提案できる（2026-09-07追加）。
-            currentInspectionFolderUrl = '';
-            currentInspectionFolderCanCreate = !!d.canCreate;
-            currentInspectionFolderCompanyName = d.companyName || '';
-          }
-        });
-    }
   }
 
   // ==== 左アイコンレール（2026-11-07新設） ====
@@ -1641,78 +1586,6 @@
     qiBtn.classList.toggle('locked', !confirmed);
   }
 
-  document.getElementById('openInspectionFolderBtn').addEventListener('click', function () {
-    if (this.disabled) return;
-    if (currentInspectionFolderUrl === '__ambiguous__' && currentInspectionFolderCandidates) {
-      renderFolderCandidateSelect(currentInspectionFolderCandidates);
-    } else if (currentInspectionFolderUrl) {
-      window.open(currentInspectionFolderUrl, '_blank');
-    } else if (currentInspectionFolderUrl === '') {
-      if (!currentInspectionFolderCanCreate) {
-        alert('この図番の検査記録フォルダが見つかりませんでした（得意先フォルダも見つからないため自動作成もできません）');
-        return;
-      }
-      var zubanForCreate = currentZubanData.zuban;
-      if (!confirm('図番「' + zubanForCreate + '」の検査記録フォルダが見つかりませんでした。\n' +
-        '「' + currentInspectionFolderCompanyName + '」フォルダの下に、図番名でフォルダを新規作成しますか？')) {
-        return;
-      }
-      if (!currentUser) { alert('フォルダ作成にはGoogleログインが必要です'); return; }
-      var folderStatusEl = document.getElementById('inspectionFolderStatus');
-      folderStatusEl.innerHTML = '';
-      setLoadingText(folderStatusEl, 'フォルダを作成しています…');
-      // ポップアップブロック対策：fetchのthen内（非同期処理の後）でwindow.openすると、
-      // クリック操作の文脈が切れてブラウザにポップアップとしてブロックされ、「作成されたのに
-      // 自動で開かない」という不具合になる。クリックの流れの中（非同期処理の前）で先に空タブを
-      // 開いておく（2026-09-27修正）。ただしタブレットのPWA（ホーム画面アイコン）表示だと
-      // window.open自体が機能しない・無反応になることがあり、それだけに頼ると「完了通知も無く
-      // 自動でも開かない」という不具合になる（2026-09-29、実機報告を受けて発覚）。そのため
-      // 自動オープンは試みつつ、成功・失敗どちらの場合も画面上にタップして開けるリンクを
-      // 必ず表示するようにした（PWAでもアンカータグの直接タップなら確実に開ける）。
-      var newTab = window.open('', '_blank');
-      fetch(GAS_API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'createInspectionFolder', zuban: zubanForCreate, idToken: currentUser.idToken })
-      }).then(function (r) { return r.json(); })
-        .then(function (res) {
-          if (res.error) {
-            if (newTab) newTab.close();
-            clearLoadingText(folderStatusEl);
-            folderStatusEl.textContent = 'フォルダの作成に失敗しました: ' + res.error;
-            return;
-          }
-          currentInspectionFolderUrl = res.url;
-          if (newTab) { try { newTab.location.href = res.url; } catch (e) {} }
-          clearLoadingText(folderStatusEl);
-          folderStatusEl.innerHTML = 'フォルダを作成しました。自動で開かない場合は ' +
-            '<a href="' + escapeAttr(res.url) + '" target="_blank" rel="noopener">こちらをタップして開いてください</a>';
-        })
-        .catch(function (err) {
-          if (newTab) newTab.close();
-          clearLoadingText(folderStatusEl);
-          folderStatusEl.textContent = 'フォルダの作成に失敗しました: ' + err.message;
-        });
-    } else {
-      alert('確認中です。少し待ってからもう一度お試しください');
-    }
-  });
-
-  // 同じ名前のフォルダが複数あり自動判別できなかった場合の候補一覧（2026-09-05追加）。
-  function renderFolderCandidateSelect(candidates) {
-    var list = document.getElementById('folderCandidateList');
-    list.innerHTML = '';
-    candidates.forEach(function (c) {
-      var div = document.createElement('div');
-      div.className = 'candidate-item';
-      div.innerHTML = '<span class="candidate-zuban">' + escapeHtml(c.name) + '</span>';
-      div.addEventListener('click', function () {
-        document.getElementById('folderCandidateSelect').classList.add('hidden');
-        window.open(c.url, '_blank');
-      });
-      list.appendChild(div);
-    });
-    document.getElementById('folderCandidateSelect').classList.remove('hidden');
-  }
   function zubanLabel(data) {
     return data.zuban + (data.hinmei ? '　' + data.hinmei : '');
   }
