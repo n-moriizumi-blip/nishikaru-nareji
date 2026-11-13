@@ -67,9 +67,11 @@
 
   .rail-foot { margin-top: auto; flex: none; border-top: 1px solid rgba(255,255,255,.1); padding-top: 10px; }
   .rail-user { display: flex; align-items: center; gap: 10px; padding: 8px 16px; min-width: 0; }
-  .rail-user-icon { width: 26px; height: 26px; border-radius: 50%; background: var(--rail-active); color: var(--rail-ink); flex: none; padding: 5px; box-sizing: border-box; }
-  .rail-user-detail { display: none; font-size: 11px; color: var(--rail-dim); line-height: 1.5; word-break: break-all; min-width: 0; }
-  .rail.expanded .rail-user-detail, .rail:hover .rail-user-detail, .rail:focus-within .rail-user-detail { display: block; }
+  .rail-av { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); flex: none; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; } /* 検査記録ポータルの.rail-user .avと同じ見た目（2026-11-14） */
+  .rail-user-detail { display: none; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .rail-user-detail b { display: block; font-size: 12px; font-weight: 700; color: var(--rail-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail-user-detail span { font-size: 10px; color: var(--rail-dim); white-space: nowrap; }
+  .rail.expanded .rail-user-detail, .rail:hover .rail-user-detail, .rail:focus-within .rail-user-detail { display: flex; }
   .rail-signin { display: none; padding: 6px 16px 2px; }
   .rail.expanded .rail-signin, .rail:hover .rail-signin, .rail:focus-within .rail-signin { display: block; }
 
@@ -403,7 +405,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.10.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.11.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -448,8 +450,8 @@
 
       <div class="rail-foot">
         <div class="rail-user">
-          <svg class="rail-user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-6 8-6s8 2 8 6"/></svg>
-          <div class="rail-user-detail"><span id="userLabel">未ログイン</span></div>
+          <div class="rail-av" id="railAv">?</div>
+          <div class="rail-user-detail"><b id="userName">未ログイン</b><span id="userRole">　</span></div>
         </div>
         <div class="rail-signin">
           <div id="g_id_signin"></div>
@@ -902,11 +904,18 @@
   // ==== ログイン（Google Identity Services） ====
   var currentUser = null; // { email, name }
 
+  // アカウント表示（検査記録ポータルの.rail-userと同じ見た目、2026-11-14）：丸いアバター（氏名の
+  // 先頭1文字）＋氏名＋役割（課名、fetchRole()取得後に反映）。
+  function setUserDisplay_(name) {
+    document.getElementById('userName').textContent = name;
+    document.getElementById('railAv').textContent = (name || '?').slice(0, 1);
+  }
+
   function initSignIn() {
     if (!GOOGLE_CLIENT_ID) {
       // OAuth未設定の間だけ、役割別出し分けの確認用に手動でログイン状態を作れるボタンを出す。
       // GOOGLE_CLIENT_IDが設定され次第、この分岐自体が通らなくなり自動的に無効化される。
-      document.getElementById('userLabel').textContent = '未ログイン（OAuth未設定）';
+      document.getElementById('userName').textContent = '未ログイン（OAuth未設定）';
       document.getElementById('testLoginBtn').classList.remove('hidden');
       return;
     }
@@ -942,7 +951,7 @@
     // GAS側でGoogleのtokeninfoエンドポイントを使って検証する（2026-08-30、サーバー側検証を実装）。
     var payload = decodeJwtPayload(response.credential);
     currentUser = { email: payload.email, name: payload.name, idToken: response.credential };
-    document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    setUserDisplay_(currentUser.name);
     fetchRole();
   }
 
@@ -951,7 +960,7 @@
     var email = prompt('テスト用ログイン：メールアドレスを入力してください', currentUser ? currentUser.email : 'n-moriizumi@nishikaru.co.jp');
     if (!email) return;
     currentUser = { email: email.trim(), name: 'テストログイン' };
-    document.getElementById('userLabel').textContent = currentUser.name + '（' + currentUser.email + '）';
+    setUserDisplay_(currentUser.name);
     fetchRole();
   });
 
@@ -974,9 +983,10 @@
           var debugRole = new URLSearchParams(location.search).get('debugRole');
           if (debugRole) { currentRole = debugRole; currentAllAccess = false; }
         }
+        document.getElementById('userRole').textContent = currentSection || '';
         updateActionGate();
       })
-      .catch(function () { currentRole = 'other'; updateActionGate(); });
+      .catch(function () { currentRole = 'other'; document.getElementById('userRole').textContent = ''; updateActionGate(); });
   }
 
   // ==== recent list（localStorageに保存） ====
