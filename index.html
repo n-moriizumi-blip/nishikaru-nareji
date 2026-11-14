@@ -105,6 +105,7 @@
   }
   .start-choice:hover { border-color: var(--accent); }
   .start-choice .ic { font-size: 28px; line-height: 1; margin-bottom: 4px; }
+  .start-choice .ic-qr { width: 28px; height: 28px; }
   .start-choice b { font-size: 0.98rem; font-weight: 900; }
   .start-choice span { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; }
   #camWrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
@@ -420,7 +421,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.2</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -482,7 +483,14 @@
 
       <div class="start-choice-row">
         <button type="button" class="start-choice" id="startScanBtn">
-          <span class="ic">📷</span>
+          <svg class="ic ic-qr" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="2" y="2" width="8" height="8" rx="1" fill="var(--rail)"/><rect x="4" y="4" width="4" height="4" fill="var(--bg)"/><rect x="5" y="5" width="2" height="2" fill="var(--rail)"/>
+            <rect x="14" y="2" width="8" height="8" rx="1" fill="var(--rail)"/><rect x="16" y="4" width="4" height="4" fill="var(--bg)"/><rect x="17" y="5" width="2" height="2" fill="var(--rail)"/>
+            <rect x="2" y="14" width="8" height="8" rx="1" fill="var(--rail)"/><rect x="4" y="16" width="4" height="4" fill="var(--bg)"/><rect x="5" y="17" width="2" height="2" fill="var(--rail)"/>
+            <rect x="14" y="14" width="2" height="2" fill="var(--accent)"/><rect x="17" y="14" width="2" height="2" fill="var(--rail)"/><rect x="20" y="14" width="2" height="2" fill="var(--accent)"/>
+            <rect x="14" y="17" width="2" height="2" fill="var(--rail)"/><rect x="17" y="17" width="2" height="2" fill="var(--accent)"/>
+            <rect x="14" y="20" width="2" height="2" fill="var(--accent)"/><rect x="17" y="20" width="2" height="2" fill="var(--rail)"/><rect x="20" y="20" width="2" height="2" fill="var(--rail)"/>
+          </svg>
           <b>QRコードを読み取る</b>
           <span>I-PROが自動生成しているQRコードをそのまま使います</span>
         </button>
