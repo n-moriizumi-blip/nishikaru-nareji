@@ -591,8 +591,15 @@ function findIproRowsByColumn_(columnName, value) {
  */
 function findRowsInSpreadsheet_(spreadsheetId, columnNames, values) {
   var columnNameList = [].concat(columnNames);
+  // 数字だけの値（得意先コード・製造番号等）は、進捗状況照会側の自動連携で先頭0が
+  // 不安定に付いたり落ちたりする既知の問題があるため、図番と同じくnumericZubanKey_でも
+  // 照合できるようにしておく（2026-11-14、得意先コード"1530010"が実際は"01530010"だった
+  // ため得意先名が引けなかった不具合の対応）。
   var valueSet = {};
-  [].concat(values).forEach(function (v) { valueSet[String(v)] = true; });
+  [].concat(values).forEach(function (v) {
+    valueSet[String(v)] = true;
+    valueSet[numericZubanKey_(v)] = true;
+  });
 
   var ss = SpreadsheetApp.openById(spreadsheetId);
   var sheets = ss.getSheets();
@@ -611,7 +618,8 @@ function findRowsInSpreadsheet_(spreadsheetId, columnNames, values) {
     if (col === -1) continue; // 目的の列が無いタブは全データを読み込まずスキップ
     var rowsValues = sheet.getRange(1, 1, lastRow, lastCol).getValues();
     for (var i = 1; i < rowsValues.length; i++) {
-      if (valueSet[String(rowsValues[i][col])]) {
+      var cellValue = rowsValues[i][col];
+      if (valueSet[String(cellValue)] || valueSet[numericZubanKey_(cellValue)]) {
         out.push(rowToObject_(header, rowsValues[i]));
       }
     }
