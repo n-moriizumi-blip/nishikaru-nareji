@@ -97,7 +97,7 @@
     text-align: left; cursor: pointer; font: inherit; color: var(--ink);
   }
   .start-choice:hover { border-color: var(--accent); }
-  .start-choice .ic { width: 26px; height: 26px; color: var(--accent-ink); margin-bottom: 4px; }
+  .start-choice .ic { font-size: 28px; line-height: 1; margin-bottom: 4px; }
   .start-choice b { font-size: 0.98rem; font-weight: 900; }
   .start-choice span { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.5; }
   #camWrap { position: relative; width: 100%; max-width: 340px; margin: 0 auto; }
@@ -174,8 +174,8 @@
   .firsttime-card .big { font-size: 1.8rem; margin-bottom: 6px; }
 
   .section-label {
-    font-size: 0.98rem; font-weight: 700; color: var(--ink); letter-spacing: 0.01em; display: block;
-    background: var(--surface-2); border-left: 4px solid var(--accent); border-radius: 4px;
+    font-size: 0.98rem; font-weight: 700; color: #fff; letter-spacing: 0.01em; display: block;
+    background: var(--accent); border-radius: 4px;
     padding: 10px 12px; margin: 26px 0 16px;
   }
   .section-label:first-child { margin-top: 0; }
@@ -405,7 +405,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.12.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.13.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -467,12 +467,12 @@
 
       <div class="start-choice-row">
         <button type="button" class="start-choice" id="startScanBtn">
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>
+          <span class="ic">📷</span>
           <b>QRコードを読み取る</b>
           <span>I-PROが自動生成しているQRコードをそのまま使います</span>
         </button>
         <button type="button" class="start-choice" id="manualToggleBtn">
-          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <span class="ic">🔍</span>
           <b>図番で検索する</b>
           <span>図番の一部を入力して絞り込みます</span>
         </button>

@@ -890,6 +890,21 @@ function findSeibanIndexRow_(seiban) {
   return null;
 }
 
+/**
+ * 図番インデックス／製番インデックスへの書き込み前に、数字だけの値が入りうる列
+ * （図番・得意先コード・製造番号）をテキスト形式に固定する（2026-11-14追加）。
+ * これらの列は書き込み時点でSheets側に自動的に数値型へ変換され頭0が失われることがあり
+ * （Tナンバー等と同種の既知の問題）、得意先コードの0落ちで得意先名が引けなかった不具合
+ * （H01-007200A、2026-11-14）の再発防止策。既存のTナンバー等と同じ「書き込み前に
+ * setNumberFormat('@')を適用してからsetValuesする」パターンをここでも使う。
+ */
+function setTextFormatForIndexColumns_(sheet, rowIndex, header, columnNames) {
+  columnNames.forEach(function (name) {
+    var col = header.indexOf(name);
+    if (col !== -1) sheet.getRange(rowIndex, col + 1).setNumberFormat('@');
+  });
+}
+
 function upsertSeibanIndex_(seiban, zuban, hinmei, tokuisakiCode) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_SEIBAN_INDEX);
   var newRow = [seiban, zuban, hinmei || '', tokuisakiCode || '', new Date()];
@@ -898,11 +913,14 @@ function upsertSeibanIndex_(seiban, zuban, hinmei, tokuisakiCode) {
   var col = header.indexOf('製造番号');
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][col]) === String(seiban)) {
+      setTextFormatForIndexColumns_(sheet, i + 1, header, ['製造番号', '図番', '得意先コード']);
       sheet.getRange(i + 1, 1, 1, newRow.length).setValues([newRow]);
       return;
     }
   }
-  sheet.appendRow(newRow);
+  var appendRowIndex = sheet.getLastRow() + 1;
+  setTextFormatForIndexColumns_(sheet, appendRowIndex, header, ['製造番号', '図番', '得意先コード']);
+  sheet.getRange(appendRowIndex, 1, 1, newRow.length).setValues([newRow]);
 }
 
 /**
@@ -959,13 +977,16 @@ function upsertZubanIndex_(zuban, fields) {
         var existing = rowToObject_(header, values[i]);
         var merged = Object.assign({}, existing, fields, { '更新日時': new Date() });
         var updatedRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
+        setTextFormatForIndexColumns_(sheet, i + 1, header, ['図番', '得意先コード']);
         sheet.getRange(i + 1, 1, 1, header.length).setValues([updatedRow]);
         return;
       }
     }
     var merged2 = Object.assign({ '図番': zuban }, fields, { '更新日時': new Date() });
     var newRow = header.map(function (h) { return merged2[h] !== undefined ? merged2[h] : ''; });
-    sheet.appendRow(newRow);
+    var appendRowIndex = sheet.getLastRow() + 1;
+    setTextFormatForIndexColumns_(sheet, appendRowIndex, header, ['図番', '得意先コード']);
+    sheet.getRange(appendRowIndex, 1, 1, newRow.length).setValues([newRow]);
   } finally {
     lock.releaseLock();
     _zubanIndexSnapshot_ = null; // findZubanIndexRow_のメモ化を無効化（書き込み後は必ず読み直す）
