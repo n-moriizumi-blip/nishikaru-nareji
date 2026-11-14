@@ -227,7 +227,12 @@ function getZubanInfo_(zuban, knownMaster) {
 
   // 得意先はコード（例:"1234"）で持っているため、画面表示用に名前も引いておく
   // （2026-09-22追加。工程内不良入力画面で「コードじゃなくて名前にしたい」との指摘を受けて追加）。
-  var tokuisakiName = master.tokuisaki ? lookupTokuisakiName_(master.tokuisaki) : null;
+  // knownMaster.tokuisakiNameが渡されている場合（scanZuban_が製造番号ベースの行から既に
+  // 得意先名を取得済みの場合）は、得意先コードでの再スキャン（lookupTokuisakiName_）を省略する
+  // （2026-11-14、同じ進捗状況照会を1リクエスト内で何度もスキャンしていた無駄の削減策の一つ）。
+  var tokuisakiName = (knownMaster && knownMaster.tokuisakiName)
+    ? knownMaster.tokuisakiName
+    : (master.tokuisaki ? lookupTokuisakiName_(master.tokuisaki) : null);
 
   var result = {
     zuban: zuban,
@@ -326,7 +331,10 @@ function resolveZubanFromSeiban_(seiban) {
     candidates: uniqueCandidates,
     zuban: uniqueCandidates.length === 1 ? uniqueCandidates[0].zuban : null,
     hinmei: uniqueCandidates.length === 1 ? uniqueCandidates[0].hinmei : null,
-    tokuisakiCode: uniqueCandidates.length === 1 ? uniqueCandidates[0].tokuisakiCode : null
+    tokuisakiCode: uniqueCandidates.length === 1 ? uniqueCandidates[0].tokuisakiCode : null,
+    // 2026-11-14：ここで取得済みのrowsから直接算出しておく（scanZuban_が同じ製造番号で
+    // lookupProcessAutofillBySeiban_を再度呼んで進捗状況照会を二重スキャンしていた無駄を解消）。
+    autofill: extractProcessAutofillFromIproRows_(rows)
   };
 
   if (!result.multiple && result.zuban) {
@@ -355,16 +363,15 @@ function cleanMaterialName_(raw) {
 }
 
 /**
- * 工程内不良入力画面の機械名・機番・材種名の初期値を、製造番号から「進捗状況照会」を検索して
- * 求める（品質不具合管理システムのlookupByMfgNo_と同じ考え方。2026-09-22追加、
- * 「機械名と材種名も品質不具合管理システムと同じように自動で入るようにしたい」との要望）。
+ * 「進捗状況照会」の製造番号一致行（複数、工程ごと）から、工程内不良入力画面の機械名・機番・
+ * 材種名・得意先名の初期値を組み立てる（2026-11-14、resolveZubanFromSeiban_・
+ * lookupProcessAutofillBySeiban_の両方が同じ製造番号で同じスプレッドシートを別々に
+ * 再スキャンしていた無駄を解消するため、rowsを受け取る側に共通化）。
  * 同じ製造番号は工程ごとに複数行あるため、機種名(設備名)・設備No.は工程順=1の行、
- * 材質(品名・型格)はどの行でも同じ想定のため最初に見つかった行を採用する。
+ * 材質(品名・型格)・得意先名はどの行でも同じ想定のため最初に見つかった行を採用する。
  */
-function lookupProcessAutofillBySeiban_(seiban) {
-  if (!seiban) return { machine: '', machineNo: '', material: '', customer: '' };
-  var rows = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, '製造番号', seiban);
-  if (rows.length === 0) return { machine: '', machineNo: '', material: '', customer: '' };
+function extractProcessAutofillFromIproRows_(rows) {
+  if (!rows || rows.length === 0) return { machine: '', machineNo: '', material: '', customer: '' };
   var firstProcessRow = null;
   rows.forEach(function (row) {
     if (Number(row['工程順']) === 1 && !firstProcessRow) firstProcessRow = row;
@@ -374,12 +381,22 @@ function lookupProcessAutofillBySeiban_(seiban) {
     machine: String(machineRow['設備名'] || '').trim(),
     machineNo: String(machineRow['設備No.'] || '').replace(/^No\.?\s*/i, '').trim(),
     material: cleanMaterialName_(rows[0]['品名・型格']),
-    // 得意先名（2026-10-25追加）：既存のtokuisakiName（得意先コード経由でlookupTokuisakiName_を
-    // 再検索する方式）は、図番インデックスの得意先コードが進捗状況照会の該当行と一致しない等の
-    // 理由でコードのまま表示されてしまう指摘があったため、machine/materialと同じく既にこの
-    // 製造番号で見つかっている行の「得意先名」列をそのまま使う、より直接的な経路を追加した。
     customer: String(rows[0]['得意先名'] || '').trim()
   };
+}
+
+/**
+ * 工程内不良入力画面の機械名・機番・材種名の初期値を、製造番号から「進捗状況照会」を検索して
+ * 求める（品質不具合管理システムのlookupByMfgNo_と同じ考え方。2026-09-22追加、
+ * 「機械名と材種名も品質不具合管理システムと同じように自動で入るようにしたい」との要望）。
+ * scanZuban_がresolveZubanFromSeiban_で既にrowsを取得済みの場合はそちらを使うため呼ばれない
+ * （2026-11-14）。製番インデックスにヒットした場合（ライブスキャンが省略された場合）のみ、
+ * ここで1回だけ必要になる。
+ */
+function lookupProcessAutofillBySeiban_(seiban) {
+  if (!seiban) return { machine: '', machineNo: '', material: '', customer: '' };
+  var rows = findRowsInSpreadsheet_(IPRO_PROGRESS_SPREADSHEET_ID, '製造番号', seiban);
+  return extractProcessAutofillFromIproRows_(rows);
 }
 
 /**
@@ -394,16 +411,22 @@ function scanZuban_(seiban) {
     // 見つからない／複数候補の場合はフロント側で処理する（追加のzubanInfo取得はしない）
     return resolved;
   }
+  // 工程内不良入力画面の機械名・機番・材種名・得意先名の初期値（2026-09-22/2026-10-25追加）。
+  // resolved.autofillはresolveZubanFromSeiban_がライブスキャンした場合に既に算出済み
+  // （製番インデックスにヒットしてライブスキャンを省略した場合のみ、ここで1回だけ取得する。
+  // 2026-11-14、同じ製造番号で進捗状況照会を複数回スキャンしていた無駄を解消）。
+  var autofill = resolved.autofill || lookupProcessAutofillBySeiban_(seiban);
   // 製造番号で見つかる行は品名が入っていないシートのこともあるため（2026-08-29実データで確認）、
   // hinmeiが取れている場合だけ渡して省略し、取れていない場合はgetZubanInfo_側の
   // lookupZubanMaster_（図番での再検索）にフォールバックさせて正しさを優先する。
-  var knownMaster = resolved.hinmei ? { hinmei: resolved.hinmei, tokuisaki: resolved.tokuisakiCode } : null;
+  // tokuisakiNameも分かっていれば渡し、getZubanInfo_側の得意先コードでの再スキャンを省略する。
+  var knownMaster = resolved.hinmei
+    ? { hinmei: resolved.hinmei, tokuisaki: resolved.tokuisakiCode, tokuisakiName: autofill.customer || null }
+    : null;
   var info = getZubanInfo_(resolved.zuban, knownMaster);
   info.seiban = seiban;
   info.found = true;
   info.multiple = false;
-  // 工程内不良入力画面の機械名・機番・材種名の初期値（2026-09-22追加）
-  var autofill = lookupProcessAutofillBySeiban_(seiban);
   info.suggestedMachine = autofill.machine;
   info.suggestedMachineNo = autofill.machineNo;
   info.suggestedMaterial = autofill.material;

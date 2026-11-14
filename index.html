@@ -34,6 +34,12 @@
      不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
      （更新・戻る等）に伝わらないようにする。 */
   html, body { overscroll-behavior-y: none; }
+  /* 2026-11-14：#appをheight:100vh/100dvhぴったりに固定していても、パディング等のわずかな計算誤差や
+     モバイルブラウザのアドレスバー表示/非表示によるビューポート変動で#appがわずかに溢れると、
+     body自体がスクロール可能になり、結局レールとメイン領域が一緒に動いてしまう（「レール内と中央の
+     縦スクロールが分かれていない」との指摘）。body側のスクロール自体を禁止し、スクロールは必ず
+     内部の.rail/mainのoverflow-y:autoだけで起きるようにする。 */
+  html, body { overflow: hidden; }
   /* 2026-11-09：min-heightだけだと中身が多い画面で#app自体が縦に伸びてbody側がスクロールしてしまい、
      レール（.rail）もメイン領域と一緒に流れてしまっていた。height指定で#appをビューポートぴったりに
      固定し、<main>側のoverflow-y:autoだけが内部スクロールするようにする（dvhはモバイルブラウザの
@@ -46,6 +52,7 @@
   .rail {
     width: 76px; flex: none; background: var(--rail); display: flex; flex-direction: column;
     padding: 14px 0 10px; transition: width .18s; overflow-x: hidden; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .rail.expanded, .rail:hover, .rail:focus-within { width: 232px; }
 
@@ -84,7 +91,7 @@
      画面いっぱいに間延びすると逆に見づらいため、通常の画面は読みやすい幅に収める。
      ③ツール配置画面だけは3枠レイアウトのために横幅を活かしたいので、:has()でその画面が
      アクティブな時だけ上限を外す（Android Chromeは:has()対応済み）。 */
-  main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; max-width: 820px; margin: 0 auto; width: 100%; }
+  main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; -webkit-overflow-scrolling: touch; max-width: 820px; margin: 0 auto; width: 100%; }
   main:has(.screen[data-screen="tools"].active) { max-width: none; }
   .screen { display: none; flex-direction: column; gap: 18px; }
   .screen.active { display: flex; }
@@ -148,6 +155,11 @@
     font-size: 0.92rem; font-weight: 700; padding: 14px 16px;
   }
   .btn-secondary:disabled { background: var(--surface-2); color: var(--ink-soft); border-color: var(--line); cursor: not-allowed; }
+  /* 2026-11-14：品質情報記録(⑤)の各専用セクションの保存ボタンは、素の<div>（非flex）の中に
+     置かれているためボタン本来の内容幅のまま左寄せで表示されていた（他画面の保存ボタンは
+     .screen自体がflex列でstretchされ全幅になるため左寄せにならない）。中央寄せの指摘を受け、
+     内容幅のまま中央配置にする（margin:autoはflex列内でもstretchを無効化して中央寄せできる）。 */
+  .qi-section-save { display: block; margin: 14px auto 0; }
 
   .manual-entry { display: none; flex-direction: column; gap: 10px; }
   .manual-entry.active { display: flex; }
@@ -158,10 +170,13 @@
 
   .zuban-header { font-family: var(--font-mono); font-weight: 900; color: var(--accent-ink); font-size: 1.15rem; }
 
-  /* 2026-11-07、新配色では暗色背景前提の斜線パターンをやめ、他のカードと同じ白地＋左の色帯にする。 */
+  /* 2026-11-14、「要注意感が薄くなった」との指摘を受け、赤の斜線ハッチ（計測盤スタイル時代の見た目）を
+     紙のポータル配色向けに復元。薄い赤地(--alert-soft)に低不透明度の斜線を重ねる（白背景時代より
+     明るいトーンのため文字は引き続き濃い赤--alert-inkで視認性を確保）。 */
   .alert-card {
-    border: 1px solid var(--line); border-left: 4px solid var(--alert); border-radius: 10px; padding: 16px;
-    background: var(--surface);
+    border: 1px solid var(--alert); border-radius: 10px; padding: 16px;
+    background-color: var(--alert-soft);
+    background-image: repeating-linear-gradient(135deg, rgba(178,59,59,0.12) 0px, rgba(178,59,59,0.12) 9px, transparent 9px, transparent 18px);
   }
   .alert-card .alert-head { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--alert-ink); font-size: 0.95rem; margin-bottom: 12px; }
   .alert-item { font-size: 0.88rem; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 12px; margin-bottom: 8px; }
@@ -405,7 +420,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.13.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -737,7 +752,7 @@
           <label>ゲージの種類（自由入力）</label>
           <input type="text" id="gaugeDetailInput" placeholder="例：限界ピンゲージ φ8.0">
         </div>
-        <button type="button" class="btn btn-secondary" id="specSeisanSaveBtn">生産管理専用を保存する</button>
+        <button type="button" class="btn btn-secondary qi-section-save" id="specSeisanSaveBtn">生産管理専用を保存する</button>
       </div>
 
       <div id="specShukkaSection" class="hidden">
@@ -756,7 +771,7 @@
           <button type="button" class="photo-btn" id="shukkaPhotoBtn"><span id="shukkaPhotoIcon">📷</span><span id="shukkaPhotoLabel">写真・PDFを選ぶ</span></button>
           <input type="file" id="shukkaPhotoInput" accept="image/*,application/pdf" multiple class="hidden">
         </div>
-        <button type="button" class="btn btn-secondary" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
+        <button type="button" class="btn btn-secondary qi-section-save" id="specShukkaSaveBtn">出荷（梱包・その他）を保存する</button>
       </div>
 
       <div id="specShiageSection" class="hidden">
@@ -774,7 +789,7 @@
           <input type="checkbox" id="shiageShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-secondary" id="shiageSaveBtn">仕上専用を記録する</button>
+        <button type="button" class="btn btn-secondary qi-section-save" id="shiageSaveBtn">仕上専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="shiageEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -823,7 +838,7 @@
           <input type="checkbox" id="senjouShareCheck">
           <span>他部署にも共有する（過去情報表示の過去トラに表示され、全員が確認必須になります）</span>
         </label>
-        <button type="button" class="btn btn-secondary" id="senjouSaveBtn">洗浄専用を記録する</button>
+        <button type="button" class="btn btn-secondary qi-section-save" id="senjouSaveBtn">洗浄専用を記録する</button>
         <button type="button" class="btn btn-ghost hidden" id="senjouEditCancelBtn">編集をキャンセル</button>
       </div>
 
@@ -859,7 +874,7 @@
         <textarea id="defectNoteInput" placeholder="状況・対応など自由に記入"></textarea>
       </div>
 
-      <button type="button" class="btn btn-primary" id="defectSaveBtn">送信する</button>
+      <button type="button" class="btn btn-secondary" id="defectSaveBtn">送信する</button>
       <div class="status-note" id="defectStatus"></div>
 
       <div class="section-label">過去の入力履歴（この図番）</div>
