@@ -62,8 +62,10 @@
   .rail-brand-text .app-version { display: block; font-size: 10px; font-weight: 700; color: var(--rail-dim); font-family: var(--font-mono); margin-top: 2px; }
   .rail.expanded .rail-brand-text, .rail:hover .rail-brand-text, .rail:focus-within .rail-brand-text { display: block; }
 
-  .nav-btn { display: flex; align-items: center; gap: 14px; padding: 13px 16px; background: none; border: none; color: var(--rail-dim); white-space: nowrap; width: 100%; text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-sizing: border-box; }
-  .nav-btn .ic { flex: none; width: 22px; text-align: center; font-size: 19px; line-height: 1; } /* 絵文字アイコン（2026-11-11、線画SVGから変更） */
+  .nav-btn { display: flex; align-items: center; gap: 14px; padding: 15px 10px; background: none; border: none; color: var(--rail-dim); white-space: nowrap; width: 100%; text-align: left; text-decoration: none; font: inherit; cursor: pointer; box-sizing: border-box; }
+  /* 2026-11-17：「可能な限り大きく」との要望で、折りたたみ時(76px)の余白ギリギリまで拡大
+     （76px - 左右padding20px = 56pxの中に収まる最大サイズとして44px/font-size36pxに設定）。 */
+  .nav-btn .ic { flex: none; width: 44px; text-align: center; font-size: 36px; line-height: 1; } /* 絵文字アイコン（2026-11-11、線画SVGから変更） */
   .nav-btn .lbl { font-size: 13.5px; font-weight: 700; display: none; }
   .rail.expanded .nav-btn .lbl, .rail:hover .nav-btn .lbl, .rail:focus-within .nav-btn .lbl { display: inline; }
   .nav-btn.active { background: var(--rail-active); color: #fff; }
@@ -421,7 +423,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <div class="rail-mark">西</div>
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.2</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.3</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
