@@ -2459,35 +2459,47 @@ function getRole_(email) {
   return { found: false, role: 'other', allAccess: allAccess };
 }
 
-/** 組織図マスタ全体を1回だけ読み、メールアドレス（小文字）→{氏名,課名,工程名}のマップにして30分キャッシュする。 */
+/**
+ * 組織図マスタを1回だけ読み、メールアドレス（小文字）→{氏名,課名,工程名}のマップにして30分キャッシュする。
+ *
+ * 【2026-11-23修正】以前は全シートを総当たりしていたが、組織図マスタには社員名簿「組織図マスタ」の
+ * ほかに「プルダウン用」という別シートがあり、そちらは課名・工程名・機械名・加工者名・検査員名・
+ * Mail Addressを**行ごとに無関係な選択肢を並べただけ**の表（データ入力規則のプルダウン候補一覧）。
+ * たまたま「Mail Address」という同じ見出しの列を持つため、総当たりロジックがこれも社員名簿として
+ * 誤読し、後から読んだこちらの値で正しい社員名簿の行を上書きしてしまっていた（実例：森泉直樹の
+ * 課名が「プルダウン用」4行目の無関係な組み合わせ「総務・経理課」「仕上げ」になっていた）。
+ * 社員名簿は「組織図マスタ」という名前のシート1枚だけのため、名前で直接指定して読む。
+ */
 function getOrgMasterMap_() {
   var cacheKey = 'orgMasterMap';
   var cache = CacheService.getScriptCache();
   var cached = cache.get(cacheKey);
   if (cached) return JSON.parse(cached);
 
-  var map = {};
   var ss = SpreadsheetApp.openById(ORG_MASTER_SPREADSHEET_ID);
-  var sheets = ss.getSheets();
-  for (var s = 0; s < sheets.length; s++) {
-    var sheet = sheets[s];
-    if (sheet.getLastRow() < 2) continue;
+  var sheet = ss.getSheetByName('組織図マスタ');
+  if (!sheet) {
+    throw new Error('組織図マスタスプレッドシートに「組織図マスタ」という名前のシートが見つかりません。シート名が変わっていないか確認してください。');
+  }
+  var map = {};
+  if (sheet.getLastRow() >= 2) {
     var values = sheet.getDataRange().getValues();
     var header = values[0];
     var mailCol = header.indexOf('Mail Address');
     if (mailCol === -1) mailCol = header.indexOf('メールアドレス');
-    if (mailCol === -1) continue;
     var sectionCol = header.indexOf('課名');
     var processCol = header.indexOf('工程名');
     var nameCol = header.indexOf('氏名');
-    for (var i = 1; i < values.length; i++) {
-      var rowMail = String(values[i][mailCol] || '').trim().toLowerCase();
-      if (!rowMail) continue;
-      map[rowMail] = {
-        name: nameCol >= 0 ? values[i][nameCol] : '',
-        section: sectionCol >= 0 ? values[i][sectionCol] : '',
-        process: processCol >= 0 ? values[i][processCol] : ''
-      };
+    if (mailCol !== -1) {
+      for (var i = 1; i < values.length; i++) {
+        var rowMail = String(values[i][mailCol] || '').trim().toLowerCase();
+        if (!rowMail) continue;
+        map[rowMail] = {
+          name: nameCol >= 0 ? values[i][nameCol] : '',
+          section: sectionCol >= 0 ? values[i][sectionCol] : '',
+          process: processCol >= 0 ? values[i][processCol] : ''
+        };
+      }
     }
   }
   try { cache.put(cacheKey, JSON.stringify(map), 1800); } catch (e) {} // 30分。サイズ超過等は無視して素通りさせる
