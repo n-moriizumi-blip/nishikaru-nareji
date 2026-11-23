@@ -32,17 +32,15 @@
   * { box-sizing: border-box; }
   .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
-  /* 2026-11-23：body側に明示的にoverflow:hiddenを掛けていた（2026-11-14追加、レールとメイン領域の
-     スクロール分離の保険）が、これがブラウザの「引っ張って更新」ジェスチャー自体を機能させなくして
-     いた（bodyに全くスクロール可能な余地が無いと、ブラウザ側が「引っ張って更新」の起点を検出できない
-     ため）。「引っ張って更新を使えるようにしたい」との要望を優先し、このoverflow:hidden指定は撤去。
-     レール/メイン分離自体は#appのheight:100vh/100dvh固定（直後の指定）で基本的に保たれるが、
-     ビューポート変動等でbodyがわずかに溢れた場合に再発するリスクはある（2026-11-14の元の不具合）。 */
-  /* 2026-11-09：min-heightだけだと中身が多い画面で#app自体が縦に伸びてbody側がスクロールしてしまい、
-     レール（.rail）もメイン領域と一緒に流れてしまっていた。height指定で#appをビューポートぴったりに
-     固定し、<main>側のoverflow-y:autoだけが内部スクロールするようにする（dvhはモバイルブラウザの
-     アドレスバー分のズレ対策、非対応ブラウザはvhにフォールバック）。 */
-  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; width: 100%; }
+  /* 2026-11-23：「#appをheight:100vh/100dvhで固定＋bodyはoverflow:hiddenで塞ぐ」という組み合わせは、
+     ビューポート変動時にbody側へわずかに溢れてレールと本文が一緒にスクロールしてしまう不具合（2026-11-14）
+     と、bodyのoverflow:hiddenがブラウザの「引っ張って更新」の検出自体を阻害する問題（2026-11-23）の
+     どちらかが必ず再発するという板挟みだった。position:fixed+inset:0で#appをビューポートそのものに
+     固定する方式に変更：#appは文書の通常の流れから外れるため、bodyの実質的なスクロール量は常にゼロ
+     （overflow:hiddenを明示しなくても他に何も溢れる要素が無い）。これによりbodyは「スクロール可能だが
+     スクロールする中身が無い」状態になり、レール・本文の独立スクロールを保ったまま、ブラウザの
+     「引っ張って更新」ジェスチャーの検出も妨げない。 */
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; width: 100%; }
 
   /* ==== 左アイコンレール（2026-11-07新設、2026-11-08改修：触れる/ポイントで開くタイプに、
      ヘッダーのブランド・ユーザー情報もレール内へ移設、左右の余白を無くしフルサイズ化） ==== */
@@ -457,7 +455,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.2</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
