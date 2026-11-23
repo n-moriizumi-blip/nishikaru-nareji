@@ -98,6 +98,8 @@
   .rail.expanded .rail-impersonate:not(.hidden), .rail:hover .rail-impersonate:not(.hidden), .rail:focus-within .rail-impersonate:not(.hidden) { display: block; }
   .rail-impersonate label { display: block; font-size: 10px; color: var(--rail-dim); margin-bottom: 3px; }
   .rail-impersonate select { width: 100%; font-size: 11px; padding: 5px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: var(--rail-active); color: var(--rail-ink); font-family: inherit; }
+  /* 社員一覧の取得に失敗した場合の再読み込みリンク（2026-11-23追加）。 */
+  .rail-impersonate .linklike { display: block; margin-top: 4px; background: none; border: none; padding: 0; font-size: 10px; color: var(--rail-dim); text-decoration: underline; cursor: pointer; font-family: inherit; }
 
   /* なりすまし中であることを示す全画面共通バナー（2026-11-23追加）。要注意の赤ではなく
      「試験モード」の意味合いのため、マスタード系（--mustard、T番号系と同じ控えめな強調色）を使う。 */
@@ -447,7 +449,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.2</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.3</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -499,6 +501,7 @@
         <div class="rail-impersonate hidden" id="railImpersonate">
           <label for="impersonateSelect">この人として操作（試験用）</label>
           <select id="impersonateSelect"><option value="">（自分）</option></select>
+          <button type="button" class="linklike hidden" id="impersonateRetryBtn">一覧を読み込み直す</button>
         </div>
         <div class="rail-signin">
           <div id="g_id_signin"></div>
@@ -1098,26 +1101,46 @@
   // 対象はALL_ACCESS_EMAILSの本人のみ（レールの選択欄表示・GAS側getImpersonationList_の両方で確認）。
   // QMSポータルの「この人として操作（試験用）」と同じ考え方：選んだ人の役割で画面が出し分けられ、
   // 新規の投稿はその人の名前で記録される（実際に操作した人のメールは別途「操作した人のメール」列に残る）。
-  function updateImpersonationUI_() {
+  function updateImpersonationUI_(isRetry) {
     var wrap = document.getElementById('railImpersonate');
     if (!wrap) return;
     if (!realAllAccess) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
-    if (impersonationListLoaded) return;
+    if (impersonationListLoaded && !isRetry) return;
     impersonationListLoaded = true;
+    var select = document.getElementById('impersonateSelect');
+    var retryBtn = document.getElementById('impersonateRetryBtn');
+    retryBtn.classList.add('hidden');
+    select.innerHTML = '<option value="">（自分）</option><option value="" disabled>読み込み中…</option>';
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'getImpersonationList', idToken: currentUser.idToken }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res.error || !res.people) { impersonationListLoaded = false; return; }
+        if (res.error || !res.people) {
+          // GAS側が一時的に遅延・失敗することがあるため（このセッション中にも何度か確認済み）、
+          // 自動で1回だけ再試行し、それでもダメなら再読み込みリンクを出す（2026-11-23追加）。
+          if (!isRetry) { updateImpersonationUI_(true); return; }
+          impersonationListLoaded = false;
+          select.innerHTML = '<option value="">（自分）</option>';
+          retryBtn.classList.remove('hidden');
+          return;
+        }
         impersonationPeopleByEmail_ = {};
         res.people.forEach(function (p) { impersonationPeopleByEmail_[p.email] = p; });
-        var select = document.getElementById('impersonateSelect');
         select.innerHTML = '<option value="">（自分）</option>' + res.people.map(function (p) {
           return '<option value="' + escapeAttr(p.email) + '">' + escapeHtml(p.name) + '（' + escapeHtml(p.section || '―') + '）</option>';
         }).join('');
       })
-      .catch(function () { impersonationListLoaded = false; });
+      .catch(function () {
+        if (!isRetry) { updateImpersonationUI_(true); return; }
+        impersonationListLoaded = false;
+        select.innerHTML = '<option value="">（自分）</option>';
+        retryBtn.classList.remove('hidden');
+      });
   }
+
+  document.getElementById('impersonateRetryBtn').addEventListener('click', function () {
+    updateImpersonationUI_(true);
+  });
 
   function updateImpersonateBanner_() {
     var banner = document.getElementById('impersonateBanner');
