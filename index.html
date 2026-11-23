@@ -447,7 +447,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -1055,8 +1055,24 @@
         document.getElementById('userRole').textContent = currentSection || '';
         updateImpersonateBanner_();
         updateActionGate();
+        // 「この人として操作」で相手を切り替えても、既に表示中の画面（②過去トラ・共有情報の
+        // 部署別タブ等）はsetScreen()を経由しないと再描画されず、見た目が変わらなかった
+        // （2026-11-23、実機確認で発覚）。fetchRole()完了のたびに、図番を表示中なら
+        // selectedDeptViewをリセットして（新しい人の役割に応じたタブが自動選択されるように）、
+        // 関連する表示を描き直す。
+        if (currentZubanData) {
+          selectedDeptView = null;
+          renderPastTroubleDisplay(currentZubanData);
+          renderQualityLogSection(currentZubanData);
+          renderShippingSpecDisplay(currentZubanData.shippingSpec);
+        }
       })
-      .catch(function () { currentRole = 'other'; document.getElementById('userRole').textContent = ''; updateActionGate(); });
+      .catch(function () {
+        currentRole = 'other';
+        document.getElementById('userRole').textContent = '';
+        updateImpersonateBanner_();
+        updateActionGate();
+      });
   }
 
   // 対象はALL_ACCESS_EMAILSの本人のみ（レールの選択欄表示・GAS側getImpersonationList_の両方で確認）。
