@@ -467,7 +467,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.17.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.17.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -1011,7 +1011,7 @@
   // 反応する独自実装に置き換える（main自体はoverscroll-behavior-y:containでブラウザ標準の
   // ジェスチャーへは伝わらないようにしてある）。PULL_REFRESH_THRESHOLDを標準よりかなり長めに
   // 取ることで、誤って更新してしまうことを防ぐ。
-  var PULL_REFRESH_THRESHOLD = 110; // この距離(px)を超えてから指を離すとリロードする
+  var PULL_REFRESH_THRESHOLD = 160; // この距離(px)を超えてから指を離すとリロードする（2026-11-23、110→160に延長）
   var pullStartY = null;
   var pullActive = false;
   var pullIndicatorEl = document.getElementById('pullIndicator');
