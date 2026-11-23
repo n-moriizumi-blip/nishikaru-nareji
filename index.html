@@ -32,12 +32,12 @@
   * { box-sizing: border-box; }
   .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
-  /* 2026-11-14：#appをheight:100vh/100dvhぴったりに固定していても、パディング等のわずかな計算誤差や
-     モバイルブラウザのアドレスバー表示/非表示によるビューポート変動で#appがわずかに溢れると、
-     body自体がスクロール可能になり、結局レールとメイン領域が一緒に動いてしまう（「レール内と中央の
-     縦スクロールが分かれていない」との指摘）。body側のスクロール自体を禁止し、スクロールは必ず
-     内部の.rail/mainのoverflow-y:autoだけで起きるようにする。 */
-  html, body { overflow: hidden; }
+  /* 2026-11-23：body側に明示的にoverflow:hiddenを掛けていた（2026-11-14追加、レールとメイン領域の
+     スクロール分離の保険）が、これがブラウザの「引っ張って更新」ジェスチャー自体を機能させなくして
+     いた（bodyに全くスクロール可能な余地が無いと、ブラウザ側が「引っ張って更新」の起点を検出できない
+     ため）。「引っ張って更新を使えるようにしたい」との要望を優先し、このoverflow:hidden指定は撤去。
+     レール/メイン分離自体は#appのheight:100vh/100dvh固定（直後の指定）で基本的に保たれるが、
+     ビューポート変動等でbodyがわずかに溢れた場合に再発するリスクはある（2026-11-14の元の不具合）。 */
   /* 2026-11-09：min-heightだけだと中身が多い画面で#app自体が縦に伸びてbody側がスクロールしてしまい、
      レール（.rail）もメイン領域と一緒に流れてしまっていた。height指定で#appをビューポートぴったりに
      固定し、<main>側のoverflow-y:autoだけが内部スクロールするようにする（dvhはモバイルブラウザの
@@ -101,9 +101,11 @@
      「試験モード」の意味合いのため、マスタード系（--mustard、T番号系と同じ控えめな強調色）を使う。 */
   .impersonate-banner { flex: none; background: var(--mustard); color: #3a3317; font-weight: 700; font-size: 0.85rem; padding: 10px 14px; border-radius: 6px; }
 
-  /* 右端の「一番上へ／一番下へ」ボタン（2026-11-23追加）。position:fixedで画面右下に固定し、
-     mainの内部スクロール位置に応じてJS側で表示/非表示を切り替える。 */
-  .scroll-fab-group { position: fixed; right: 16px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 40; }
+  /* 右端の「一番上へ／一番下へ」ボタン（2026-11-23追加）。position:fixedで画面右端の縦中央に固定し、
+     mainの内部スクロール位置に応じてJS側で表示/非表示を切り替える。当初は右下に置いたが、
+     ⑤⑥画面などの送信・保存ボタンは内容の一番下にあり、画面を下までスクロールした時に重なって
+     操作の邪魔になる恐れがあったため、縦中央に変更した（2026-11-23、ユーザー確認の上で変更）。 */
+  .scroll-fab-group { position: fixed; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; z-index: 40; }
   .scroll-fab {
     width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
     color: var(--accent-ink); font-size: 20px; font-weight: 900; display: flex; align-items: center; justify-content: center;
@@ -455,7 +457,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.0</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.1</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
