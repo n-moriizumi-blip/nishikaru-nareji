@@ -92,6 +92,17 @@
   .rail-signin { display: none; padding: 6px 16px 2px; }
   .rail.expanded .rail-signin, .rail:hover .rail-signin, .rail:focus-within .rail-signin { display: block; }
 
+  /* 「この人として操作（試験用）」：ALL_ACCESS_EMAILSの本人にだけ.hiddenが外れる（JS制御）。
+     展開時のみ中身を表示する点は.rail-signinと同じ（2026-11-23追加）。 */
+  .rail-impersonate { display: none; padding: 6px 16px; }
+  .rail.expanded .rail-impersonate:not(.hidden), .rail:hover .rail-impersonate:not(.hidden), .rail:focus-within .rail-impersonate:not(.hidden) { display: block; }
+  .rail-impersonate label { display: block; font-size: 10px; color: var(--rail-dim); margin-bottom: 3px; }
+  .rail-impersonate select { width: 100%; font-size: 11px; padding: 5px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: var(--rail-active); color: var(--rail-ink); font-family: inherit; }
+
+  /* なりすまし中であることを示す全画面共通バナー（2026-11-23追加）。要注意の赤ではなく
+     「試験モード」の意味合いのため、マスタード系（--mustard、T番号系と同じ控えめな強調色）を使う。 */
+  .impersonate-banner { flex: none; background: var(--mustard); color: #3a3317; font-weight: 700; font-size: 0.85rem; padding: 10px 14px; border-radius: 6px; }
+
   /* ==== 画面共通の見出し（2026-11-08追加、全画面で統一） ==== */
   .pagehead { flex: none; }
   .pagehead h1 { margin: 0; font-size: 1.2rem; font-weight: 900; }
@@ -436,7 +447,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.14.7</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -484,6 +495,11 @@
           <div class="rail-av" id="railAv">?</div>
           <div class="rail-user-detail"><b id="userName">未ログイン</b><span id="userRole">　</span></div>
         </div>
+        <!-- 「この人として操作（試験用）」：ALL_ACCESS_EMAILSの本人にのみ表示（2026-11-23追加） -->
+        <div class="rail-impersonate hidden" id="railImpersonate">
+          <label for="impersonateSelect">この人として操作（試験用）</label>
+          <select id="impersonateSelect"><option value="">（自分）</option></select>
+        </div>
         <div class="rail-signin">
           <div id="g_id_signin"></div>
           <button type="button" class="btn btn-ghost hidden" id="testLoginBtn" style="padding:6px 10px; font-size:0.72rem;">テスト用ログイン</button>
@@ -492,6 +508,9 @@
     </nav>
 
   <main>
+    <!-- 「この人として操作」で誰かになりきっている間、全画面共通で表示（2026-11-23追加）。
+         setScreen()は.screen要素しか切り替えないため、ここに置けばどの画面でも常に見える。 -->
+    <div class="impersonate-banner hidden" id="impersonateBanner"></div>
     <!-- SCREEN 1: 図番読み取り -->
     <section class="screen active" data-screen="scan">
       <div class="pagehead"><h1>図番検索</h1><div class="sub">QRコードを読み取る、または図番で検索してください</div></div>
@@ -1007,14 +1026,26 @@
   var ROLE_DEPT_NAME = { seizou: '加工', kensa: '品証', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }; // 部署ボタン・品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
+  // 「この人として操作」（2026-11-23追加）：realAllAccessは実際にログインしている本人がallAccessか
+  // （なりすまし中もこの値自体は変わらない＝選択欄を消さないため）。impersonateAsEmailが空なら
+  // 本人のまま、入っていれば以降の役割判定・新規投稿の名義をその人に切り替える。
+  var realAllAccess = false;
+  var impersonateAsEmail = '';
+  var impersonateAsName = '';
+  var impersonationListLoaded = false;
   function fetchRole() {
     if (!currentUser) return;
-    fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(currentUser.email))
+    var lookupEmail = impersonateAsEmail || currentUser.email;
+    fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(lookupEmail))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         currentRole = data.role || 'other';
         currentSection = data.section || '';
         currentAllAccess = !!data.allAccess;
+        if (!impersonateAsEmail) {
+          realAllAccess = currentAllAccess;
+          updateImpersonationUI_();
+        }
         // 動作確認用：allAccessアカウントに限り、URLに?debugRole=shiage等を付けると
         // その役割になりきって画面の出し分けを確認できる（他アカウントへのログインが不要）。
         if (currentAllAccess) {
@@ -1022,10 +1053,53 @@
           if (debugRole) { currentRole = debugRole; currentAllAccess = false; }
         }
         document.getElementById('userRole').textContent = currentSection || '';
+        updateImpersonateBanner_();
         updateActionGate();
       })
       .catch(function () { currentRole = 'other'; document.getElementById('userRole').textContent = ''; updateActionGate(); });
   }
+
+  // 対象はALL_ACCESS_EMAILSの本人のみ（レールの選択欄表示・GAS側getImpersonationList_の両方で確認）。
+  // QMSポータルの「この人として操作（試験用）」と同じ考え方：選んだ人の役割で画面が出し分けられ、
+  // 新規の投稿はその人の名前で記録される（実際に操作した人のメールは別途「操作した人のメール」列に残る）。
+  function updateImpersonationUI_() {
+    var wrap = document.getElementById('railImpersonate');
+    if (!wrap) return;
+    if (!realAllAccess) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    if (impersonationListLoaded) return;
+    impersonationListLoaded = true;
+    fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify({ action: 'getImpersonationList', idToken: currentUser.idToken }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.error || !res.people) { impersonationListLoaded = false; return; }
+        var select = document.getElementById('impersonateSelect');
+        select.innerHTML = '<option value="">（自分）</option>' + res.people.map(function (p) {
+          return '<option value="' + escapeAttr(p.email) + '" data-name="' + escapeAttr(p.name) + '">' +
+            escapeHtml(p.name) + '（' + escapeHtml(p.section || '―') + '）</option>';
+        }).join('');
+      })
+      .catch(function () { impersonationListLoaded = false; });
+  }
+
+  function updateImpersonateBanner_() {
+    var banner = document.getElementById('impersonateBanner');
+    if (!banner) return;
+    if (impersonateAsEmail) {
+      banner.textContent = '試験用：いま「' + impersonateAsName + '」さんとして操作しています。新規の投稿はこの人の名前で記録されます（実際に操作した人のメールも記録されます）。';
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('impersonateSelect').addEventListener('change', function () {
+    var opt = this.options[this.selectedIndex];
+    impersonateAsEmail = this.value;
+    impersonateAsName = impersonateAsEmail ? (opt.dataset.name || impersonateAsEmail) : '';
+    setUserDisplay_(impersonateAsEmail ? impersonateAsName : currentUser.name);
+    fetchRole();
+  });
 
   // ==== recent list（localStorageに保存） ====
   function getRecentZubans() {
@@ -2826,7 +2900,8 @@
       forwardPosition: document.getElementById('forwardPositionInput').value,
       programNumber: document.getElementById('programNumberInput').value,
       programNumberSub: document.getElementById('programNumberSubInput').value,
-      idToken: currentUser.idToken
+      idToken: currentUser.idToken,
+      asEmail: impersonateAsEmail || undefined
     };
 
     var toolsStatusEl = document.getElementById('toolsStatus');
@@ -3070,7 +3145,7 @@
     if (!isEdit && !selectedMachine) { alert('機械名を選ぶか、新しく追加してから記録してください'); return; }
     var payload = isEdit
       ? { action: 'updateToolMemo', postId: editingMemoId, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, idToken: currentUser.idToken }
-      : { action: 'postToolMemo', zuban: currentZubanData.zuban, machineName: selectedMachine, idToken: currentUser.idToken, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked };
+      : { action: 'postToolMemo', zuban: currentZubanData.zuban, machineName: selectedMachine, idToken: currentUser.idToken, title: title, content: content, photoUrl: pendingMemoPhotoUrl, shared: document.getElementById('memoShareCheck').checked, asEmail: impersonateAsEmail || undefined };
     fetch(GAS_API_URL, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -3226,7 +3301,7 @@
     setLoadingText(qiStatusEl, statusPrefix + 'を保存しています…');
     fetch(GAS_API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, idToken: currentUser.idToken })
+      body: JSON.stringify({ action: 'saveShippingSpec', zuban: currentZubanData.zuban, fields: fields, idToken: currentUser.idToken, asEmail: impersonateAsEmail || undefined })
     }).then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) {
@@ -3352,7 +3427,8 @@
       ? { action: 'updateQualityLog', postId: editingShiageId, department: '仕上げ', content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked, idToken: currentUser.idToken }
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban, department: '仕上げ', idToken: currentUser.idToken,
-          content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked
+          content: content, photoUrl: pendingShiagePhotoUrl, shared: document.getElementById('shiageShareCheck').checked,
+          asEmail: impersonateAsEmail || undefined
         };
     var shiageQiStatusEl = document.getElementById('qiStatus');
     setLoadingText(shiageQiStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
@@ -3474,7 +3550,8 @@
       : {
           action: 'postQualityLog', zuban: currentZubanData.zuban, department: '洗浄', idToken: currentUser.idToken,
           content: content, photoUrl: pendingSenjouPhotoUrl, shared: document.getElementById('senjouShareCheck').checked,
-          ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire
+          ultrasonic: ultrasonic, barrelMedia: barrelMedia, barrelFreq: barrelFreq, barrelTime: barrelTime, barrelWire: barrelWire,
+          asEmail: impersonateAsEmail || undefined
         };
     var senjouQiStatusEl = document.getElementById('qiStatus');
     setLoadingText(senjouQiStatusEl, (isEdit ? '更新' : '記録') + 'しています…');
@@ -3688,7 +3765,8 @@
       defectQtyTotal: totalQty,
       dimensionCheckQty: parseInt(document.getElementById('defectDimensionQtyInput').value, 10) || 0,
       defectDetails: details,
-      note: document.getElementById('defectNoteInput').value.trim()
+      note: document.getElementById('defectNoteInput').value.trim(),
+      asEmail: impersonateAsEmail || undefined
     };
     var statusEl = document.getElementById('defectStatus');
     setLoadingText(statusEl, '送信しています…');

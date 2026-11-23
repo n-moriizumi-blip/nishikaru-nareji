@@ -55,19 +55,19 @@ function setupSheets() {
   ensureSheet_(ss, SHEET_QUALITY_LOG, [
     '投稿ID', 'タイムスタンプ', '図番', '部署', '投稿者メール', '投稿者名',
     '外観ランク', '内容', '写真URL', '共有フラグ',
-    '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー'
+    '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー', '操作した人のメール'
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_MEMO, [
     '投稿ID', 'タイムスタンプ', '図番', '機械名', '投稿者メール', '投稿者名',
-    'タイトル', '内容', '写真URL', '共有フラグ'
+    'タイトル', '内容', '写真URL', '共有フラグ', '操作した人のメール'
   ]);
 
   ensureSheet_(ss, SHEET_TOOL_POSITIONS, [
     '図番', '機械名', '列区分', '順番', 'Tナンバー', 'オフセットNo.', '工具種類', '工具種類詳細', '詳細情報', 'シフト', 'メーカー', '品番',
     '主軸', '取付方式', '取付位置', 'Y軸位置', '突切方向', '突切刃形', 'クーラント種別', 'Mコード',
     '正面チャック径', '背面チャック径', 'サイクルタイム',
-    '専用ツール保管', '前進端位置', 'プログラム番号（メイン）', 'プログラム番号（サブ）', '最終更新者メール', '最終更新日時'
+    '専用ツール保管', '前進端位置', 'プログラム番号（メイン）', 'プログラム番号（サブ）', '最終更新者メール', '最終更新日時', '操作した人のメール'
   ]);
 
   ensureSheet_(ss, SHEET_SHIPPING_SPEC, [
@@ -76,7 +76,7 @@ function setupSheets() {
     'カット品', 'テストピース', '借用ゲージ有無', '借用ゲージ種類',
     '梱包方法', 'その他必要事項', '梱包写真URL',
     '仕上専用メモ', '超音波', 'バレルメディア', 'バレル周波数', 'バレル時間', 'バレルワイヤー',
-    '最終更新者メール', '最終更新日時'
+    '最終更新者メール', '最終更新日時', '操作した人のメール'
   ]);
 
   ensureSheet_(ss, SHEET_ZUBAN_INDEX, [
@@ -90,7 +90,7 @@ function setupSheets() {
   ensureSheet_(ss, SHEET_PROCESS_DEFECTS, [
     '投稿ID', 'タイムスタンプ', '図番', '製造番号', '品名', '得意先', '機械名', '機番', '材種名',
     '加工日', '良品数', '不良数計', '寸法出し数', '大分類', '詳細', '個数', '備考',
-    '投稿者メール', '投稿者名'
+    '投稿者メール', '投稿者名', '操作した人のメール'
   ]);
 
   ensureSheet_(ss, SHEET_PROCESS_QTY_SNAPSHOT, [
@@ -104,6 +104,25 @@ function setupSheets() {
   }
 
   Logger.log('セットアップ完了: ' + ss.getSheets().map(function (s) { return s.getName(); }).join(', '));
+}
+
+/**
+ * 「この人として操作」機能の追加（2026-11-23）に伴い、既存の本番シート5枚に監査用の
+ * 「操作した人のメール」列を追加する（初回のみ手動実行。既に追加済みのシートはスキップする
+ * ので複数回実行しても安全）。なりすましていない通常の投稿では、この列は投稿者メールと同じ値になる。
+ */
+function addImpersonationAuditColumn() {
+  var sheetNames = [SHEET_QUALITY_LOG, SHEET_TOOL_MEMO, SHEET_TOOL_POSITIONS, SHEET_SHIPPING_SPEC, SHEET_PROCESS_DEFECTS];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  sheetNames.forEach(function (name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) { Logger.log(name + ': シートが見つかりません'); return; }
+    var lastCol = sheet.getLastColumn();
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (header.indexOf('操作した人のメール') !== -1) { Logger.log(name + ': 既に追加済み'); return; }
+    sheet.getRange(1, lastCol + 1).setValue('操作した人のメール');
+    Logger.log(name + ': ' + (lastCol + 1) + '列目に追加しました');
+  });
 }
 
 function ensureSheet_(ss, name, headers) {
@@ -182,6 +201,7 @@ function doPost(e) {
     if (action === 'copyToolMachine') return jsonResponse_(copyToolMachine_(payload));
     if (action === 'deleteToolMachine') return jsonResponse_(deleteToolMachine_(payload));
     if (action === 'postProcessDefect') return jsonResponse_(postProcessDefect_(payload));
+    if (action === 'getImpersonationList') return jsonResponse_(getImpersonationList_(payload));
     return jsonResponse_({ error: 'unknown action: ' + action });
   } catch (err) {
     return jsonResponse_({ error: String(err) });
@@ -1053,10 +1073,32 @@ function verifyIdToken_(idToken) {
   return { email: claims.email, name: claims.name || claims.email };
 }
 
-/** payload.idTokenを検証し、成功したら検証済みidentityを渡してfnを実行する。失敗時はエラーをそのまま返す。 */
+/**
+ * payload.idTokenを検証し、成功したら検証済みidentityを渡してfnを実行する。失敗時はエラーをそのまま返す。
+ *
+ * 【2026-11-23追加】「この人として操作」機能：実際にログインしている人がALL_ACCESS_EMAILSに
+ * 含まれ、かつpayload.asEmailが指定されている場合、投稿データの氏名・メールアドレスはasEmailの
+ * 人（組織図マスタから氏名を引く）に差し替える。ただし実際に操作した人のメールは
+ * identity.realEmail/realNameとして必ず保持し、呼び出し側（postQualityLog_等）が
+ * 「操作した人のメール」列に書き込めるようにする（なりすましていない通常の投稿では
+ * realEmail===emailになる）。ALL_ACCESS_EMAILSに含まれない人がasEmailを送ってきても
+ * 無視する（本人の投稿として扱う）ため、なりすまし防止の安全性は変わらない。
+ */
 function withVerifiedIdentity_(payload, fn) {
   var identity = verifyIdToken_(payload.idToken);
   if (identity.error) return identity;
+  identity.realEmail = identity.email;
+  identity.realName = identity.name;
+  if (payload.asEmail && ALL_ACCESS_EMAILS.indexOf(String(identity.email).trim().toLowerCase()) !== -1) {
+    var asKey = String(payload.asEmail).trim().toLowerCase();
+    var asPerson = getOrgMasterMap_()[asKey];
+    identity = {
+      email: payload.asEmail,
+      name: (asPerson && asPerson.name) || payload.asEmail,
+      realEmail: identity.realEmail,
+      realName: identity.realName
+    };
+  }
   return fn(identity);
 }
 
@@ -1070,7 +1112,8 @@ function postQualityLog_(payload) {
       identity.email, identity.name,
       payload.rank || '', payload.content || '', payload.photoUrl || '',
       !!payload.shared,
-      payload.ultrasonic || '', payload.barrelMedia || '', payload.barrelFreq || '', payload.barrelTime || '', payload.barrelWire || ''
+      payload.ultrasonic || '', payload.barrelMedia || '', payload.barrelFreq || '', payload.barrelTime || '', payload.barrelWire || '',
+      identity.realEmail
     ]);
     invalidateZubanCache_(payload.zuban);
     if (payload.department === '洗浄') { try { CacheService.getScriptCache().remove('senjouFieldSuggestions'); } catch (e) {} }
@@ -1087,7 +1130,7 @@ function postToolMemo_(payload) {
       id, new Date(), payload.zuban, payload.machineName || '',
       identity.email, identity.name,
       payload.title || '', payload.content || '', payload.photoUrl || '',
-      !!payload.shared
+      !!payload.shared, identity.realEmail
     ]);
     invalidateZubanCache_(payload.zuban);
     return { id: id };
@@ -1784,11 +1827,11 @@ function postProcessDefect_(payload) {
       formatWorkDateForSheet_(payload.workDate), payload.goodQty || 0, payload.defectQtyTotal || 0,
       payload.dimensionCheckQty || 0,
       first.category || '', first.detail || '', (first.qty === undefined ? '' : first.qty),
-      payload.note || '', identity.email, identity.name
+      payload.note || '', identity.email, identity.name, identity.realEmail
     ]);
     for (var i = 1; i < details.length; i++) {
       var d = details[i];
-      sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '']);
+      sheet.appendRow([id, '', '', '', '', '', '', '', '', '', '', '', '', d.category, d.detail, d.qty, '', '', '', '']);
     }
     invalidateZubanCache_(payload.zuban); // 保存直後に⑥の「過去の入力履歴」へ反映させるため（2026-11-08）
     invalidateProcessDefectCaches_(); // 不良ダッシュボード・過去の入力履歴の5分キャッシュにも即反映させるため（2026-11-13）
@@ -2165,7 +2208,7 @@ function saveToolPositions_(payload) {
           p.coolantType || '', p.mCode || '',
           payload.frontChuck || '', payload.backChuck || '', payload.cycleTime || '',
           payload.toolStorage || '', payload.forwardPosition || '', payload.programNumber || '', payload.programNumberSub || '',
-          identity.email, now
+          identity.email, now, identity.realEmail
         ];
       });
       sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
@@ -2404,6 +2447,7 @@ function saveShippingSpec_(payload) {
     var merged = Object.assign({}, existing, payload.fields || {});
     merged['最終更新者メール'] = identity.email;
     merged['最終更新日時'] = new Date();
+    merged['操作した人のメール'] = identity.realEmail;
     var newRow = header.map(function (h) { return merged[h] !== undefined ? merged[h] : ''; });
     if (rowIndex >= 0) {
       sheet.getRange(rowIndex + 1, 1, 1, header.length).setValues([newRow]);
@@ -2504,6 +2548,27 @@ function getOrgMasterMap_() {
   }
   try { cache.put(cacheKey, JSON.stringify(map), 1800); } catch (e) {} // 30分。サイズ超過等は無視して素通りさせる
   return map;
+}
+
+/**
+ * 「この人として操作」のドロップダウン用に、組織図マスタの全社員一覧（氏名・メール・部署・工程）を
+ * 返す（2026-11-23追加）。誰でも社員一覧を取得できると困るため、idTokenを検証したうえで
+ * ALL_ACCESS_EMAILSに含まれる場合のみ返す（withVerifiedIdentity_と同じ安全性）。
+ */
+function getImpersonationList_(payload) {
+  var identity = verifyIdToken_(payload.idToken);
+  if (identity.error) return identity;
+  if (ALL_ACCESS_EMAILS.indexOf(String(identity.email).trim().toLowerCase()) === -1) {
+    return { error: 'この機能は利用できません' };
+  }
+  var map = getOrgMasterMap_();
+  var people = Object.keys(map)
+    .map(function (email) { return { email: email, name: map[email].name, section: map[email].section, process: map[email].process }; })
+    .filter(function (p) { return p.name; });
+  people.sort(function (a, b) {
+    return String(a.section).localeCompare(String(b.section), 'ja') || String(a.name).localeCompare(String(b.name), 'ja');
+  });
+  return { people: people };
 }
 
 /** 課名・工程名の文字列から役割キーを判定する。想定外の組み合わせはother（安全側）にフォールバック。 */
