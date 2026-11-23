@@ -447,7 +447,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.1</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.2</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -1026,26 +1026,27 @@
   var ROLE_DEPT_NAME = { seizou: '加工', kensa: '品証', shiage: '仕上げ', senjou: '洗浄', shukka: '出荷' }; // 部署ボタン・品質情報記録ログの「部署」列との対応
   var currentSection = ''; // 課名（品質情報記録の「部署」欄にそのまま使う）
   var currentAllAccess = false; // 確認用アカウント：trueの間は役割に関わらず全部署の画面が見える
-  // 「この人として操作」（2026-11-23追加）：realAllAccessは実際にログインしている本人がallAccessか
-  // （なりすまし中もこの値自体は変わらない＝選択欄を消さないため）。impersonateAsEmailが空なら
-  // 本人のまま、入っていれば以降の役割判定・新規投稿の名義をその人に切り替える。
+  // 「この人として操作」（2026-11-23追加）：realXxxは実際にログインしている本人の値（なりすまし中も
+  // 保持しておき、「（自分）」に戻したときネットワーク通信なしで即座に復元するため）。
   var realAllAccess = false;
+  var realRole = null;
+  var realSection = '';
   var impersonateAsEmail = '';
   var impersonateAsName = '';
   var impersonationListLoaded = false;
+  var impersonationPeopleByEmail_ = {}; // メール→{name,section,process}（getImpersonationListの結果をキャッシュ、役割の切替をサーバー往復なしで行うため）
   function fetchRole() {
     if (!currentUser) return;
-    var lookupEmail = impersonateAsEmail || currentUser.email;
-    fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(lookupEmail))
+    fetch(GAS_API_URL + '?action=role&email=' + encodeURIComponent(currentUser.email))
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        currentRole = data.role || 'other';
-        currentSection = data.section || '';
-        currentAllAccess = !!data.allAccess;
-        if (!impersonateAsEmail) {
-          realAllAccess = currentAllAccess;
-          updateImpersonationUI_();
-        }
+        realRole = data.role || 'other';
+        realSection = data.section || '';
+        realAllAccess = !!data.allAccess;
+        currentRole = realRole;
+        currentSection = realSection;
+        currentAllAccess = realAllAccess;
+        updateImpersonationUI_();
         // 動作確認用：allAccessアカウントに限り、URLに?debugRole=shiage等を付けると
         // その役割になりきって画面の出し分けを確認できる（他アカウントへのログインが不要）。
         if (currentAllAccess) {
@@ -1053,26 +1054,45 @@
           if (debugRole) { currentRole = debugRole; currentAllAccess = false; }
         }
         document.getElementById('userRole').textContent = currentSection || '';
-        updateImpersonateBanner_();
         updateActionGate();
-        // 「この人として操作」で相手を切り替えても、既に表示中の画面（②過去トラ・共有情報の
-        // 部署別タブ等）はsetScreen()を経由しないと再描画されず、見た目が変わらなかった
-        // （2026-11-23、実機確認で発覚）。fetchRole()完了のたびに、図番を表示中なら
-        // selectedDeptViewをリセットして（新しい人の役割に応じたタブが自動選択されるように）、
-        // 関連する表示を描き直す。
-        if (currentZubanData) {
-          selectedDeptView = null;
-          renderPastTroubleDisplay(currentZubanData);
-          renderQualityLogSection(currentZubanData);
-          renderShippingSpecDisplay(currentZubanData.shippingSpec);
-        }
       })
-      .catch(function () {
-        currentRole = 'other';
-        document.getElementById('userRole').textContent = '';
-        updateImpersonateBanner_();
-        updateActionGate();
-      });
+      .catch(function () { currentRole = 'other'; document.getElementById('userRole').textContent = ''; updateActionGate(); });
+  }
+
+  /** gas/Code.gsのresolveRole_と全く同じ判定をクライアント側でも行う（2026-11-23追加）。
+   * 「この人として操作」で相手を切り替えるたびにGASへ往復していると数秒〜十数秒かかり
+   * 体感が悪かった（実機で指摘）ため、getImpersonationListで最初に1回取得した社員一覧
+   * （課名・工程名）から、サーバーに問い合わせずその場で役割を求める。 */
+  function resolveRoleClient_(section, process) {
+    section = String(section || ''); process = String(process || '');
+    if (section.indexOf('製造課') !== -1 && (process.indexOf('一次加工') !== -1 || process.indexOf('二次加工') !== -1)) return 'seizou';
+    if (section.indexOf('製造課') !== -1 && process.indexOf('洗浄') !== -1) return 'senjou';
+    if (section.indexOf('製造課') !== -1 && process.indexOf('仕上げ') !== -1) return 'shiage';
+    if (section.indexOf('生産管理課') !== -1 && process.indexOf('出荷') !== -1) return 'shukka';
+    if (section.indexOf('生産管理課') !== -1) return 'seisan';
+    if (section.indexOf('品質保証課') !== -1 && process.indexOf('検査') !== -1) return 'kensa';
+    return 'other';
+  }
+
+  // 画面の出し分け・バナー・再描画をまとめて反映する（ネットワーク通信なし、常に即時）。
+  function applyCurrentRoleToUi_() {
+    document.getElementById('userRole').textContent = currentSection || '';
+    updateImpersonateBanner_();
+    updateActionGate();
+    // 「この人として操作」で相手を切り替えても、既に表示中の画面（②過去トラ・共有情報の
+    // 部署別タブ等）はsetScreen()を経由しないと再描画されず、見た目が変わらなかった
+    // （2026-11-23、実機確認で発覚）。相手を切り替えるたびに、図番を表示中なら
+    // selectedDeptViewをリセットして（新しい人の役割に応じたタブが自動選択されるように）、
+    // 関連する表示を描き直す。
+    if (currentZubanData) {
+      selectedDeptView = null;
+      renderPastTroubleDisplay(currentZubanData);
+      renderQualityLogSection(currentZubanData);
+      renderShippingSpecDisplay(currentZubanData.shippingSpec);
+    }
+    // ⑤品質情報記録画面は役割ごとにセクションを出し分けるが、その出し分けはgoToQi()の中でしか
+    // 行われないため、⑤画面を表示中に相手を切り替えた場合はここで呼び直す（2026-11-23追加）。
+    if (currentScreenName === 'qi') goToQi();
   }
 
   // 対象はALL_ACCESS_EMAILSの本人のみ（レールの選択欄表示・GAS側getImpersonationList_の両方で確認）。
@@ -1089,10 +1109,11 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error || !res.people) { impersonationListLoaded = false; return; }
+        impersonationPeopleByEmail_ = {};
+        res.people.forEach(function (p) { impersonationPeopleByEmail_[p.email] = p; });
         var select = document.getElementById('impersonateSelect');
         select.innerHTML = '<option value="">（自分）</option>' + res.people.map(function (p) {
-          return '<option value="' + escapeAttr(p.email) + '" data-name="' + escapeAttr(p.name) + '">' +
-            escapeHtml(p.name) + '（' + escapeHtml(p.section || '―') + '）</option>';
+          return '<option value="' + escapeAttr(p.email) + '">' + escapeHtml(p.name) + '（' + escapeHtml(p.section || '―') + '）</option>';
         }).join('');
       })
       .catch(function () { impersonationListLoaded = false; });
@@ -1109,12 +1130,25 @@
     }
   }
 
+  // 切替はgetImpersonationListで最初に取得済みの一覧（課名・工程名）だけで完結させ、
+  // サーバーへは一切問い合わせない（2026-11-23、切替のたびに数秒〜十数秒かかっていた不具合の対応）。
   document.getElementById('impersonateSelect').addEventListener('change', function () {
-    var opt = this.options[this.selectedIndex];
     impersonateAsEmail = this.value;
-    impersonateAsName = impersonateAsEmail ? (opt.dataset.name || impersonateAsEmail) : '';
-    setUserDisplay_(impersonateAsEmail ? impersonateAsName : currentUser.name);
-    fetchRole();
+    if (!impersonateAsEmail) {
+      impersonateAsName = '';
+      currentRole = realRole;
+      currentSection = realSection;
+      currentAllAccess = realAllAccess;
+      setUserDisplay_(currentUser.name);
+    } else {
+      var person = impersonationPeopleByEmail_[impersonateAsEmail];
+      impersonateAsName = (person && person.name) || impersonateAsEmail;
+      currentRole = resolveRoleClient_(person && person.section, person && person.process);
+      currentSection = (person && person.section) || '';
+      currentAllAccess = false; // ALL_ACCESS_EMAILSは1名のみで本人以外がなりきることは無いため常にfalseでよい
+      setUserDisplay_(impersonateAsName);
+    }
+    applyCurrentRoleToUi_();
   });
 
   // ==== recent list（localStorageに保存） ====
