@@ -32,10 +32,6 @@
   * { box-sizing: border-box; }
   .hidden { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--font-ui); }
-  /* 画面一番上でさらに上にスクロールするとブラウザの「引っ張って更新」が働いてリロードされてしまう
-     不具合の対策（2026-10-25追加）。overscroll-behaviorでスクロールの余り分がブラウザの既定動作
-     （更新・戻る等）に伝わらないようにする。 */
-  html, body { overscroll-behavior-y: none; }
   /* 2026-11-14：#appをheight:100vh/100dvhぴったりに固定していても、パディング等のわずかな計算誤差や
      モバイルブラウザのアドレスバー表示/非表示によるビューポート変動で#appがわずかに溢れると、
      body自体がスクロール可能になり、結局レールとメイン領域が一緒に動いてしまう（「レール内と中央の
@@ -71,7 +67,7 @@
      ただしnav-btnの上下paddingを大きくしたままだと8項目分の合計高さが画面に収まらず、
      下部のアカウント表示が見切れてしまったため（2026-11-17指摘）、上下paddingは15px→10pxに
      詰めてアイコンの大きさ自体は維持した。 */
-  .nav-btn .ic { flex: none; width: 44px; text-align: center; font-size: 36px; line-height: 1; } /* 絵文字アイコン（2026-11-11、線画SVGから変更） */
+  .nav-btn .ic { flex: none; width: 36px; text-align: center; font-size: 30px; line-height: 1; } /* 絵文字アイコン（2026-11-11、線画SVGから変更。2026-11-23、少し縮小） */
   .nav-btn .lbl { font-size: 13.5px; font-weight: 700; display: none; }
   .rail.expanded .nav-btn .lbl, .rail:hover .nav-btn .lbl, .rail:focus-within .nav-btn .lbl { display: inline; }
   .nav-btn.active { background: var(--rail-active); color: #fff; }
@@ -104,6 +100,16 @@
   /* なりすまし中であることを示す全画面共通バナー（2026-11-23追加）。要注意の赤ではなく
      「試験モード」の意味合いのため、マスタード系（--mustard、T番号系と同じ控えめな強調色）を使う。 */
   .impersonate-banner { flex: none; background: var(--mustard); color: #3a3317; font-weight: 700; font-size: 0.85rem; padding: 10px 14px; border-radius: 6px; }
+
+  /* 右端の「一番上へ／一番下へ」ボタン（2026-11-23追加）。position:fixedで画面右下に固定し、
+     mainの内部スクロール位置に応じてJS側で表示/非表示を切り替える。 */
+  .scroll-fab-group { position: fixed; right: 16px; bottom: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 40; }
+  .scroll-fab {
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+    color: var(--accent-ink); font-size: 20px; font-weight: 900; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.18); transition: opacity .15s;
+  }
+  .scroll-fab:active { background: var(--accent-soft); }
 
   /* ==== 画面共通の見出し（2026-11-08追加、全画面で統一） ==== */
   .pagehead { flex: none; }
@@ -449,7 +455,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.15.3</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -485,13 +491,6 @@
         <span class="lbl">品質情報記録</span>
         <svg class="lock ic-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       </button>
-      <!-- 2026-11-09追加：引っ張って更新を無効化した（v1.31.4）ので、アプリ側に明示的な
-           再読み込み手段を用意しておく（PWAとしてインストールしているとブラウザの更新ボタンが無いため）。 -->
-      <button type="button" class="nav-btn" id="railReloadBtn">
-        <span class="ic">🔄</span>
-        <span class="lbl">再読み込み</span>
-      </button>
-
       <div class="rail-foot">
         <div class="rail-user">
           <div class="rail-av" id="railAv">?</div>
@@ -929,6 +928,13 @@
   </div>
 </div>
 
+<!-- 右端の「一番上へ／一番下へ」ボタン（2026-11-23追加）。mainの内部スクロール量に応じて
+     表示/非表示を切り替える（JS側のupdateScrollFabVisibility_参照）。 -->
+<div class="scroll-fab-group hidden" id="scrollFabGroup">
+  <button type="button" class="scroll-fab hidden" id="scrollTopBtn" title="一番上へ" aria-label="一番上へ">↑</button>
+  <button type="button" class="scroll-fab hidden" id="scrollBottomBtn" title="一番下へ" aria-label="一番下へ">↓</button>
+</div>
+
 <script>
   // ==== 設定 ====
   // GAS Web App（デプロイ済み）のURL
@@ -959,7 +965,30 @@
     // 画面切り替えは同じページ内でのdisplay切り替えのため、前の画面でスクロールしていた位置が
     // そのまま残ってしまう（新しい画面がいきなり下の方から表示される）。切り替えるたびに先頭に戻す。
     window.scrollTo(0, 0);
+    updateScrollFabVisibility_();
   }
+
+  // 右端の「一番上へ／一番下へ」ボタン（2026-11-23追加）。mainが実際にスクロールできる場合だけ
+  // 全体を表示し、その中でも既に一番上／一番下にいるほうのボタンは隠す（無意味な操作を避ける）。
+  var scrollMainEl_ = document.querySelector('main');
+  function updateScrollFabVisibility_() {
+    var group = document.getElementById('scrollFabGroup');
+    var topBtn = document.getElementById('scrollTopBtn');
+    var bottomBtn = document.getElementById('scrollBottomBtn');
+    var scrollable = scrollMainEl_.scrollHeight - scrollMainEl_.clientHeight > 40;
+    group.classList.toggle('hidden', !scrollable);
+    if (!scrollable) return;
+    topBtn.classList.toggle('hidden', scrollMainEl_.scrollTop <= 40);
+    bottomBtn.classList.toggle('hidden', scrollMainEl_.scrollTop + scrollMainEl_.clientHeight >= scrollMainEl_.scrollHeight - 40);
+  }
+  scrollMainEl_.addEventListener('scroll', updateScrollFabVisibility_);
+  window.addEventListener('resize', updateScrollFabVisibility_);
+  document.getElementById('scrollTopBtn').addEventListener('click', function () {
+    scrollMainEl_.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  document.getElementById('scrollBottomBtn').addEventListener('click', function () {
+    scrollMainEl_.scrollTo({ top: scrollMainEl_.scrollHeight, behavior: 'smooth' });
+  });
 
   // ==== ログイン（Google Identity Services） ====
   var currentUser = null; // { email, name }
@@ -1732,10 +1761,6 @@
     if (this.classList.contains('locked')) return;
     goToPaperImport();
   });
-  document.getElementById('railReloadBtn').addEventListener('click', function () {
-    location.reload();
-  });
-
   function updateRailNav_() {
     // ツール配置メモ／ツールレイアウトは同じdata-screen="tools"を共有するため、アクティブ判定は
     // 画面名だけでなくdata-tool-tabがcurrentToolTabと一致するかも見る（2026-11-09、③を2項目に分割）。
