@@ -111,6 +111,16 @@
   }
   .scroll-fab:active { background: var(--accent-soft); }
 
+  /* 独自の「引っ張って更新」インジケーター（2026-11-23追加）。JS側で引っ張った距離に応じて
+     translateYを直接書き換える（閾値に達すると.readyが付き色・文言が変わる）。 */
+  .pull-indicator {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 55; height: 44px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--rail); color: var(--rail-ink); font-size: 0.82rem; font-weight: 700;
+    transform: translateY(-44px); pointer-events: none;
+  }
+  .pull-indicator.ready { background: var(--accent); color: #fff; }
+
   /* ==== 画面共通の見出し（2026-11-08追加、全画面で統一） ==== */
   .pagehead { flex: none; }
   .pagehead h1 { margin: 0; font-size: 1.2rem; font-weight: 900; }
@@ -125,7 +135,9 @@
      箱」の右端（コンテンツが長い⑤⑥画面で特に目立つ位置）に出てしまっていた（指摘を受けて発覚）。
      スクロールはmain自身（画面の実際の右端に密着）が担当し、幅の制限・中央寄せは中の.screen側に
      移すことで、スクロールバーの位置と見た目の幅制限を分離した。 */
-  main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+  /* overscroll-behavior-y:contain（2026-11-23追加）：mainの先頭/末尾を超えた引っ張りが
+     ブラウザ標準の「引っ張って更新」等へ伝わらないようにする（独自の引っ張って更新に置き換えたため）。 */
+  main { flex: 1; min-width: 0; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; width: 100%; }
   .screen { display: none; flex-direction: column; gap: 18px; max-width: 820px; margin: 0 auto; width: 100%; }
   .screen.active { display: flex; }
   .screen[data-screen="tools"].active { max-width: none; }
@@ -455,7 +467,7 @@
     <nav class="rail" id="rail">
       <div class="rail-brand">
         <img class="rail-mark" src="./icon-192.png" alt="">
-        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.16.2</span></div>
+        <div class="rail-brand-text">西軽精機ナレッジ<span class="app-version">v2.17.0</span></div>
       </div>
       <button type="button" class="nav-btn" id="railScanBtn" data-rail="scan">
         <span class="ic">🔍</span>
@@ -935,6 +947,10 @@
   <button type="button" class="scroll-fab hidden" id="scrollBottomBtn" title="一番下へ" aria-label="一番下へ">↓</button>
 </div>
 
+<!-- 独自の「引っ張って更新」インジケーター（2026-11-23追加）。ブラウザ標準のジェスチャーは
+     引っ張る量を調整できず誤動作しやすいため、mainの先頭でだけ反応する独自実装に置き換える。 -->
+<div class="pull-indicator" id="pullIndicator"><span id="pullIndicatorIcon">↓</span><span id="pullIndicatorLabel">引っ張って更新</span></div>
+
 <script>
   // ==== 設定 ====
   // GAS Web App（デプロイ済み）のURL
@@ -988,6 +1004,65 @@
   });
   document.getElementById('scrollBottomBtn').addEventListener('click', function () {
     scrollMainEl_.scrollTo({ top: scrollMainEl_.scrollHeight, behavior: 'smooth' });
+  });
+
+  // ==== 独自の「引っ張って更新」（2026-11-23追加） ====
+  // ブラウザ標準のジェスチャーは引っ張る量を調整できず誤動作しやすいため、mainの一番上でだけ
+  // 反応する独自実装に置き換える（main自体はoverscroll-behavior-y:containでブラウザ標準の
+  // ジェスチャーへは伝わらないようにしてある）。PULL_REFRESH_THRESHOLDを標準よりかなり長めに
+  // 取ることで、誤って更新してしまうことを防ぐ。
+  var PULL_REFRESH_THRESHOLD = 110; // この距離(px)を超えてから指を離すとリロードする
+  var pullStartY = null;
+  var pullActive = false;
+  var pullIndicatorEl = document.getElementById('pullIndicator');
+  var pullIndicatorIcon = document.getElementById('pullIndicatorIcon');
+  var pullIndicatorLabel = document.getElementById('pullIndicatorLabel');
+
+  function resetPullIndicator_() {
+    pullIndicatorEl.style.transition = 'transform .2s ease-out';
+    pullIndicatorEl.style.transform = 'translateY(-44px)';
+    pullIndicatorEl.classList.remove('ready');
+  }
+
+  scrollMainEl_.addEventListener('touchstart', function (e) {
+    if (scrollMainEl_.scrollTop > 0 || e.touches.length !== 1) { pullStartY = null; return; }
+    pullStartY = e.touches[0].clientY;
+    pullActive = false;
+  }, { passive: true });
+
+  scrollMainEl_.addEventListener('touchmove', function (e) {
+    if (pullStartY === null || e.touches.length !== 1) return;
+    var dy = e.touches[0].clientY - pullStartY;
+    if (dy <= 0 || scrollMainEl_.scrollTop > 0) {
+      // 上方向に戻った・既にスクロールしてしまった場合は通常のスクロールに任せる
+      if (pullActive) { resetPullIndicator_(); pullActive = false; }
+      pullStartY = null;
+      return;
+    }
+    pullActive = true;
+    e.preventDefault(); // 引っ張り中はブラウザ既定のラバーバンド等を止める
+    var progress = Math.min(1, dy / PULL_REFRESH_THRESHOLD);
+    pullIndicatorEl.style.transition = 'none';
+    pullIndicatorEl.style.transform = 'translateY(' + (-44 + 44 * progress) + 'px)';
+    var ready = dy >= PULL_REFRESH_THRESHOLD;
+    pullIndicatorEl.classList.toggle('ready', ready);
+    pullIndicatorIcon.textContent = ready ? '↑' : '↓';
+    pullIndicatorLabel.textContent = ready ? '離すと更新します' : '引っ張って更新';
+  }, { passive: false });
+
+  ['touchend', 'touchcancel'].forEach(function (evt) {
+    scrollMainEl_.addEventListener(evt, function (e) {
+      if (pullStartY === null) { resetPullIndicator_(); return; }
+      var wasActive = pullActive;
+      var dy = (e.changedTouches && e.changedTouches[0]) ? (e.changedTouches[0].clientY - pullStartY) : 0;
+      pullStartY = null;
+      pullActive = false;
+      if (wasActive && dy >= PULL_REFRESH_THRESHOLD) {
+        location.reload();
+        return;
+      }
+      resetPullIndicator_();
+    });
   });
 
   // ==== ログイン（Google Identity Services） ====
